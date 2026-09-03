@@ -1,0 +1,716 @@
+{
+  "id": "rotina-bt",
+  "nome": "Checklist de Verificação de Rotina — Baixa Tensão",
+  "linhaProduto": "Baixa tensão",
+  "tipo": "rotina",
+  "revisao": "rev00",
+  "dataRevisao": "2026-03-09",
+  "emitidoPor": "",
+  "cabecalho": [
+    {
+      "id": "fabricante",
+      "rotulo": "Fabricante do conjunto",
+      "tipo": "texto"
+    },
+    {
+      "id": "clienteFinal",
+      "rotulo": "Cliente final",
+      "tipo": "texto"
+    },
+    {
+      "id": "numeroPedido",
+      "rotulo": "Número do pedido",
+      "tipo": "texto"
+    },
+    {
+      "id": "numeroSerie",
+      "rotulo": "Número de série do painel",
+      "tipo": "texto"
+    },
+    {
+      "id": "un",
+      "rotulo": "Tensão de operação (Un)",
+      "tipo": "numero",
+      "unidade": "V"
+    },
+    {
+      "id": "inNominal",
+      "rotulo": "Corrente nominal (In)",
+      "tipo": "numero",
+      "unidade": "A"
+    },
+    {
+      "id": "icw",
+      "rotulo": "Corrente de curta duração (Icw)",
+      "tipo": "numero",
+      "unidade": "kA"
+    },
+    {
+      "id": "grauProtecao",
+      "rotulo": "Grau de proteção (IP)",
+      "tipo": "texto"
+    },
+    {
+      "id": "formaConstrutiva",
+      "rotulo": "Forma de construção",
+      "tipo": "texto"
+    },
+    {
+      "id": "norma",
+      "rotulo": "Norma atendida",
+      "tipo": "selecao",
+      "opcoes": [
+        "DIN EN 61439-1",
+        "DIN EN 61439-2",
+        "IEC 61439-2"
+      ]
+    },
+    {
+      "id": "dataEnsaio",
+      "rotulo": "Data dos ensaios",
+      "tipo": "data"
+    }
+  ],
+  "secoes": [
+    {
+      "id": "R1",
+      "titulo": "Inspeção visual e dimensional",
+      "descricao": "DIN EN 61439-1, itens 11.2 e 11.8.",
+      "etapas": [
+        {
+          "id": "R1.1",
+          "descricao": "Conferir as dimensões das entradas e das colunas de saída.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R1.2",
+          "descricao": "Conferir o grau de proteção (IP) do conjunto.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R1.3",
+          "descricao": "Conferir a forma de construção.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R1.4",
+          "descricao": "Conferir o acabamento de portas e tampas.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R1.5",
+          "descricao": "Conferir os cortes e as placas de passagem.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R1.6",
+          "descricao": "Conferir a ventilação do conjunto.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R1.7",
+          "descricao": "Conferir os acoplamentos entre colunas.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R1.8",
+          "descricao": "Conferir as dobradiças.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R1.9",
+          "descricao": "Conferir as dimensões da base.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "titulo": "Leiaute geral",
+      "descricao": "Routine Verification Checklist, item A.2.",
+      "etapas": [
+        {
+          "id": "R2.1",
+          "descricao": "Conferir o arranjo geral contra o desenho aprovado.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R2.2",
+          "descricao": "Conferir a elevação dos recortes.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R2.3",
+          "descricao": "Conferir as etiquetas.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "detalhes": [
+            "Cor e material conforme especificação.",
+            "Grafia correta.",
+            "Uniformidade da gravação."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "titulo": "Barramentos e distâncias",
+      "descricao": "DIN EN 61439-1, item 11.3.",
+      "etapas": [
+        {
+          "id": "R3.1",
+          "descricao": "Conferir a corrente suportável de curta duração (Icw) do barramento.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R3.2",
+          "descricao": "Conferir as seções de barra.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R3.3",
+          "descricao": "Conferir os suportes e a fixação do barramento.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R3.4",
+          "descricao": "Conferir corte, dobra e estanhagem das barras.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R3.5",
+          "descricao": "Conferir a barra de terra.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R3.6",
+          "descricao": "Conferir o código de cores das barras.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R3.7",
+          "descricao": "Conferir as blindagens.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R3.8",
+          "descricao": "Conferir a marcação PE.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R3.9",
+          "descricao": "Conferir as etiquetas de advertência.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R3.10",
+          "descricao": "Registrar o torque aplicado nas conexões do barramento.",
+          "tipoResposta": "grade_numerica",
+          "observacao": true,
+          "ativa": true,
+          "detalhes": [
+            "Tolerância de ±10% sobre o valor nominal.",
+            "O sistema apenas registra o valor: não há validação de faixa nem alerta automático."
+          ],
+          "tabelaReferencia": {
+            "titulo": "Torque nominal por parafuso",
+            "colunas": [
+              "Parafuso",
+              "Torque nominal (N·m)",
+              "Tolerância"
+            ],
+            "linhas": [
+              [
+                "M6",
+                "8",
+                "±10%"
+              ],
+              [
+                "M8",
+                "20",
+                "±10%"
+              ],
+              [
+                "M10",
+                "40",
+                "±10%"
+              ],
+              [
+                "M12",
+                "70",
+                "±10%"
+              ]
+            ]
+          },
+          "grade": {
+            "linhas": [
+              {
+                "id": "m6",
+                "rotulo": "M6 (nominal 8 N·m)"
+              },
+              {
+                "id": "m8",
+                "rotulo": "M8 (nominal 20 N·m)"
+              },
+              {
+                "id": "m10",
+                "rotulo": "M10 (nominal 40 N·m)"
+              },
+              {
+                "id": "m12",
+                "rotulo": "M12 (nominal 70 N·m)"
+              }
+            ],
+            "colunas": [
+              {
+                "id": "aferido",
+                "rotulo": "Torque aferido",
+                "unidade": "N·m"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "titulo": "Dispositivos, fiação e conexões",
+      "descricao": "DIN EN 61439-1, itens 11.5 e 11.10.",
+      "etapas": [
+        {
+          "id": "R4.1",
+          "descricao": "Conferir a identificação dos dispositivos.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R4.2",
+          "descricao": "Conferir as correntes nominais dos dispositivos.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R4.3",
+          "descricao": "Conferir a posição dos ACBs e MCCBs.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R4.4",
+          "descricao": "Conferir os instrumentos instalados.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R4.5",
+          "descricao": "Conferir os TCs e a fiação por bornes de curto-circuitação.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R4.6",
+          "descricao": "Conferir os suportes de cabo.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R4.7",
+          "descricao": "Conferir as seções dos terminais.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R4.8",
+          "descricao": "Conferir as cores de fiação.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R4.9",
+          "descricao": "Conferir os requisitos de compatibilidade eletromagnética (EMC).",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "titulo": "Propriedades de isolamento",
+      "descricao": "DIN EN 61439-1, item 11.9.",
+      "etapas": [
+        {
+          "id": "R5.1",
+          "descricao": "Registrar as medições de isolamento por par de condutores.",
+          "tipoResposta": "grade_numerica",
+          "observacao": true,
+          "ativa": true,
+          "detalhes": [
+            "Megger em 1000 V CC antes e depois do ensaio de tensão aplicada.",
+            "Registrar a corrente medida durante o ensaio.",
+            "O sistema apenas registra os valores: o julgamento é do inspetor."
+          ],
+          "grade": {
+            "linhas": [
+              {
+                "id": "l1-l2",
+                "rotulo": "L1 – L2"
+              },
+              {
+                "id": "l2-l3",
+                "rotulo": "L2 – L3"
+              },
+              {
+                "id": "l1-l3",
+                "rotulo": "L1 – L3"
+              },
+              {
+                "id": "l1-n",
+                "rotulo": "L1 – N"
+              },
+              {
+                "id": "l2-n",
+                "rotulo": "L2 – N"
+              },
+              {
+                "id": "l3-n",
+                "rotulo": "L3 – N"
+              },
+              {
+                "id": "l1-e",
+                "rotulo": "L1 – E"
+              },
+              {
+                "id": "l2-e",
+                "rotulo": "L2 – E"
+              },
+              {
+                "id": "l3-e",
+                "rotulo": "L3 – E"
+              },
+              {
+                "id": "n-e",
+                "rotulo": "N – E"
+              }
+            ],
+            "colunas": [
+              {
+                "id": "meggerAntes",
+                "rotulo": "Megger antes",
+                "unidade": "MΩ"
+              },
+              {
+                "id": "corrente",
+                "rotulo": "Corrente no ensaio",
+                "unidade": "mA"
+              },
+              {
+                "id": "meggerDepois",
+                "rotulo": "Megger depois",
+                "unidade": "MΩ"
+              }
+            ]
+          }
+        },
+        {
+          "id": "R5.2",
+          "descricao": "Confirmar a realização do ensaio de tensão aplicada de 2,5 kV por 1 minuto.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true,
+          "referencia": "DIN EN 61439-1, item 11.9"
+        }
+      ]
+    },
+    {
+      "id": "R6",
+      "titulo": "Ensaios mecânicos",
+      "descricao": "Routine Verification Checklist, item B.",
+      "etapas": [
+        {
+          "id": "R6.1",
+          "descricao": "Ensaiar a operação das portas com dobradiça.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R6.2",
+          "descricao": "Ensaiar os intertravamentos.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R6.3",
+          "descricao": "Ensaiar os compartimentos extraíveis.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R6.4",
+          "descricao": "Conferir as barreiras de segurança.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R6.5",
+          "descricao": "Ensaiar as fechaduras.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R6.6",
+          "descricao": "Ensaiar a operação dos disjuntores e das chaves seletoras.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R6.7",
+          "descricao": "Conferir o aperto dos cabos de força e de comando.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        }
+      ]
+    },
+    {
+      "id": "R7",
+      "titulo": "Ensaio funcional",
+      "descricao": "DIN EN 61439-1, item 11.9.",
+      "etapas": [
+        {
+          "id": "R7.1",
+          "descricao": "Ensaiar os dispositivos indicadores.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R7.2",
+          "descricao": "Verificar a continuidade dos circuitos de potência.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R7.3",
+          "descricao": "Ensaiar o circuito anticondensação.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R7.4",
+          "descricao": "Ensaiar os intertravamentos mecânicos e elétricos.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R7.5",
+          "descricao": "Ensaiar a lógica de comando.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        }
+      ]
+    },
+    {
+      "id": "R8",
+      "titulo": "Ensaio funcional do ACB",
+      "descricao": "Routine Verification Checklist, anexo.",
+      "etapas": [
+        {
+          "id": "R8.1",
+          "descricao": "Ensaiar o carregamento de mola.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R8.2",
+          "descricao": "Ensaiar o fechamento.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R8.3",
+          "descricao": "Ensaiar a abertura.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R8.4",
+          "descricao": "Ensaiar as posições isolado, teste e serviço.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R8.5",
+          "descricao": "Ensaiar o cadeado.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R8.6",
+          "descricao": "Ensaiar o disparo de proteção.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R8.7",
+          "descricao": "Ensaiar o fechamento e a abertura remotos.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        }
+      ]
+    },
+    {
+      "id": "R9",
+      "titulo": "Ensaio funcional do MCCB",
+      "descricao": "Routine Verification Checklist, anexo.",
+      "etapas": [
+        {
+          "id": "R9.1",
+          "descricao": "Ensaiar o comando de liga.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R9.2",
+          "descricao": "Ensaiar o comando de desliga.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R9.3",
+          "descricao": "Ensaiar o disparo.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R9.4",
+          "descricao": "Ensaiar o módulo extraível nas posições de teste e serviço.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R9.5",
+          "descricao": "Ensaiar o cadeado.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R9.6",
+          "descricao": "Ensaiar o intertravamento mecânico.",
+          "tipoResposta": "check",
+          "observacao": true,
+          "ativa": true
+        }
+      ]
+    },
+    {
+      "id": "R10",
+      "titulo": "Verificações finais e identidade visual",
+      "descricao": "Routine Verification Checklist, item F.",
+      "etapas": [
+        {
+          "id": "R10.1",
+          "descricao": "Conferir a limpeza do conjunto.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R10.2",
+          "descricao": "Conferir a posição dos disjuntores para expedição.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        },
+        {
+          "id": "R10.3",
+          "descricao": "Conferir a distribuição dos documentos revisados.",
+          "tipoResposta": "anexo_pdf",
+          "observacao": true,
+          "ativa": true,
+          "detalhes": [
+            "Anexar o conjunto de documentos revisados entregue com o painel."
+          ]
+        },
+        {
+          "id": "R10.4",
+          "descricao": "Conferir a etiqueta de marca ABB e a etiqueta do montador.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true
+        }
+      ]
+    }
+  ]
+}

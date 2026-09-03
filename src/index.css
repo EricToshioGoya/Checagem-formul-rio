@@ -1,0 +1,41 @@
+@import 'tailwindcss';
+
+/*
+ * Paleta e tokens do sistema. Público-alvo: operários em chão de fábrica.
+ * Base de 16 px, alto contraste, alvos de toque de 48 px.
+ */
+@theme {
+  --color-abb-red: #ff000f;
+  --color-abb-red-dark: #cc000c;
+  --color-abb-black: #1f1f1f;
+  --color-abb-gray: #6b6b6b;
+  --color-abb-line: #d4d4d4;
+  --color-abb-bg: #f4f4f4;
+  --font-sans: 'Segoe UI', 'Helvetica Neue', Arial, system-ui, sans-serif;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-abb-bg);
+  color: var(--color-abb-black);
+  font-family: var(--font-sans);
+  /* Impede o zoom por duplo toque atrapalhar a marcação de itens. */
+  touch-action: manipulation;
+}
+
+/* Foco sempre visível: uso com luvas e telas sob luz forte. */
+:focus-visible {
+  outline: 3px solid var(--color-abb-red);
+  outline-offset: 2px;
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+}

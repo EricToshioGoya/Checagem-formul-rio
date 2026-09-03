@@ -1,0 +1,19 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+.DS_Store
+.vite/
+*.tsbuildinfo
+
+# Saída do teste de fumaça
+saida-fumaca/
+
+# Binários e conteúdo gerado do servidor portátil.
+# O diretório web/ existe apenas para o `go:embed`; o conteúdo real é copiado
+# de dist/ pelo scripts/build-portatil.sh.
+portatil/
+cmd/servidor/web/*
+!cmd/servidor/web/.gitkeep
+cmd/servidor/servidor
+cmd/servidor/servidor.exe

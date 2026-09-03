@@ -1,0 +1,725 @@
+{
+  "id": "sen-plus-montagem",
+  "nome": "Checklist de Montagem — SEN Plus",
+  "linhaProduto": "SEN Plus",
+  "tipo": "montagem",
+  "revisao": "rev00",
+  "dataRevisao": "2026-03-09",
+  "emitidoPor": "VICTOR HONORATO",
+  "cabecalho": [
+    {
+      "id": "fabricante",
+      "rotulo": "Fabricante do conjunto",
+      "tipo": "texto"
+    },
+    {
+      "id": "clienteFinal",
+      "rotulo": "Cliente final",
+      "tipo": "texto"
+    },
+    {
+      "id": "numeroPedido",
+      "rotulo": "Número do pedido",
+      "tipo": "texto"
+    },
+    {
+      "id": "un",
+      "rotulo": "Tensão de operação (Un)",
+      "tipo": "numero",
+      "unidade": "V"
+    },
+    {
+      "id": "grauProtecao",
+      "rotulo": "Grau de proteção (IP)",
+      "tipo": "texto",
+      "ajuda": "Define as etapas de silicone e vedação (acima de IP40 e a partir de IP42)."
+    },
+    {
+      "id": "norma",
+      "rotulo": "Norma atendida",
+      "tipo": "selecao",
+      "opcoes": [
+        "IEC 61439-2",
+        "IEC 61641"
+      ]
+    }
+  ],
+  "secoes": [
+    {
+      "id": "S1",
+      "titulo": "Estrutura — perfis e cantoneiras",
+      "etapas": [
+        {
+          "id": "S1.1",
+          "descricao": "Verificar posicionamento dos perfis e cantoneiras.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s1-1.png",
+              "legenda": "Posicionamento das abas por perfil"
+            }
+          ],
+          "detalhes": [
+            "Cantoneira com furo sempre voltado para baixo ou para cima.",
+            "Cantoneira alinhada com perfil (lado menor voltado para a parte interna).",
+            "Conferir a quantidade de abas e a posição por perfil, nos painéis CDC e CCM."
+          ],
+          "pendenteTranscricao": true,
+          "tabelaReferencia": {
+            "titulo": "Abas e posição por perfil",
+            "colunas": [
+              "Perfil Painel CDC",
+              "Abas",
+              "Posição"
+            ],
+            "linhas": [
+              [
+                "Vertical Frontal Esq.",
+                "2",
+                "4,5 mm para trás"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "S1.2",
+          "descricao": "Para grau de proteção acima de IP40, verificar a presença de silicone nos pontos exigidos.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s1-2.png",
+              "legenda": "Pontos de aplicação de silicone"
+            }
+          ],
+          "detalhes": [
+            "Silicone nas cantoneiras.",
+            "Silicone no perfil vertical do CCM.",
+            "Silicone nas bandejas do ACB.",
+            "Silicone na separação horizontal das gavetas.",
+            "Silicone nas soleiras."
+          ]
+        },
+        {
+          "id": "S1.3",
+          "descricao": "Verificar a fixação do conector da cantoneira.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s1-3.png",
+              "legenda": "Conector da cantoneira por tipo de coluna"
+            }
+          ],
+          "detalhes": [
+            "Conferir o tipo de coluna, o conector correspondente e os parafusos indicados."
+          ],
+          "referencia": "Doc. 31T002701 — seções 4.1, 5.1, 6.1, 8.1, 9.1, 10.1 e 12.1",
+          "pendenteTranscricao": true
+        },
+        {
+          "id": "S1.4",
+          "descricao": "Verificar o posicionamento do perfil “U”.",
+          "tipoResposta": "selecao",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s1-4.png",
+              "legenda": "Posicionamento do perfil U"
+            }
+          ],
+          "detalhes": [
+            "A montagem admite 575 mm ou 600 mm medidos a partir do perfil frontal.",
+            "Registrar a medida encontrada."
+          ],
+          "referencia": "Doc. 31T002701 — seção 4.2",
+          "opcoes": [
+            "575 mm",
+            "600 mm"
+          ]
+        },
+        {
+          "id": "S1.5",
+          "descricao": "Verificar a instalação da bucha da base.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s1-5.png",
+              "legenda": "Modelos de bucha da base"
+            }
+          ],
+          "detalhes": [
+            "O modelo da bucha varia conforme a presença da placa inferior."
+          ]
+        },
+        {
+          "id": "S1.6",
+          "descricao": "Verificar o posicionamento dos perfis horizontais na coluna CDC.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s1-6.png",
+              "legenda": "Perfis horizontais da coluna CDC"
+            }
+          ],
+          "referencia": "Doc. 31T002701 — seção 4.2.1"
+        },
+        {
+          "id": "S1.7",
+          "descricao": "Verificar a presença de 2 peças HOOK CLIP 917250R01 na coluna CCM.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s1-7.png",
+              "legenda": "Posição das peças HOOK CLIP"
+            }
+          ],
+          "referencia": "Doc. 31T002701 — seção 6.1.2"
+        }
+      ]
+    },
+    {
+      "id": "S2",
+      "titulo": "Barramentos",
+      "etapas": [
+        {
+          "id": "S2.1",
+          "descricao": "Verificar o posicionamento e a fixação dos suportes do barramento principal.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s2-1.png",
+              "legenda": "Suportes do barramento principal"
+            }
+          ]
+        },
+        {
+          "id": "S2.2",
+          "descricao": "Verificar a posição e a seção de barra dos barramentos principais no suporte isolador.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s2-2.png",
+              "legenda": "Posição das barras no suporte isolador"
+            }
+          ],
+          "detalhes": [
+            "Conferir contra a tabela de configurações SMB-6 a SMB-42."
+          ],
+          "pendenteTranscricao": true
+        },
+        {
+          "id": "S2.3",
+          "descricao": "Verificar o posicionamento e a seção da barra principal PE ou PEN.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s2-3.png",
+              "legenda": "Barra principal PE/PEN"
+            }
+          ],
+          "referencia": "Engineering Guidelines 31T002700 — seção 2.1.5"
+        },
+        {
+          "id": "S2.4",
+          "descricao": "Verificar o posicionamento e a seção da barra principal N na posição inferior.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s2-4.png",
+              "legenda": "Barra principal N em posição inferior"
+            }
+          ],
+          "referencia": "Engineering Guidelines 31T002700 — seção 2.1.4"
+        },
+        {
+          "id": "S2.5",
+          "descricao": "Verificar o suporte isolador flutuante.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s2-5.png",
+              "legenda": "Suporte isolador flutuante"
+            }
+          ],
+          "referencia": "Assembly Guidelines 31T002701 — seção 2.1.3"
+        },
+        {
+          "id": "S2.6",
+          "descricao": "TRANSCREVER — descrição ilegível no OCR do protocolo original. Conferir o texto da etapa S2.6 no documento “Protocolo verificação SEN Plus rev00” antes do uso em campo.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s2-6.png",
+              "legenda": "Referência da etapa S2.6"
+            }
+          ],
+          "detalhes": [
+            "Pendência registrada na seção 15 da especificação."
+          ],
+          "pendenteTranscricao": true
+        },
+        {
+          "id": "S2.7",
+          "descricao": "Verificar a presença de porca cravada onde a montagem exigir.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s2-7.png",
+              "legenda": "Porca cravada"
+            }
+          ],
+          "referencia": "BOM 31T002704"
+        },
+        {
+          "id": "S2.8",
+          "descricao": "Verificar o acoplamento dos barramentos.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s2-8.png",
+              "legenda": "Acoplamento dos barramentos"
+            }
+          ],
+          "detalhes": [
+            "Bucha espaçadora do kit 282304 a partir do SMB-12."
+          ],
+          "referencia": "Doc. 31T002701 — seções 14.5.1 a 14.5.4"
+        },
+        {
+          "id": "S2.9",
+          "descricao": "Verificar a seção de barra dos barramentos verticais das colunas com ACB.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s2-9.png",
+              "legenda": "Barramentos verticais das colunas com ACB"
+            }
+          ]
+        },
+        {
+          "id": "S2.10",
+          "descricao": "Verificar se o ACB Emax está com os terminais específicos do SEN Plus.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s2-10.png",
+              "legenda": "Terminais do ACB Emax"
+            }
+          ],
+          "referencia": "Doc. 31T002701 — seção 4.3"
+        },
+        {
+          "id": "S2.11",
+          "descricao": "Verificar o tipo, a quantidade e a posição dos suportes do barramento vertical do CCM.",
+          "tipoResposta": "selecao",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s2-11.png",
+              "legenda": "Suportes do barramento vertical do CCM"
+            }
+          ],
+          "detalhes": [
+            "Selecionar a combinação de MBB (meio ou topo) e Icw (85, 65 ou 50 kA) usada na montagem."
+          ],
+          "referencia": "Doc. 31T002701 — seção 5.2.1",
+          "opcoes": [
+            "MBB no meio — Icw 85 kA",
+            "MBB no meio — Icw 65 kA",
+            "MBB no meio — Icw 50 kA",
+            "MBB no topo — Icw 85 kA",
+            "MBB no topo — Icw 65 kA",
+            "MBB no topo — Icw 50 kA"
+          ]
+        },
+        {
+          "id": "S2.12",
+          "descricao": "Verificar a cobertura de policarbonato nos suportes do barramento vertical do CCM.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s2-12.png",
+              "legenda": "Cobertura de policarbonato dos suportes"
+            }
+          ],
+          "referencia": "Doc. 31T002701 — seção 5.2.1"
+        },
+        {
+          "id": "S2.13",
+          "descricao": "Registrar a quantidade de layers instalados.",
+          "tipoResposta": "numero",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s2-13.png",
+              "legenda": "Quantidade de layers"
+            }
+          ],
+          "detalhes": [
+            "Conferir contra a tabela 5.6.1 da documentação 31T002700."
+          ],
+          "referencia": "Doc. 31T002700 — tabela 5.6.1",
+          "unidade": "layers"
+        }
+      ]
+    },
+    {
+      "id": "S3",
+      "titulo": "Placas de montagem e policarbonato",
+      "etapas": [
+        {
+          "id": "S3.1",
+          "descricao": "Nas colunas CDC com barramento superior, verificar se a tampa direita da placa de montagem está livre.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s3-1.png",
+              "legenda": "Tampa direita da placa de montagem"
+            }
+          ]
+        },
+        {
+          "id": "S3.2",
+          "descricao": "Nas colunas CDC com entrada de cabos superior, verificar se a tampa superior da placa de montagem está livre.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s3-2.png",
+              "legenda": "Tampa superior da placa de montagem"
+            }
+          ]
+        },
+        {
+          "id": "S3.3",
+          "descricao": "Verificar o policarbonato nas tomadas de saída das gavetas extraíveis.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s3-3.png",
+              "legenda": "Policarbonato nas tomadas de saída"
+            }
+          ],
+          "detalhes": [
+            "Vãos fechados com a cobertura 31T003641R01."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S4",
+      "titulo": "Separações e telas",
+      "etapas": [
+        {
+          "id": "S4.1",
+          "descricao": "Verificar as telas de separação da coluna CDC.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s4-1.png",
+              "legenda": "Telas de separação da coluna CDC"
+            }
+          ],
+          "referencia": "Doc. 31T002701 — seções 4.9.3 e 4.10"
+        },
+        {
+          "id": "S4.2",
+          "descricao": "Verificar a tampa “MBB End Cover” (kit 287094) em cada ponta do painel.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s4-2.png",
+              "legenda": "MBB End Cover"
+            }
+          ],
+          "referencia": "Doc. 31T002701 — seção 14.10"
+        },
+        {
+          "id": "S4.3",
+          "descricao": "Em painéis com proteção de arco IEC TR 61641, verificar o kit “Panel to Panel Separation”.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s4-3.png",
+              "legenda": "Kit Panel to Panel Separation"
+            }
+          ],
+          "referencia": "Doc. 31T002701 — seção 14.12.2"
+        },
+        {
+          "id": "S4.4",
+          "descricao": "Verificar a separação superior na coluna CCM.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s4-4.png",
+              "legenda": "Separação superior da coluna CCM"
+            }
+          ],
+          "referencia": "Doc. 31T002701 — seções 5.5, 9.5 e 10.5"
+        }
+      ]
+    },
+    {
+      "id": "S5",
+      "titulo": "Vedações, borrachas e tampas",
+      "etapas": [
+        {
+          "id": "S5.1",
+          "descricao": "Verificar a borracha 6×3 (236060) entre o perfil inferior e a soleira da porta.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s5-1.png",
+              "legenda": "Borracha 6x3 na soleira da porta"
+            }
+          ],
+          "referencia": "Doc. 31T002690 — seção 2.6"
+        },
+        {
+          "id": "S5.2",
+          "descricao": "Verificar a borracha 15×3 (236464) na soleira interna do compartimento de gavetas.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s5-2.png",
+              "legenda": "Borracha 15x3 na soleira interna"
+            }
+          ],
+          "detalhes": [
+            "Emenda no meio do lado inferior."
+          ],
+          "referencia": "Doc. 31T002690 — seção 2.7"
+        },
+        {
+          "id": "S5.3",
+          "descricao": "Verificar a borracha 236468 nas portas das gavetas CCM e no acabamento superior.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s5-3.png",
+              "legenda": "Borracha 236468 nas portas das gavetas"
+            }
+          ],
+          "detalhes": [
+            "Corte a 90°.",
+            "Emenda no meio do lado inferior."
+          ]
+        },
+        {
+          "id": "S5.4",
+          "descricao": "Verificar a borracha no espaço da placa de instrumentos.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s5-4.png",
+              "legenda": "Borracha da placa de instrumentos"
+            }
+          ],
+          "detalhes": [
+            "Tipos C e V: borracha 10×5 (236469).",
+            "CDC e tipo A: borracha 6×3 (236060)."
+          ]
+        },
+        {
+          "id": "S5.5",
+          "descricao": "Verificar o parafuso autobrocante serrilhado nas dobradiças das portas do compartimento de gavetas CCM.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s5-5.png",
+              "legenda": "Parafuso das dobradiças do compartimento de gavetas"
+            }
+          ]
+        },
+        {
+          "id": "S5.6",
+          "descricao": "Verificar as buchas de acoplamento dos perfis.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s5-6.png",
+              "legenda": "Buchas de acoplamento dos perfis"
+            }
+          ],
+          "referencia": "Doc. 31T002701 — seção 14.7"
+        },
+        {
+          "id": "S5.7",
+          "descricao": "Verificar a borracha 3100042203 nos perfis de acoplamento das colunas.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s5-7.png",
+              "legenda": "Borracha nos perfis de acoplamento"
+            }
+          ],
+          "referencia": "Doc. 31T002690 — seção 2.4"
+        },
+        {
+          "id": "S5.8",
+          "descricao": "Verificar a borracha 3100042203 nas tampas lateral e traseira.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s5-8.png",
+              "legenda": "Borracha das tampas lateral e traseira"
+            }
+          ],
+          "detalhes": [
+            "A partir de IP42, aplicar silicone."
+          ],
+          "referencia": "Doc. 31T002690 — seção 2.5"
+        },
+        {
+          "id": "S5.9",
+          "descricao": "Verificar a fixação da tampa lateral com a aba maior voltada à frente.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s5-9.png",
+              "legenda": "Fixação da tampa lateral"
+            }
+          ],
+          "referencia": "Doc. 31T002701 — seção 14.13"
+        },
+        {
+          "id": "S5.10",
+          "descricao": "Verificar a borracha 3100042203 conforme as instruções de montagem.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s5-10.png",
+              "legenda": "Aplicação da borracha 3100042203"
+            }
+          ],
+          "detalhes": [
+            "A partir de IP42, aplicar silicone."
+          ],
+          "referencia": "Doc. 31T002690 — seção 2.11"
+        },
+        {
+          "id": "S5.11",
+          "descricao": "Verificar a fixação do telhado com a aba maior voltada à frente.",
+          "tipoResposta": "check_com_foto",
+          "observacao": true,
+          "ativa": true,
+          "midiaApoio": [
+            {
+              "tipo": "imagem",
+              "src": "/media/sen-plus/s5-11.png",
+              "legenda": "Fixação do telhado"
+            }
+          ],
+          "referencia": "Doc. 31T002701 — seção 14.13"
+        }
+      ]
+    }
+  ]
+}
