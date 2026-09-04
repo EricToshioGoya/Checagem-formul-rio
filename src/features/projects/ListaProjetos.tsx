@@ -4,16 +4,13 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { PAINEL_PADRAO } from '../../core/config';
 import { ProjetoRepository, type ResumoProjeto } from '../../core/db/repositorios';
 import { progressoDoProjeto } from '../../core/forms/progressoProjeto';
+import { obterPainel } from '../../core/paineis/catalogo';
 import { Botao } from '../../shared/componentes/Botao';
 import { BarraProgresso } from '../../shared/componentes/BarraProgresso';
 import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { Carregando, Erro, Vazio, Aviso } from '../../shared/componentes/Estado';
-import {
-  IconeLixeira,
-  IconeMais,
-  IconeSeta,
-  IconeVoltar,
-} from '../../shared/componentes/Icones';
+import { IconeLixeira, IconeMais, IconeSeta } from '../../shared/componentes/Icones';
+import { VoltarAosPaineis } from '../../shared/componentes/VoltarAosPaineis';
 import { dataHoraBr } from '../../shared/utils/texto';
 
 function ehIphone(): boolean {
@@ -31,11 +28,23 @@ export function ListaProjetos() {
     [tipoPainel],
     undefined,
   );
+  const [nomePainel, setNomePainel] = useState('');
   const [percentuais, setPercentuais] = useState<Record<number, number>>({});
   const [paraExcluir, setParaExcluir] = useState<ResumoProjeto | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [importando, setImportando] = useState(false);
   const entradaArquivo = useRef<HTMLInputElement>(null);
+
+  // O nome do painel dá sentido ao botão de troca: mostra de onde se está saindo.
+  useEffect(() => {
+    let ativo = true;
+    obterPainel(tipoPainel)
+      .then((p) => ativo && setNomePainel(p.nome))
+      .catch(() => ativo && setNomePainel(''));
+    return () => {
+      ativo = false;
+    };
+  }, [tipoPainel]);
 
   useEffect(() => {
     if (!projetos) return;
@@ -73,11 +82,15 @@ export function ListaProjetos() {
 
   return (
     <div className="space-y-4">
+      <VoltarAosPaineis />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Botao variante="texto" onClick={() => navegar('/')} aria-label="Voltar aos painéis">
-            <IconeVoltar />
-          </Botao>
+        <div className="min-w-0">
+          {nomePainel ? (
+            <p className="text-sm font-semibold tracking-wide text-abb-gray uppercase">
+              {nomePainel}
+            </p>
+          ) : null}
           <h1 className="text-2xl font-bold">Meus projetos</h1>
         </div>
         <div className="flex flex-wrap gap-2">

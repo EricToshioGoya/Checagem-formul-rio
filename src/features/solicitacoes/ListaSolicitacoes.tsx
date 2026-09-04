@@ -7,7 +7,8 @@ import type { Solicitacao } from '../../core/db/tipos';
 import { Botao } from '../../shared/componentes/Botao';
 import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { Carregando, Erro, Vazio } from '../../shared/componentes/Estado';
-import { IconeLixeira, IconeMais, IconeSeta, IconeVoltar } from '../../shared/componentes/Icones';
+import { IconeLixeira, IconeMais, IconeSeta } from '../../shared/componentes/Icones';
+import { VoltarAosPaineis } from '../../shared/componentes/VoltarAosPaineis';
 import { dataHoraBr } from '../../shared/utils/texto';
 import { EtiquetaEstado } from './estado';
 
@@ -44,21 +45,18 @@ export function ListaSolicitacoes() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-2">
-        <Botao variante="texto" onClick={() => navegar('/')} aria-label="Voltar aos painéis">
-          <IconeVoltar />
-        </Botao>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold tracking-wide text-abb-gray uppercase">
-            Solicitação de certificação
+      <VoltarAosPaineis />
+
+      <div className="min-w-0">
+        <p className="text-sm font-semibold tracking-wide text-abb-gray uppercase">
+          Solicitação de certificação
+        </p>
+        <h1 className="text-2xl font-bold break-words">{painel.nome}</h1>
+        {painel.responsavel ? (
+          <p className="text-base text-abb-gray">
+            Responsável ABB: {painel.responsavel.nome}
           </p>
-          <h1 className="text-2xl font-bold break-words">{painel.nome}</h1>
-          {painel.responsavel ? (
-            <p className="text-base text-abb-gray">
-              Responsável ABB: {painel.responsavel.nome}
-            </p>
-          ) : null}
-        </div>
+        ) : null}
       </div>
 
       <Botao
