@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { quebrarLinhas, sanitizar, truncar } from './texto';
-import { etapaRespondida } from '../../forms/progresso';
+import { etapaRespondida, etapaVisivel } from '../../forms/progresso';
 import type { Dossie, FormularioDoDossie } from '../dossie';
 import type { Etapa, ValorGrade } from '../../forms/tipos';
 import { dataBr } from '../../../shared/utils/texto';
@@ -666,7 +666,7 @@ export async function gerarPdf(dossie: Dossie, opcoes: OpcoesPdf): Promise<Blob>
       ]);
 
       for (const secao of formulario.definicao.secoes) {
-        const etapas = secao.etapas.filter((e) => e.ativa !== false);
+        const etapas = secao.etapas.filter((e) => etapaVisivel(e, formulario.respostas));
         if (!etapas.length) continue;
         folha.faixaSecao(`${secao.id} — ${secao.titulo}`);
         desenharCabecalhoTabela(folha);

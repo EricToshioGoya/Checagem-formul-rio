@@ -16,6 +16,48 @@ export const PreenchimentoRepository = {
     return db.preenchimentos.where('tagId').anyOf(tagIds).toArray();
   },
 
+  /** Uma solicitação de certificação tem exatamente um checklist. */
+  obterPorSolicitacao(solicitacaoId: number): Promise<Preenchimento | undefined> {
+    return db.preenchimentos.where('solicitacaoId').equals(solicitacaoId).first();
+  },
+
+  async obterOuCriarPorSolicitacao(
+    solicitacaoId: number,
+    formId: string,
+    formRevisao: string,
+  ): Promise<Preenchimento & { id: number }> {
+    const existente = await this.obterPorSolicitacao(solicitacaoId);
+    if (existente) {
+      if (existente.formRevisao !== formRevisao) {
+        await db.preenchimentos.update(existente.id!, { formRevisao });
+        existente.formRevisao = formRevisao;
+      }
+      return existente as Preenchimento & { id: number };
+    }
+    const novo: Preenchimento = {
+      solicitacaoId,
+      formId,
+      formRevisao,
+      cabecalho: {},
+      respostas: {},
+      atualizadoEm: Date.now(),
+    };
+    const id = await db.preenchimentos.add(novo);
+    return { ...novo, id };
+  },
+
+  /** Remove o preenchimento da solicitação e, em cascata, as suas mídias. */
+  async excluirPorSolicitacao(solicitacaoId: number): Promise<void> {
+    const preenchimentos = await db.preenchimentos
+      .where('solicitacaoId')
+      .equals(solicitacaoId)
+      .toArray();
+    const ids = preenchimentos.map((p) => p.id!).filter(Boolean);
+    if (!ids.length) return;
+    await db.midias.where('preenchimentoId').anyOf(ids).delete();
+    await db.preenchimentos.bulkDelete(ids);
+  },
+
   /** Devolve o preenchimento existente ou cria um vazio para o par TAG+formulário. */
   async obterOuCriar(
     tagId: number,

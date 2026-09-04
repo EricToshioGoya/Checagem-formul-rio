@@ -1,0 +1,193 @@
+{
+  "id": "ensaios-rotina-61439",
+  "nome": "Ensaios de Rotina — NBR IEC 61439",
+  "linhaProduto": "Painéis certificados ABB",
+  "tipo": "rotina",
+  "revisao": "rev00",
+  "dataRevisao": "2026-09-04",
+  "emitidoPor": "",
+  "cabecalho": [],
+  "secoes": [
+    {
+      "id": "11",
+      "titulo": "Ensaios de rotina realizados pelo montador",
+      "descricao": "NBR IEC 61439-1, item 11. Toda etapa exige evidência fotográfica. As medidas encontradas devem ser registradas no protocolo do montador e anexadas ao documento.",
+      "etapas": [
+        {
+          "id": "11.2",
+          "descricao": "Grau de proteção de invólucros.",
+          "tipoResposta": "check_com_foto",
+          "referencia": "NBR IEC 61439-1, 11.2",
+          "detalhes": [
+            "Fotografar a vedação das aberturas do invólucro.",
+            "Fotografar a integridade da estrutura, sem cortes ou furos sem tratamento.",
+            "Conferir o grau de proteção declarado para o painel/quadro."
+          ],
+          "observacao": true,
+          "ativa": true,
+          "fotoObrigatoria": true
+        },
+        {
+          "id": "11.3",
+          "descricao": "Distâncias de isolamento no ar e distâncias de escoamento.",
+          "tipoResposta": "check_com_foto",
+          "referencia": "NBR IEC 61439-1, 11.3",
+          "detalhes": [
+            "Fotografar o distanciamento entre as barras do barramento.",
+            "Fotografar o distanciamento e a integridade dos isoladores.",
+            "Quando o painel não tiver barramentos, registre a condição na observação."
+          ],
+          "observacao": true,
+          "ativa": true,
+          "fotoObrigatoria": true
+        },
+        {
+          "id": "11.4",
+          "descricao": "Proteção contra choques elétricos e integridade dos circuitos de proteção.",
+          "tipoResposta": "check_com_foto",
+          "referencia": "NBR IEC 61439-1, 11.4",
+          "detalhes": [
+            "Fotografar as portas corretamente aterradas.",
+            "Fotografar a continuidade do circuito de proteção entre partes metálicas.",
+            "Registrar na observação o valor medido de continuidade, quando aferido."
+          ],
+          "observacao": true,
+          "ativa": true,
+          "fotoObrigatoria": true
+        },
+        {
+          "id": "11.5",
+          "descricao": "Integração de componentes incorporados.",
+          "tipoResposta": "check_com_foto",
+          "referencia": "NBR IEC 61439-1, 11.5",
+          "detalhes": [
+            "Fotografar os componentes internos, evidenciando que são de fabricação ABB.",
+            "Todos os componentes internos devem ser ABB. Não é permitido o uso de componentes de concorrentes.",
+            "Substituições pontuais por componentes de outros fabricantes exigem autorização prévia do responsável ABB."
+          ],
+          "observacao": true,
+          "ativa": true,
+          "fotoObrigatoria": true
+        },
+        {
+          "id": "11.5.1",
+          "descricao": "Há componente de outro fabricante no painel/quadro?",
+          "tipoResposta": "selecao",
+          "referencia": "NBR IEC 61439-1, 11.5",
+          "opcoes": [
+            "Não — todos os componentes internos são ABB",
+            "Sim — há substituição por outro fabricante"
+          ],
+          "detalhes": [
+            "Ao indicar substituição, a justificativa e a autorização prévia da ABB passam a ser obrigatórias."
+          ],
+          "observacao": false,
+          "ativa": true
+        },
+        {
+          "id": "11.5.2",
+          "descricao": "Justificativa da substituição por componente de outro fabricante.",
+          "tipoResposta": "texto",
+          "referencia": "NBR IEC 61439-1, 11.5",
+          "exibirSe": {
+            "etapaId": "11.5.1",
+            "igualA": [
+              "Sim — há substituição por outro fabricante"
+            ]
+          },
+          "detalhes": [
+            "Descrever o componente substituído, o fabricante adotado e o motivo da substituição."
+          ],
+          "observacao": false,
+          "ativa": true
+        },
+        {
+          "id": "11.5.3",
+          "descricao": "Autorização prévia da ABB para o componente de outro fabricante.",
+          "tipoResposta": "anexo_pdf",
+          "referencia": "NBR IEC 61439-1, 11.5",
+          "exibirSe": {
+            "etapaId": "11.5.1",
+            "igualA": [
+              "Sim — há substituição por outro fabricante"
+            ]
+          },
+          "detalhes": [
+            "Anexar a autorização emitida pelo responsável ABB do tipo de painel.",
+            "Sem a autorização anexada, a solicitação não pode ser enviada para validação."
+          ],
+          "observacao": true,
+          "ativa": true,
+          "fotoObrigatoria": true
+        },
+        {
+          "id": "11.6",
+          "descricao": "Circuitos elétricos internos e conexões.",
+          "tipoResposta": "check_com_foto",
+          "referencia": "NBR IEC 61439-1, 11.6",
+          "detalhes": [
+            "Fotografar os circuitos internos com o cabeamento organizado.",
+            "Fotografar os parafusos do barramento lacrados.",
+            "Registrar na observação os torques aplicados, conforme o protocolo do montador."
+          ],
+          "observacao": true,
+          "ativa": true,
+          "fotoObrigatoria": true
+        },
+        {
+          "id": "11.7",
+          "descricao": "Bornes para condutores externos.",
+          "tipoResposta": "check_com_foto",
+          "referencia": "NBR IEC 61439-1, 11.7",
+          "detalhes": [
+            "Fotografar os bornes identificados conforme o diagrama do projeto.",
+            "Conferir a capacidade dos bornes contra a seção dos condutores externos."
+          ],
+          "observacao": true,
+          "ativa": true,
+          "fotoObrigatoria": true
+        },
+        {
+          "id": "11.8",
+          "descricao": "Funcionamento mecânico.",
+          "tipoResposta": "check_com_foto",
+          "referencia": "NBR IEC 61439-1, 11.8",
+          "detalhes": [
+            "Fotografar o funcionamento geral: portas, fechos, dobradiças e intertravamentos.",
+            "Acionar os dispositivos de manobra e conferir o livre movimento."
+          ],
+          "observacao": true,
+          "ativa": true,
+          "fotoObrigatoria": true
+        },
+        {
+          "id": "11.9",
+          "descricao": "Propriedades dielétricas.",
+          "tipoResposta": "check_com_foto",
+          "referencia": "NBR IEC 61439-1, 11.9",
+          "detalhes": [
+            "Fotografar o ensaio dielétrico ou o relatório emitido pelo instrumento.",
+            "Registrar na observação a tensão aplicada e os valores medidos.",
+            "As medidas encontradas devem constar do protocolo do montador anexado ao certificado."
+          ],
+          "observacao": true,
+          "ativa": true,
+          "fotoObrigatoria": true
+        },
+        {
+          "id": "11.10",
+          "descricao": "Cabeamento, desempenho de funcionamento e função.",
+          "tipoResposta": "check_com_foto",
+          "referencia": "NBR IEC 61439-1, 11.10",
+          "detalhes": [
+            "Fotografar o cabeamento concluído e o funcionamento geral do conjunto.",
+            "Conferir o ensaio funcional dos circuitos de comando e sinalização."
+          ],
+          "observacao": true,
+          "ativa": true,
+          "fotoObrigatoria": true
+        }
+      ]
+    }
+  ]
+}

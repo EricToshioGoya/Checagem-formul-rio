@@ -3,7 +3,8 @@ import {
   PreenchimentoRepository,
   ProjetoRepository,
 } from '../db/repositorios';
-import { carregarFormulario, formulariosAtivos } from '../forms/catalogo';
+import { PAINEL_PADRAO } from '../config';
+import { carregarFormulario, formulariosDoPainel } from '../forms/catalogo';
 import { calcularProgresso, idsPendentes } from '../forms/progresso';
 import type { Progresso } from '../forms/progresso';
 import type { DefinicaoFormulario, MapaRespostas, ValoresCabecalho } from '../forms/tipos';
@@ -45,9 +46,9 @@ export async function montarDossie(
   const projeto = await ProjetoRepository.obter(projetoId);
   if (!projeto) throw new Error('Projeto não encontrado.');
 
-  const entradas = (await formulariosAtivos()).filter(
-    (e) => !formIds?.length || formIds.includes(e.id),
-  );
+  const entradas = (
+    await formulariosDoPainel(projeto.tipoPainel ?? PAINEL_PADRAO)
+  ).filter((e) => !formIds?.length || formIds.includes(e.id));
   const tags = await ProjetoRepository.listarTags(projetoId);
 
   const resultado: TagDoDossie[] = [];

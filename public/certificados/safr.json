@@ -1,0 +1,99 @@
+{
+  "id": "safr",
+  "painelId": "safr",
+  "tituloProduto": "Certificado de produto SAFR",
+  "numero": "Nº {{numeroCertificado}}",
+  "rodape": "ABB Eletrificação Ltda. – Av. Nicolas Boer, 399 – São Paulo – Brasil",
+  "blocos": [
+    {
+      "tipo": "campos",
+      "itens": [
+        {
+          "rotulo": "Data Emissão",
+          "valor": "{{dataEmissao}}"
+        },
+        {
+          "rotulo": "Projeto",
+          "valor": "{{projeto}}"
+        },
+        {
+          "rotulo": "Nome Cliente Final",
+          "valor": "{{clienteFinal}}"
+        },
+        {
+          "rotulo": "TAG Painel",
+          "valor": "{{tagPainel}}"
+        },
+        {
+          "rotulo": "Corrente Nominal",
+          "valor": "{{correnteNominal}} A"
+        },
+        {
+          "rotulo": "Corrente de Curto-Circuito",
+          "valor": "{{correnteCurtoCircuito}} kA"
+        }
+      ]
+    },
+    {
+      "tipo": "paragrafo",
+      "texto": "O painel elétrico, em questão, é um produto certificado em conformidade com a NBR IEC 61439-1/2."
+    },
+    {
+      "tipo": "paragrafo",
+      "texto": "Os típicos do painel disposto foram submetidos e aprovados nas verificações indicadas na norma NBR IEC 61439-1 item 10.1:"
+    },
+    {
+      "tipo": "lista",
+      "itens": [
+        "Resistência dos materiais e das partes (10.2);",
+        "Grau de proteção dos invólucros (10.3);",
+        "Distâncias de isolamento no ar e distâncias de escoamento (10.4);",
+        "Proteção contra choques elétricos e integridade dos circuitos de proteção (10.5);",
+        "Integração dos dispositivos de manobra e componentes (10.6);",
+        "Circuitos elétricos internos e conexões (10.7);",
+        "Bornes para condutores externos (10.8);",
+        "Propriedades dielétricas (10.9);",
+        "Verificação da elevação de temperatura (10.10);",
+        "Suportabilidade aos curtos-circuitos (10.11);",
+        "Compatibilidade eletromagnética (10.12);",
+        "Funcionamento mecânico (10.13)."
+      ]
+    },
+    {
+      "tipo": "paragrafo",
+      "texto": "Conforme prescrito na norma, os conjuntos montados devem ser submetidos aos ensaios de rotina realizados pelo montador."
+    },
+    {
+      "tipo": "lista",
+      "itens": [
+        "Grau de proteção de invólucros (11.2);",
+        "Distâncias de isolamento no ar e distâncias de escoamento (11.3);",
+        "Proteção contra choques elétricos e integridade dos circuitos de proteção (11.4);",
+        "Integração de componentes incorporados (11.5);",
+        "Circuitos elétricos internos e conexões (11.6);",
+        "Bornes para condutores externos (11.7);",
+        "Funcionamento mecânico (11.8);",
+        "Propriedades dielétricas (11.9);",
+        "Cabeamento, desempenho de funcionamento e função (11.10)."
+      ]
+    },
+    {
+      "tipo": "nota",
+      "texto": "As medidas encontradas devem ser registradas no protocolo do montador e anexados a este documento."
+    },
+    {
+      "tipo": "campoLargo",
+      "rotulo": "NOME DO MONTADOR DE PAINEL SOLICITANTE",
+      "valor": "{{montador}}"
+    },
+    {
+      "tipo": "assinatura",
+      "nome": "{{responsavel.nome}}",
+      "linhas": [
+        "{{responsavel.cargo}}",
+        "{{responsavel.area}}",
+        "{{responsavel.empresa}}"
+      ]
+    }
+  ]
+}

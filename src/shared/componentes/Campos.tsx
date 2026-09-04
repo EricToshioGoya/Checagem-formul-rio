@@ -31,7 +31,16 @@ interface TextoProps {
   multilinha?: boolean;
   autoFoco?: boolean;
   senha?: boolean;
+  /** Escolhe o teclado do celular: `email` e `telefone` evitam digitação manual. */
+  formato?: 'texto' | 'email' | 'telefone';
+  invalido?: boolean;
 }
+
+const TECLADO = {
+  texto: { type: 'text', inputMode: undefined, autoComplete: undefined },
+  email: { type: 'email', inputMode: 'email' as const, autoComplete: 'email' },
+  telefone: { type: 'tel', inputMode: 'tel' as const, autoComplete: 'tel' },
+};
 
 export function CampoTexto({
   id,
@@ -44,12 +53,16 @@ export function CampoTexto({
   multilinha,
   autoFoco,
   senha,
+  formato = 'texto',
+  invalido,
 }: TextoProps) {
   // Sem id informado, um id gerado mantém o rótulo associado ao campo —
   // exigência de acessibilidade e do leitor de tela.
   const gerado = useId();
   const idCampo = id ?? gerado;
   const rotuloAcessivel = rotulo ?? placeholder;
+  const teclado = TECLADO[formato];
+  const borda = invalido ? `${entrada} border-abb-red` : entrada;
 
   return (
     <div>
@@ -62,7 +75,8 @@ export function CampoTexto({
         <textarea
           id={idCampo}
           aria-label={rotulo ? undefined : rotuloAcessivel}
-          className={`${entrada} min-h-24 py-2`}
+          aria-invalid={invalido || undefined}
+          className={`${borda} min-h-24 py-2`}
           value={valor}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
@@ -70,10 +84,13 @@ export function CampoTexto({
       ) : (
         <input
           id={idCampo}
-          type={senha ? 'password' : 'text'}
+          type={senha ? 'password' : teclado.type}
+          inputMode={senha ? undefined : teclado.inputMode}
+          autoComplete={senha ? undefined : teclado.autoComplete}
           aria-label={rotulo ? undefined : rotuloAcessivel}
+          aria-invalid={invalido || undefined}
           autoFocus={autoFoco}
-          className={entrada}
+          className={borda}
           value={valor}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
@@ -92,6 +109,7 @@ interface NumeroProps {
   ajuda?: string;
   obrigatorio?: boolean;
   minimo?: number;
+  invalido?: boolean;
 }
 
 export function CampoNumero({
@@ -103,6 +121,7 @@ export function CampoNumero({
   ajuda,
   obrigatorio,
   minimo,
+  invalido,
 }: NumeroProps) {
   const gerado = useId();
   const idCampo = id ?? gerado;
@@ -120,7 +139,8 @@ export function CampoNumero({
           type="number"
           inputMode="decimal"
           min={minimo}
-          className={entrada}
+          aria-invalid={invalido || undefined}
+          className={invalido ? `${entrada} border-abb-red` : entrada}
           value={valor === null || Number.isNaN(valor) ? '' : valor}
           onChange={(e) => {
             const bruto = e.target.value;

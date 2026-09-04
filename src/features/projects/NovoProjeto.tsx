@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { PAINEL_PADRAO } from '../../core/config';
 import { ProjetoRepository } from '../../core/db/repositorios';
 import { Botao } from '../../shared/componentes/Botao';
 import { CampoNumero, CampoTexto } from '../../shared/componentes/Campos';
@@ -10,6 +11,8 @@ const MAX_TAGS = 60;
 
 export function NovoProjeto() {
   const navegar = useNavigate();
+  const { tipoPainel = PAINEL_PADRAO } = useParams();
+  const listaProjetos = `/paineis/${tipoPainel}/projetos`;
   const [empresa, setEmpresa] = useState('');
   const [nomeProjeto, setNomeProjeto] = useState('');
   const [operador, setOperador] = useState('');
@@ -46,6 +49,7 @@ export function NovoProjeto() {
     setSalvando(true);
     try {
       const id = await ProjetoRepository.criar({
+        tipoPainel,
         empresa,
         nomeProjeto,
         operador,
@@ -62,7 +66,7 @@ export function NovoProjeto() {
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-2">
-        <Botao variante="texto" onClick={() => navegar('/')} aria-label="Voltar">
+        <Botao variante="texto" onClick={() => navegar(listaProjetos)} aria-label="Voltar">
           <IconeVoltar />
         </Botao>
         <h1 className="text-2xl font-bold">Novo projeto</h1>
@@ -135,7 +139,7 @@ export function NovoProjeto() {
         <Botao variante="primario" larguraTotal={false} onClick={salvar} disabled={salvando}>
           {salvando ? 'Gravando…' : 'Criar projeto'}
         </Botao>
-        <Botao onClick={() => navegar('/')}>Cancelar</Botao>
+        <Botao onClick={() => navegar(listaProjetos)}>Cancelar</Botao>
       </div>
     </div>
   );

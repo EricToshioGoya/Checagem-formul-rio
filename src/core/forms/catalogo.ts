@@ -1,4 +1,5 @@
 import { FormularioRepository } from '../db/repositorios';
+import { obterPainel } from '../paineis/catalogo';
 import { catalogoSchema, definicaoFormularioSchema, descreverErro } from './schema';
 import type { Catalogo, DefinicaoFormulario, EntradaCatalogo } from './tipos';
 
@@ -83,4 +84,18 @@ export function limparCacheFormulario(id?: string): void {
 export async function formulariosAtivos(): Promise<EntradaCatalogo[]> {
   const catalogo = await carregarCatalogo();
   return catalogo.formularios.filter((f) => f.ativo !== false);
+}
+
+/**
+ * Formulários de um tipo de painel, na ordem declarada no catálogo de painéis.
+ * É por aqui que o SEN Plus continua vendo só os seus dois checklists depois da
+ * entrada dos demais painéis.
+ */
+export async function formulariosDoPainel(
+  painelId: string,
+): Promise<EntradaCatalogo[]> {
+  const [catalogo, painel] = await Promise.all([carregarCatalogo(), obterPainel(painelId)]);
+  return painel.formularios
+    .map((id) => catalogo.formularios.find((f) => f.id === id))
+    .filter((f): f is EntradaCatalogo => !!f && f.ativo !== false);
 }

@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { PAINEL_PADRAO } from '../../core/config';
 import { ProjetoRepository, type ResumoProjeto } from '../../core/db/repositorios';
 import { progressoDoProjeto } from '../../core/forms/progressoProjeto';
 import { Botao } from '../../shared/componentes/Botao';
 import { BarraProgresso } from '../../shared/componentes/BarraProgresso';
 import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { Carregando, Erro, Vazio, Aviso } from '../../shared/componentes/Estado';
-import { IconeLixeira, IconeMais, IconeSeta } from '../../shared/componentes/Icones';
+import {
+  IconeLixeira,
+  IconeMais,
+  IconeSeta,
+  IconeVoltar,
+} from '../../shared/componentes/Icones';
 import { dataHoraBr } from '../../shared/utils/texto';
 
 function ehIphone(): boolean {
@@ -19,7 +25,12 @@ function ehIphone(): boolean {
 
 export function ListaProjetos() {
   const navegar = useNavigate();
-  const projetos = useLiveQuery(() => ProjetoRepository.listar(), [], undefined);
+  const { tipoPainel = PAINEL_PADRAO } = useParams();
+  const projetos = useLiveQuery(
+    () => ProjetoRepository.listar(tipoPainel),
+    [tipoPainel],
+    undefined,
+  );
   const [percentuais, setPercentuais] = useState<Record<number, number>>({});
   const [paraExcluir, setParaExcluir] = useState<ResumoProjeto | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -63,12 +74,20 @@ export function ListaProjetos() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Meus projetos</h1>
+        <div className="flex items-center gap-2">
+          <Botao variante="texto" onClick={() => navegar('/')} aria-label="Voltar aos painéis">
+            <IconeVoltar />
+          </Botao>
+          <h1 className="text-2xl font-bold">Meus projetos</h1>
+        </div>
         <div className="flex flex-wrap gap-2">
           <Botao onClick={() => entradaArquivo.current?.click()} disabled={importando}>
             {importando ? 'Importando…' : 'Importar projeto'}
           </Botao>
-          <Botao variante="primario" onClick={() => navegar('/projetos/novo')}>
+          <Botao
+            variante="primario"
+            onClick={() => navegar(`/paineis/${tipoPainel}/projetos/novo`)}
+          >
             <IconeMais className="h-5 w-5" />
             Novo projeto
           </Botao>
