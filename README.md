@@ -43,7 +43,7 @@ npm i -D playwright && npx playwright install chromium
 BASE_URL=http://localhost:8099 npm run fumaca
 ```
 
-Ele percorre criação de projeto, preenchimento com salvamento automático,
+Ele percorre login por e-mail, criação de projeto, preenchimento com salvamento automático,
 persistência após recarregar, modal de apoio, geração dos PDFs nas duas opções
 de foto, exportação do projeto, grade de ensaios e aba de administração.
 
@@ -102,7 +102,7 @@ assim que se atualiza a aplicação no pendrive sem recompilar.
 ```
 public/
   forms/                  definições JSON dos formulários — editáveis sem build
-    index.json            catálogo dos formulários disponíveis
+    index.json            catálogo dos painéis + administradores e liberados
     sen-plus-montagem.json
     rotina-bt.json
   media/                  conteúdo de apoio — editável sem build
@@ -110,11 +110,13 @@ public/
 src/
   app/                    rotas, layout, shell da PWA
   core/
+    auth/                 acesso por painel e sessão no aparelho
     db/                   Dexie: schema e repositórios
     forms/                motor: schema Zod, catálogo, progresso
     media/                compressão e normalização de imagem
     export/               ExportTarget, dossiê, PDF, backup .zip
   features/
+    auth/                 tela de login e sessão do usuário
     projects/             listagem, criação, TAGs
     fill/                 preenchimento e registro de tipos de campo
     pdf/                  diálogo de geração
@@ -191,6 +193,52 @@ automaticamente antes do build.
 
 ---
 
+## Login e controle de acesso por painel
+
+A aplicação abre em uma **tela de login por e-mail**. Nenhuma outra tela é
+montada antes de um e-mail liberado entrar — inclusive o preenchimento aberto
+por URL direta.
+
+Cada painel do catálogo (`public/forms/index.json`) declara quem o acessa:
+
+```json
+{
+  "id": "sen-plus-montagem",
+  "linhaProduto": "SEN Plus",
+  "administradores": ["ericg10456@gmail.com"],
+  "liberados": ["montador@empresa.com"]
+}
+```
+
+| Campo | Quem é | O que pode |
+|---|---|---|
+| `administradores` | administrador do painel | vê e preenche o painel, e edita o formulário dele na aba de administração |
+| `liberados` | quem o administrador liberou | vê e preenche o painel |
+
+Regras:
+
+- Sem `administradores` no catálogo, vale o e-mail de `ADMIN_PADRAO`
+  (`src/core/config.ts`), sobrescritível no build com `VITE_ADMIN_PADRAO`.
+- O e-mail que não consta em nenhum painel não entra.
+- A comparação ignora caixa e espaços em volta.
+- A TAG só exibe os painéis liberados para o e-mail em sessão; os demais também
+  ficam barrados por URL direta.
+- A aba de administração só lista os painéis que o e-mail **administra**.
+- A liberação é declarativa no catálogo: como não há servidor, incluir um e-mail
+  exige publicar o `index.json` (sem build, na modalidade A).
+
+A sessão fica no `localStorage` do aparelho e é revalidada contra o catálogo a
+cada abertura — tirar um e-mail do `index.json` derruba o acesso na próxima vez.
+
+> **Não é autenticação.** Sem servidor, a conferência é local e vale como
+> controle de acesso operacional, não como barreira de segurança: quem tem o
+> aparelho pode digitar qualquer e-mail liberado. Trocar por login real
+> (backend/OAuth) exige apenas substituir `src/core/auth`.
+
+Para teste, o administrador de **todos** os painéis é `ericg10456@gmail.com`.
+
+---
+
 ## Aba de administração
 
 Acesso em **Administração**, no cabeçalho. Permite, sem programação: editar
@@ -210,9 +258,14 @@ trocada no build com a variável `VITE_SENHA_ADMIN`:
 VITE_SENHA_ADMIN='senha-do-cliente' npm run build
 ```
 
+A senha continua valendo como segunda barreira, **somada** ao controle de
+acesso por painel: o e-mail em sessão precisa administrar pelo menos um painel
+para ver algo nesta aba.
+
 > **Pendência da especificação (seção 15):** a senha inicial é `abb-admin` e
-> **precisa ser trocada antes de publicar** para os parceiros. Não há
-> autenticação nem controle de usuários: a senha só evita edição acidental.
+> **precisa ser trocada antes de publicar** para os parceiros. Ela só evita
+> edição acidental — quem controla o acesso é a lista de administradores do
+> painel.
 
 ---
 

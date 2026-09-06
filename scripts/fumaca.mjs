@@ -1,7 +1,7 @@
 /**
  * Teste de fumaça do fluxo completo, no navegador real.
  *
- * Percorre criação de projeto, preenchimento com salvamento automático,
+ * Percorre login por e-mail, criação de projeto, preenchimento com salvamento automático,
  * persistência após recarregar, modal de apoio, geração dos PDFs nas duas
  * opções de foto, exportação do projeto, grade de ensaios e aba de
  * administração.
@@ -19,6 +19,8 @@ import { mkdirSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:8099';
+/** Precisa constar como administrador (ou liberado) em public/forms/index.json. */
+const EMAIL = process.env.EMAIL_TESTE ?? 'ericg10456@gmail.com';
 const SAIDA = process.env.SAIDA ?? join(process.cwd(), 'saida-fumaca');
 mkdirSync(SAIDA, { recursive: true });
 
@@ -42,8 +44,10 @@ const passo = async (nome, fn) => {
   console.log('ok');
 };
 
-await passo('abrir a aplicação', async () => {
+await passo('abrir a aplicação e entrar com o e-mail liberado', async () => {
   await pagina.goto(BASE, { waitUntil: 'networkidle' });
+  await pagina.getByLabel('E-mail').fill(EMAIL);
+  await pagina.getByRole('button', { name: 'Entrar' }).click();
   await pagina.getByRole('heading', { name: 'Meus projetos' }).waitFor();
 });
 

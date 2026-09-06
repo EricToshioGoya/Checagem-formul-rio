@@ -1,8 +1,13 @@
-import { Link, Outlet, useLocation } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { ehAdministrador } from '../core/auth/acesso';
+import { useSessao } from '../features/auth/SessaoContexto';
 
 export function Layout() {
   const { pathname } = useLocation();
+  const navegar = useNavigate();
+  const { email, acessos, sair } = useSessao();
   const naAdmin = pathname.startsWith('/admin');
+  const administra = ehAdministrador(acessos);
 
   return (
     <div className="min-h-dvh">
@@ -15,14 +20,39 @@ export function Layout() {
             </span>
             <span className="text-base font-semibold sm:hidden">Verificação</span>
           </Link>
-          <Link
-            to={naAdmin ? '/' : '/admin'}
-            className="flex min-h-12 items-center rounded-md px-3 text-base font-semibold hover:bg-white/15"
-          >
-            {naAdmin ? 'Sair da administração' : 'Administração'}
-          </Link>
+          <div className="flex items-center gap-1">
+            {administra ? (
+              <Link
+                to={naAdmin ? '/' : '/admin'}
+                className="flex min-h-12 items-center rounded-md px-3 text-base font-semibold hover:bg-white/15"
+              >
+                {naAdmin ? 'Sair da administração' : 'Administração'}
+              </Link>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                sair();
+                navegar('/');
+              }}
+              className="flex min-h-12 items-center rounded-md px-3 text-base font-semibold hover:bg-white/15"
+            >
+              Sair
+            </button>
+          </div>
         </div>
       </header>
+      {email ? (
+        <div className="border-b border-abb-line bg-white">
+          <p className="mx-auto max-w-5xl truncate px-4 py-1.5 text-sm text-abb-gray">
+            Conectado como <span className="font-semibold text-abb-black">{email}</span>
+            {' • '}
+            {acessos.length === 1
+              ? '1 painel liberado'
+              : `${acessos.length} painéis liberados`}
+          </p>
+        </div>
+      ) : null}
       <main className="mx-auto max-w-5xl px-4 py-5 pb-16">
         <Outlet />
       </main>

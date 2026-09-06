@@ -7,6 +7,36 @@ import { NovoProjeto } from '../features/projects/NovoProjeto';
 import { DetalheProjeto } from '../features/projects/DetalheProjeto';
 import { Preenchimento } from '../features/fill/Preenchimento';
 import { Admin } from '../features/admin/Admin';
+import { Login } from '../features/auth/Login';
+import { SessaoProvider, useSessao } from '../features/auth/SessaoContexto';
+import { Carregando } from '../shared/componentes/Estado';
+
+/**
+ * Enquanto não há e-mail em sessão, nenhuma rota é montada — a tela de login
+ * substitui a aplicação inteira, inclusive o preenchimento aberto por URL.
+ */
+function Portao() {
+  const { email, carregando } = useSessao();
+
+  if (carregando) return <Carregando mensagem="Verificando o acesso…" />;
+  if (!email) return <Login />;
+
+  return (
+    <Routes>
+      <Route element={<Layout />}>
+        <Route path="/" element={<ListaProjetos />} />
+        <Route path="/projetos/novo" element={<NovoProjeto />} />
+        <Route path="/projetos/:projetoId" element={<DetalheProjeto />} />
+        <Route path="/admin" element={<Admin />} />
+      </Route>
+      <Route
+        path="/projetos/:projetoId/tags/:tagId/formularios/:formId"
+        element={<Preenchimento />}
+      />
+      <Route path="*" element={<ListaProjetos />} />
+    </Routes>
+  );
+}
 
 /**
  * HashRouter: a saída é estática e roda tanto em servidor HTTPS (modalidade A)
@@ -15,22 +45,12 @@ import { Admin } from '../features/admin/Admin';
  */
 export function App() {
   return (
-    <HashRouter>
-      <RolarAoTopo />
-      <AtualizacaoPwa />
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<ListaProjetos />} />
-          <Route path="/projetos/novo" element={<NovoProjeto />} />
-          <Route path="/projetos/:projetoId" element={<DetalheProjeto />} />
-          <Route path="/admin" element={<Admin />} />
-        </Route>
-        <Route
-          path="/projetos/:projetoId/tags/:tagId/formularios/:formId"
-          element={<Preenchimento />}
-        />
-        <Route path="*" element={<ListaProjetos />} />
-      </Routes>
-    </HashRouter>
+    <SessaoProvider>
+      <HashRouter>
+        <RolarAoTopo />
+        <AtualizacaoPwa />
+        <Portao />
+      </HashRouter>
+    </SessaoProvider>
   );
 }

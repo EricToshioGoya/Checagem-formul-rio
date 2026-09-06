@@ -6,7 +6,9 @@
       "nome": "Verificação de Montagem — SEN Plus",
       "tipo": "montagem",
       "linhaProduto": "SEN Plus",
-      "ativo": true
+      "ativo": true,
+      "administradores": ["ericg10456@gmail.com"],
+      "liberados": []
     },
     {
       "id": "rotina-bt",
@@ -14,7 +16,9 @@
       "nome": "Verificação de Rotina — Baixa Tensão",
       "tipo": "rotina",
       "linhaProduto": "Baixa tensão",
-      "ativo": true
+      "ativo": true,
+      "administradores": ["ericg10456@gmail.com"],
+      "liberados": []
     }
   ]
 }

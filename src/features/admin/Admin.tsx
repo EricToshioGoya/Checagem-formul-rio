@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react';
 import { SENHA_ADMIN } from '../../core/config';
 import { formulariosAtivos } from '../../core/forms/catalogo';
+import { administraPainel } from '../../core/auth/acesso';
+import { useSessao } from '../auth/SessaoContexto';
 import type { EntradaCatalogo } from '../../core/forms/tipos';
 import { EditorFormulario } from './EditorFormulario';
 import { Botao } from '../../shared/componentes/Botao';
 import { CampoTexto } from '../../shared/componentes/Campos';
-import { Erro, Carregando } from '../../shared/componentes/Estado';
+import { Erro, Carregando, Vazio } from '../../shared/componentes/Estado';
 
 const CHAVE_SESSAO = 'admin-liberado';
 
 export function Admin() {
+  const { email, acessos } = useSessao();
   const [liberado, setLiberado] = useState(
     () => sessionStorage.getItem(CHAVE_SESSAO) === '1',
   );
@@ -21,11 +24,11 @@ export function Admin() {
   useEffect(() => {
     if (!liberado) return;
     formulariosAtivos()
-      .then(setEntradas)
+      .then((todas) => setEntradas(todas.filter((e) => administraPainel(acessos, e.id))))
       .catch((e: unknown) =>
         setErro(e instanceof Error ? e.message : 'Falha ao ler o catálogo.'),
       );
-  }, [liberado]);
+  }, [liberado, acessos]);
 
   if (!liberado) {
     return (
@@ -78,9 +81,15 @@ export function Admin() {
         </Botao>
       </div>
       <p className="text-base text-abb-gray">
-        Escolha um formulário para editar textos, ativar ou desativar etapas,
-        reordenar e trocar o conteúdo de apoio.
+        Painéis que <span className="font-semibold text-abb-black">{email}</span>{' '}
+        administra. Escolha um formulário para editar textos, ativar ou desativar
+        etapas, reordenar e trocar o conteúdo de apoio.
       </p>
+      {entradas.length === 0 ? (
+        <Vazio titulo="Nenhum painel sob sua administração">
+          Só o administrador de um painel edita o formulário dele.
+        </Vazio>
+      ) : null}
       <ul className="space-y-3">
         {entradas.map((e) => (
           <li key={e.id}>

@@ -96,6 +96,13 @@ export const entradaCatalogoSchema = z.object({
   linhaProduto: z.string().min(1),
   /** Um formulário desativado no catálogo não aparece nas telas de TAG. */
   ativo: z.boolean().optional().default(true),
+  /**
+   * Controle de acesso do painel. Quando a lista está ausente, vale o
+   * administrador padrão de `core/config`. Editável em `index.json`, sem build.
+   */
+  administradores: z.array(z.string().min(3)).optional(),
+  /** E-mails que o administrador do painel liberou para preencher. */
+  liberados: z.array(z.string().min(3)).optional(),
 });
 
 export const catalogoSchema = z.object({

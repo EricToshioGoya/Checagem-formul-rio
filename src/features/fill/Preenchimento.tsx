@@ -7,6 +7,8 @@ import {
   ProjetoRepository,
 } from '../../core/db/repositorios';
 import { carregarFormulario } from '../../core/forms/catalogo';
+import { temAcessoAoPainel } from '../../core/auth/acesso';
+import { useSessao } from '../auth/SessaoContexto';
 import { calcularProgresso, etapaRespondida } from '../../core/forms/progresso';
 import type {
   DefinicaoFormulario,
@@ -41,6 +43,7 @@ export function Preenchimento() {
   const { projetoId, tagId, formId } = useParams();
   const navegar = useNavigate();
   const desktop = useDesktop();
+  const { acessos } = useSessao();
 
   const [contexto, setContexto] = useState<Contexto | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -89,6 +92,12 @@ export function Preenchimento() {
           ProjetoRepository.obterTag(idTag),
         ]);
         if (!projeto || !tag) throw new Error('Projeto ou TAG não encontrados.');
+        // Barra o acesso por URL a um painel que o administrador não liberou.
+        if (!temAcessoAoPainel(acessos, String(formId))) {
+          throw new Error(
+            'Este painel não está liberado para o seu e-mail. Peça a liberação ao administrador do painel.',
+          );
+        }
         const definicao = await carregarFormulario(String(formId));
         const preenchimento = await PreenchimentoRepository.obterOuCriar(
           idTag,
@@ -110,7 +119,7 @@ export function Preenchimento() {
     return () => {
       ativo = false;
     };
-  }, [projetoId, tagId, formId]);
+  }, [projetoId, tagId, formId, acessos]);
 
   const etapas = useMemo(
     () =>
