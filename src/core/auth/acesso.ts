@@ -51,10 +51,45 @@ export function ehAdministrador(acessos: AcessoAoPainel[]): boolean {
   return acessos.some((a) => a.papel === 'administrador');
 }
 
-export function temAcessoAoPainel(acessos: AcessoAoPainel[], formId: string): boolean {
+export function administraPainel(acessos: AcessoAoPainel[], formId: string): boolean {
+  return acessos.some((a) => a.entrada.id === formId && a.papel === 'administrador');
+}
+
+/** O formulário está liberado para o e-mail em sessão? */
+export function temAcessoAoFormulario(
+  acessos: AcessoAoPainel[],
+  formId: string,
+): boolean {
   return acessos.some((a) => a.entrada.id === formId);
 }
 
-export function administraPainel(acessos: AcessoAoPainel[], formId: string): boolean {
-  return acessos.some((a) => a.entrada.id === formId && a.papel === 'administrador');
+/** Painel oferecido na escolha: uma linha de produto e os formulários dela. */
+export interface PainelAcessivel {
+  linhaProduto: string;
+  entradas: EntradaCatalogo[];
+  administrador: boolean;
+}
+
+/**
+ * Agrupa os acessos por linha de produto — é assim que o montador enxerga o
+ * painel na tela de escolha, e não formulário por formulário.
+ */
+export function paineisAcessiveis(acessos: AcessoAoPainel[]): PainelAcessivel[] {
+  const porLinha = new Map<string, PainelAcessivel>();
+  for (const { entrada, papel } of acessos) {
+    const atual = porLinha.get(entrada.linhaProduto);
+    if (atual) {
+      atual.entradas.push(entrada);
+      atual.administrador ||= papel === 'administrador';
+    } else {
+      porLinha.set(entrada.linhaProduto, {
+        linhaProduto: entrada.linhaProduto,
+        entradas: [entrada],
+        administrador: papel === 'administrador',
+      });
+    }
+  }
+  return [...porLinha.values()].sort((a, b) =>
+    a.linhaProduto.localeCompare(b.linhaProduto, 'pt-BR'),
+  );
 }

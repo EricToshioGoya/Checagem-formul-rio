@@ -1,7 +1,7 @@
 /**
  * Teste de fumaça do fluxo completo, no navegador real.
  *
- * Percorre login por e-mail, criação de projeto, preenchimento com salvamento automático,
+ * Percorre login por e-mail, escolha do painel, criação de projeto, preenchimento com salvamento automático,
  * persistência após recarregar, modal de apoio, geração dos PDFs nas duas
  * opções de foto, exportação do projeto, grade de ensaios e aba de
  * administração.
@@ -21,6 +21,10 @@ import { join } from 'node:path';
 const BASE = process.env.BASE_URL ?? 'http://localhost:8099';
 /** Precisa constar como administrador (ou liberado) em public/forms/index.json. */
 const EMAIL = process.env.EMAIL_TESTE ?? 'ericg10456@gmail.com';
+/** Painel escolhido logo após o login — precisa constar no catálogo. */
+const PAINEL = process.env.PAINEL_TESTE ?? 'SEN Plus';
+/** Segundo painel, usado para conferir a troca de painel e a rotina BT. */
+const PAINEL_ROTINA = process.env.PAINEL_ROTINA ?? 'Baixa tensão';
 const SAIDA = process.env.SAIDA ?? join(process.cwd(), 'saida-fumaca');
 mkdirSync(SAIDA, { recursive: true });
 
@@ -44,10 +48,12 @@ const passo = async (nome, fn) => {
   console.log('ok');
 };
 
-await passo('abrir a aplicação e entrar com o e-mail liberado', async () => {
+await passo('entrar com o e-mail liberado e escolher o painel', async () => {
   await pagina.goto(BASE, { waitUntil: 'networkidle' });
   await pagina.getByLabel('E-mail').fill(EMAIL);
   await pagina.getByRole('button', { name: 'Entrar' }).click();
+  await pagina.getByRole('heading', { name: 'Escolha o painel' }).waitFor();
+  await pagina.getByRole('button', { name: new RegExp(PAINEL) }).click();
   await pagina.getByRole('heading', { name: 'Meus projetos' }).waitFor();
 });
 
@@ -62,6 +68,9 @@ await passo('criar projeto com 2 TAGs', async () => {
   await pagina.locator('#tag-1').fill('CCM-02');
   await pagina.getByRole('button', { name: 'Criar projeto' }).click();
   await pagina.getByRole('heading', { name: 'Linha 3' }).waitFor();
+  if (await pagina.getByText('Baixa tensão').count()) {
+    throw new Error('formulário de outro painel apareceu no projeto');
+  }
 });
 
 await passo('abrir a Montagem da primeira TAG', async () => {
@@ -150,7 +159,33 @@ await passo('exportar projeto (.zip)', async () => {
   console.log(`   ↳ ${download.suggestedFilename()} (${statSync(destino).size} bytes)`);
 });
 
-await passo('abrir a rotina BT e a grade de ensaios', async () => {
+await passo('administração: senha e edição no painel ativo', async () => {
+  await pagina.goto(`${BASE}/#/admin`, { waitUntil: 'networkidle' });
+  await pagina.getByLabel('Senha').fill('abb-admin');
+  await pagina.getByRole('button', { name: 'Entrar' }).click();
+  await pagina.getByRole('button', { name: /Verificação de Montagem/ }).click();
+  await pagina.getByRole('button', { name: /S1 —/ }).click();
+  const descricao = pagina.locator('textarea').first();
+  await descricao.fill('Descrição alterada pelo administrador.');
+  await pagina.getByText('Alterações gravadas').waitFor({ timeout: 15000 });
+});
+
+await passo('trocar de painel e abrir a rotina BT', async () => {
+  await pagina.goto(BASE, { waitUntil: 'networkidle' });
+  await pagina.getByRole('button', { name: 'Trocar painel' }).click();
+  await pagina.getByRole('heading', { name: 'Escolha o painel' }).waitFor();
+  await pagina.getByRole('button', { name: new RegExp(PAINEL_ROTINA) }).click();
+  await pagina.getByRole('heading', { name: 'Meus projetos' }).waitFor();
+
+  await pagina.getByRole('button', { name: 'Novo projeto' }).click();
+  await pagina.locator('#empresa').fill('SENPLUS IND');
+  await pagina.locator('#nomeProjeto').fill('Ensaios BT');
+  await pagina.locator('#operador').fill('Carlos Silva');
+  await pagina.locator('#quantidade').fill('1');
+  await pagina.locator('#tag-0').fill('QGBT-01');
+  await pagina.getByRole('button', { name: 'Criar projeto' }).click();
+  await pagina.getByRole('heading', { name: 'Ensaios BT' }).waitFor();
+
   await pagina.getByRole('button', { name: /Rotina/ }).first().click();
   await pagina.getByText('Dados do painel').first().waitFor();
   await pagina.locator('nav button').filter({ hasText: 'R5.1' }).click();
@@ -161,17 +196,6 @@ await passo('abrir a rotina BT e a grade de ensaios', async () => {
   await pagina.locator('nav button').filter({ hasText: 'R5.1' }).click();
   const valor = await pagina.getByLabel('L1 – L2 — Megger antes').inputValue();
   if (valor !== '150') throw new Error(`grade não persistiu: "${valor}"`);
-});
-
-await passo('administração: senha e edição', async () => {
-  await pagina.goto(`${BASE}/#/admin`, { waitUntil: 'networkidle' });
-  await pagina.getByLabel('Senha').fill('abb-admin');
-  await pagina.getByRole('button', { name: 'Entrar' }).click();
-  await pagina.getByRole('button', { name: /Verificação de Montagem/ }).click();
-  await pagina.getByRole('button', { name: /S1 —/ }).click();
-  const descricao = pagina.locator('textarea').first();
-  await descricao.fill('Descrição alterada pelo administrador.');
-  await pagina.getByText('Alterações gravadas').waitFor({ timeout: 15000 });
 });
 
 await pagina.screenshot({ path: join(SAIDA, 'tela-final.png'), fullPage: false });

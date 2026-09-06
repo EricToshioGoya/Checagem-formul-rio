@@ -8,18 +8,21 @@ import { DetalheProjeto } from '../features/projects/DetalheProjeto';
 import { Preenchimento } from '../features/fill/Preenchimento';
 import { Admin } from '../features/admin/Admin';
 import { Login } from '../features/auth/Login';
+import { EscolhaPainel } from '../features/panels/EscolhaPainel';
 import { SessaoProvider, useSessao } from '../features/auth/SessaoContexto';
 import { Carregando } from '../shared/componentes/Estado';
 
 /**
- * Enquanto não há e-mail em sessão, nenhuma rota é montada — a tela de login
- * substitui a aplicação inteira, inclusive o preenchimento aberto por URL.
+ * Acesso em dois passos antes da aplicação: e-mail liberado e, depois, o
+ * painel escolhido. Nenhuma rota é montada antes dos dois — inclusive o
+ * preenchimento aberto por URL.
  */
 function Portao() {
-  const { email, carregando } = useSessao();
+  const { email, painel, carregando } = useSessao();
 
   if (carregando) return <Carregando mensagem="Verificando o acesso…" />;
   if (!email) return <Login />;
+  if (!painel) return <EscolhaPainel />;
 
   return (
     <Routes>

@@ -1,13 +1,13 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { ehAdministrador } from '../core/auth/acesso';
 import { useSessao } from '../features/auth/SessaoContexto';
 
 export function Layout() {
   const { pathname } = useLocation();
   const navegar = useNavigate();
-  const { email, acessos, sair } = useSessao();
+  const { email, painel, paineis, trocarPainel, sair } = useSessao();
   const naAdmin = pathname.startsWith('/admin');
-  const administra = ehAdministrador(acessos);
+  // A administração vale para o painel ativo, não para todos os liberados.
+  const administra = paineis.some((p) => p.linhaProduto === painel && p.administrador);
 
   return (
     <div className="min-h-dvh">
@@ -44,13 +44,23 @@ export function Layout() {
       </header>
       {email ? (
         <div className="border-b border-abb-line bg-white">
-          <p className="mx-auto max-w-5xl truncate px-4 py-1.5 text-sm text-abb-gray">
-            Conectado como <span className="font-semibold text-abb-black">{email}</span>
-            {' • '}
-            {acessos.length === 1
-              ? '1 painel liberado'
-              : `${acessos.length} painéis liberados`}
-          </p>
+          <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-1.5">
+            <p className="min-w-0 truncate text-sm text-abb-gray">
+              Painel <span className="font-semibold text-abb-black">{painel}</span>
+              {' • '}
+              <span className="font-semibold text-abb-black">{email}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                trocarPainel();
+                navegar('/');
+              }}
+              className="text-sm font-semibold text-abb-red underline underline-offset-2"
+            >
+              Trocar painel
+            </button>
+          </div>
         </div>
       ) : null}
       <main className="mx-auto max-w-5xl px-4 py-5 pb-16">

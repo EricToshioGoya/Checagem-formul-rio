@@ -7,7 +7,7 @@ import {
   ProjetoRepository,
 } from '../../core/db/repositorios';
 import { carregarFormulario } from '../../core/forms/catalogo';
-import { temAcessoAoPainel } from '../../core/auth/acesso';
+import { temAcessoAoFormulario } from '../../core/auth/acesso';
 import { useSessao } from '../auth/SessaoContexto';
 import { calcularProgresso, etapaRespondida } from '../../core/forms/progresso';
 import type {
@@ -92,10 +92,17 @@ export function Preenchimento() {
           ProjetoRepository.obterTag(idTag),
         ]);
         if (!projeto || !tag) throw new Error('Projeto ou TAG não encontrados.');
-        // Barra o acesso por URL a um painel que o administrador não liberou.
-        if (!temAcessoAoPainel(acessos, String(formId))) {
+        // Barra, no acesso por URL, o formulário sem liberação do
+        // administrador ou que não pertence ao painel do projeto.
+        if (!temAcessoAoFormulario(acessos, String(formId))) {
           throw new Error(
-            'Este painel não está liberado para o seu e-mail. Peça a liberação ao administrador do painel.',
+            'Este formulário não está liberado para o seu e-mail. Peça a liberação ao administrador do painel.',
+          );
+        }
+        const entrada = acessos.find((a) => a.entrada.id === formId)?.entrada;
+        if (projeto.painel && entrada && entrada.linhaProduto !== projeto.painel) {
+          throw new Error(
+            `Este formulário é do painel ${entrada.linhaProduto}, e o projeto é do painel ${projeto.painel}.`,
           );
         }
         const definicao = await carregarFormulario(String(formId));

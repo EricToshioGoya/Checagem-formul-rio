@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ProjetoRepository, type ResumoProjeto } from '../../core/db/repositorios';
+import { useSessao } from '../auth/SessaoContexto';
 import { progressoDoProjeto } from '../../core/forms/progressoProjeto';
 import { Botao } from '../../shared/componentes/Botao';
 import { BarraProgresso } from '../../shared/componentes/BarraProgresso';
@@ -19,7 +20,12 @@ function ehIphone(): boolean {
 
 export function ListaProjetos() {
   const navegar = useNavigate();
-  const projetos = useLiveQuery(() => ProjetoRepository.listar(), [], undefined);
+  const { painel } = useSessao();
+  const projetos = useLiveQuery(
+    () => ProjetoRepository.listar(painel ?? undefined),
+    [painel],
+    undefined,
+  );
   const [percentuais, setPercentuais] = useState<Record<number, number>>({});
   const [paraExcluir, setParaExcluir] = useState<ResumoProjeto | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -63,7 +69,10 @@ export function ListaProjetos() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Meus projetos</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Meus projetos</h1>
+          <p className="text-base text-abb-gray">Painel {painel}</p>
+        </div>
         <div className="flex flex-wrap gap-2">
           <Botao onClick={() => entradaArquivo.current?.click()} disabled={importando}>
             {importando ? 'Importando…' : 'Importar projeto'}
@@ -98,7 +107,7 @@ export function ListaProjetos() {
       ) : null}
 
       {projetos.length === 0 ? (
-        <Vazio titulo="Nenhum projeto gravado neste aparelho">
+        <Vazio titulo={`Nenhum projeto do painel ${painel} neste aparelho`}>
           Toque em <strong>Novo projeto</strong> para começar a registrar as
           verificações de montagem.
         </Vazio>

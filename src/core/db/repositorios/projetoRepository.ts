@@ -6,6 +6,8 @@ export interface NovoProjetoEntrada {
   nomeProjeto: string;
   operador: string;
   numeroPedido?: string;
+  /** Painel (linha de produto) escolhido logo após o login. */
+  painel?: string;
   tags: string[];
 }
 
@@ -25,8 +27,15 @@ async function excluirPreenchimentosDeTags(tagIds: number[]): Promise<void> {
 }
 
 export const ProjetoRepository = {
-  async listar(): Promise<ResumoProjeto[]> {
-    const projetos = await db.projetos.orderBy('atualizadoEm').reverse().toArray();
+  /**
+   * Sem painel informado, lista tudo. Com painel, lista os projetos daquele
+   * painel mais os gravados antes da escolha de painel existir (sem o campo).
+   */
+  async listar(painel?: string): Promise<ResumoProjeto[]> {
+    const todos = await db.projetos.orderBy('atualizadoEm').reverse().toArray();
+    const projetos = painel
+      ? todos.filter((p) => !p.painel || p.painel === painel)
+      : todos;
     return Promise.all(
       projetos.map(async (p) => ({
         ...(p as Projeto & { id: number }),
@@ -47,6 +56,7 @@ export const ProjetoRepository = {
         nomeProjeto: entrada.nomeProjeto.trim(),
         operador: entrada.operador.trim(),
         numeroPedido: entrada.numeroPedido?.trim() || undefined,
+        painel: entrada.painel?.trim() || undefined,
         criadoEm: agora,
         atualizadoEm: agora,
       });

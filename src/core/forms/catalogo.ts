@@ -84,3 +84,14 @@ export async function formulariosAtivos(): Promise<EntradaCatalogo[]> {
   const catalogo = await carregarCatalogo();
   return catalogo.formularios.filter((f) => f.ativo !== false);
 }
+
+/**
+ * Formulários ativos de um painel (linha de produto). Sem painel informado —
+ * projeto gravado antes da escolha de painel existir — devolve todos.
+ */
+export async function formulariosDoPainel(
+  painel?: string,
+): Promise<EntradaCatalogo[]> {
+  const ativos = await formulariosAtivos();
+  return painel ? ativos.filter((e) => e.linhaProduto === painel) : ativos;
+}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ProjetoRepository } from '../../core/db/repositorios';
-import { temAcessoAoPainel } from '../../core/auth/acesso';
+import { temAcessoAoFormulario } from '../../core/auth/acesso';
 import { useSessao } from '../auth/SessaoContexto';
 import {
   progressoDoProjeto,
@@ -119,7 +119,7 @@ export function DetalheProjeto() {
         <ul className="space-y-4">
           {dados.tags.map((tag) => {
             const liberados = tag.formularios.filter((f) =>
-              temAcessoAoPainel(acessos, f.formId),
+              temAcessoAoFormulario(acessos, f.formId),
             );
             return (
               <li key={tag.tagId} className="rounded-lg border border-abb-line bg-white p-4">
@@ -146,7 +146,7 @@ export function DetalheProjeto() {
 
                 {liberados.length === 0 ? (
                   <p className="mt-3 text-base text-abb-gray">
-                    Nenhum painel liberado para o seu e-mail nesta TAG.
+                    Nenhum formulário liberado para o seu e-mail nesta TAG.
                   </p>
                 ) : null}
 

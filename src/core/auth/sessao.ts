@@ -6,6 +6,7 @@
  * não precise digitar de novo a cada abertura — inclusive offline.
  */
 const CHAVE = 'sessao-usuario';
+const CHAVE_PAINEL = 'painel-ativo';
 
 export interface Sessao {
   email: string;
@@ -39,5 +40,30 @@ export function limparSessao(): void {
     localStorage.removeItem(CHAVE);
   } catch {
     // Nada a fazer — a sessão em memória já foi descartada pelo chamador.
+  }
+}
+
+/** Painel (linha de produto) escolhido depois do login. */
+export function lerPainel(): string | null {
+  try {
+    return localStorage.getItem(CHAVE_PAINEL) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function gravarPainel(painel: string): void {
+  try {
+    localStorage.setItem(CHAVE_PAINEL, painel);
+  } catch {
+    // Armazenamento bloqueado: a escolha vale só nesta aba.
+  }
+}
+
+export function limparPainel(): void {
+  try {
+    localStorage.removeItem(CHAVE_PAINEL);
+  } catch {
+    // Nada a fazer — o chamador já descartou a escolha em memória.
   }
 }

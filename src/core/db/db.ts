@@ -28,6 +28,11 @@ class BancoVerificacao extends Dexie {
       midias: '++id, preenchimentoId, etapaId, [preenchimentoId+etapaId]',
       formulariosCustom: 'id, atualizadoEm',
     });
+    // v2: o projeto passa a guardar o painel escolhido no login.
+    this.version(2).stores({
+      projetos:
+        '++id, empresa, nomeProjeto, operador, painel, criadoEm, atualizadoEm',
+    });
   }
 }
 

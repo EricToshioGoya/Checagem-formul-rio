@@ -12,7 +12,7 @@ import { Erro, Carregando, Vazio } from '../../shared/componentes/Estado';
 const CHAVE_SESSAO = 'admin-liberado';
 
 export function Admin() {
-  const { email, acessos } = useSessao();
+  const { email, acessos, painel } = useSessao();
   const [liberado, setLiberado] = useState(
     () => sessionStorage.getItem(CHAVE_SESSAO) === '1',
   );
@@ -24,11 +24,17 @@ export function Admin() {
   useEffect(() => {
     if (!liberado) return;
     formulariosAtivos()
-      .then((todas) => setEntradas(todas.filter((e) => administraPainel(acessos, e.id))))
+      .then((todas) =>
+        setEntradas(
+          todas.filter(
+            (e) => e.linhaProduto === painel && administraPainel(acessos, e.id),
+          ),
+        ),
+      )
       .catch((e: unknown) =>
         setErro(e instanceof Error ? e.message : 'Falha ao ler o catálogo.'),
       );
-  }, [liberado, acessos]);
+  }, [liberado, acessos, painel]);
 
   if (!liberado) {
     return (
@@ -81,13 +87,14 @@ export function Admin() {
         </Botao>
       </div>
       <p className="text-base text-abb-gray">
-        Painéis que <span className="font-semibold text-abb-black">{email}</span>{' '}
-        administra. Escolha um formulário para editar textos, ativar ou desativar
-        etapas, reordenar e trocar o conteúdo de apoio.
+        Formulários do painel <span className="font-semibold text-abb-black">{painel}</span>{' '}
+        que <span className="font-semibold text-abb-black">{email}</span> administra.
+        Escolha um para editar textos, ativar ou desativar etapas, reordenar e
+        trocar o conteúdo de apoio.
       </p>
       {entradas.length === 0 ? (
-        <Vazio titulo="Nenhum painel sob sua administração">
-          Só o administrador de um painel edita o formulário dele.
+        <Vazio titulo={`Nenhum formulário do painel ${painel} sob sua administração`}>
+          Só o administrador de um painel edita os formulários dele.
         </Vazio>
       ) : null}
       <ul className="space-y-3">

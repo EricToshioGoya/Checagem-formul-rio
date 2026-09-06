@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ProjetoRepository } from '../../core/db/repositorios';
+import { useSessao } from '../auth/SessaoContexto';
 import { Botao } from '../../shared/componentes/Botao';
 import { CampoNumero, CampoTexto } from '../../shared/componentes/Campos';
 import { Erro } from '../../shared/componentes/Estado';
@@ -10,6 +11,7 @@ const MAX_TAGS = 60;
 
 export function NovoProjeto() {
   const navegar = useNavigate();
+  const { painel } = useSessao();
   const [empresa, setEmpresa] = useState('');
   const [nomeProjeto, setNomeProjeto] = useState('');
   const [operador, setOperador] = useState('');
@@ -50,6 +52,7 @@ export function NovoProjeto() {
         nomeProjeto,
         operador,
         numeroPedido,
+        painel: painel ?? undefined,
         tags: nomesTags,
       });
       navegar(`/projetos/${id}`, { replace: true });
@@ -65,7 +68,10 @@ export function NovoProjeto() {
         <Botao variante="texto" onClick={() => navegar('/')} aria-label="Voltar">
           <IconeVoltar />
         </Botao>
-        <h1 className="text-2xl font-bold">Novo projeto</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Novo projeto</h1>
+          <p className="text-base text-abb-gray">Painel {painel}</p>
+        </div>
       </div>
 
       <div className="space-y-4 rounded-lg border border-abb-line bg-white p-4">

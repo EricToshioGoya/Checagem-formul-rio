@@ -43,7 +43,7 @@ npm i -D playwright && npx playwright install chromium
 BASE_URL=http://localhost:8099 npm run fumaca
 ```
 
-Ele percorre login por e-mail, criação de projeto, preenchimento com salvamento automático,
+Ele percorre login por e-mail, escolha e troca de painel, criação de projeto, preenchimento com salvamento automático,
 persistência após recarregar, modal de apoio, geração dos PDFs nas duas opções
 de foto, exportação do projeto, grade de ensaios e aba de administração.
 
@@ -117,6 +117,7 @@ src/
     export/               ExportTarget, dossiê, PDF, backup .zip
   features/
     auth/                 tela de login e sessão do usuário
+    panels/               escolha do painel depois do login
     projects/             listagem, criação, TAGs
     fill/                 preenchimento e registro de tipos de campo
     pdf/                  diálogo de geração
@@ -193,13 +194,32 @@ automaticamente antes do build.
 
 ---
 
-## Login e controle de acesso por painel
+## Acesso: login, painel e projetos
 
-A aplicação abre em uma **tela de login por e-mail**. Nenhuma outra tela é
-montada antes de um e-mail liberado entrar — inclusive o preenchimento aberto
-por URL direta.
+O acesso tem dois passos antes da aplicação:
 
-Cada painel do catálogo (`public/forms/index.json`) declara quem o acessa:
+```
+login por e-mail  →  escolha do painel  →  projetos do painel
+```
+
+1. **Login.** A tela de login por e-mail é a primeira coisa que abre. Nenhuma
+   outra tela é montada antes de um e-mail liberado entrar — inclusive o
+   preenchimento aberto por URL direta.
+2. **Escolha do painel.** Em seguida vem a lista dos painéis (linhas de
+   produto) liberados para aquele e-mail, montada a partir do catálogo. Novas
+   linhas em `public/forms/index.json` aparecem aqui sozinhas, sem build.
+3. **Projetos.** O painel escolhido passa a valer para tudo: a lista de
+   projetos, os formulários de cada TAG, o PDF e a aba de administração. O
+   cabeçalho mostra o painel ativo e o botão **Trocar painel**.
+
+O projeto guarda o painel em que foi criado (campo `painel`, Dexie v2), então
+um projeto de SEN Plus não aparece — nem gera PDF — no painel de Baixa tensão.
+Projetos gravados antes desta versão não têm o campo e continuam visíveis em
+qualquer painel.
+
+O **painel** é a linha de produto (`linhaProduto`) do catálogo: as entradas com
+a mesma linha viram um único cartão na escolha. Cada entrada declara quem a
+acessa:
 
 ```json
 {
@@ -221,14 +241,17 @@ Regras:
   (`src/core/config.ts`), sobrescritível no build com `VITE_ADMIN_PADRAO`.
 - O e-mail que não consta em nenhum painel não entra.
 - A comparação ignora caixa e espaços em volta.
-- A TAG só exibe os painéis liberados para o e-mail em sessão; os demais também
-  ficam barrados por URL direta.
-- A aba de administração só lista os painéis que o e-mail **administra**.
+- A TAG só exibe os formulários liberados para o e-mail em sessão; os demais
+  também ficam barrados por URL direta.
+- A aba de administração só lista os formulários do painel ativo que o e-mail
+  **administra**.
 - A liberação é declarativa no catálogo: como não há servidor, incluir um e-mail
   exige publicar o `index.json` (sem build, na modalidade A).
 
-A sessão fica no `localStorage` do aparelho e é revalidada contra o catálogo a
-cada abertura — tirar um e-mail do `index.json` derruba o acesso na próxima vez.
+A sessão e o painel escolhido ficam no `localStorage` do aparelho e são
+revalidados contra o catálogo a cada abertura — tirar um e-mail do `index.json`
+derruba o acesso na próxima vez, e tirar o painel devolve o usuário à tela de
+escolha.
 
 > **Não é autenticação.** Sem servidor, a conferência é local e vale como
 > controle de acesso operacional, não como barreira de segurança: quem tem o
