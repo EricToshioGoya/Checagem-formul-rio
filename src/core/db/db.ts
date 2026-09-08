@@ -6,6 +6,7 @@ import type {
   Projeto,
   Tag,
 } from './tipos';
+import type { AcessoMontagem, SessaoMontador } from '../access/tipos';
 
 /**
  * Base local do dispositivo. Nenhum componente de tela importa este módulo
@@ -18,6 +19,8 @@ class BancoVerificacao extends Dexie {
   preenchimentos!: Table<Preenchimento, number>;
   midias!: Table<Midia, number>;
   formulariosCustom!: Table<FormularioCustomizado, string>;
+  acessos!: Table<AcessoMontagem, number>;
+  sessao!: Table<SessaoMontador, string>;
 
   constructor() {
     super('verificacao-montagem');
@@ -27,6 +30,12 @@ class BancoVerificacao extends Dexie {
       preenchimentos: '++id, tagId, formId, atualizadoEm, [tagId+formId]',
       midias: '++id, preenchimentoId, etapaId, [preenchimentoId+etapaId]',
       formulariosCustom: 'id, atualizadoEm',
+    });
+    // v2 acrescenta a permissão de acesso à montagem. As tabelas anteriores
+    // não mudam, portanto o Dexie migra a base existente sem perda de dados.
+    this.version(2).stores({
+      acessos: '++id, email, painelId, [email+painelId]',
+      sessao: 'id',
     });
   }
 }

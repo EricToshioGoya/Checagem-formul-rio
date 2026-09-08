@@ -8,6 +8,9 @@ conformidade é feito **fora do sistema**.
 Implementa a especificação técnica v1.0 (02/09/2026).
 
 - **Sem backend.** A saída do build é um diretório estático.
+- **Acesso mediante aprovação:** o montador se identifica, escolhe o painel e
+  só monta depois que o responsável autoriza. Ver
+  [Permissão de acesso à montagem](#permissão-de-acesso-à-montagem).
 - **Offline integral** após o primeiro carregamento (PWA com service worker).
 - **Dados só no aparelho** (IndexedDB via Dexie). Ver [Limitação conhecida](#limitação-conhecida--sem-sincronização).
 
@@ -43,7 +46,8 @@ npm i -D playwright && npx playwright install chromium
 BASE_URL=http://localhost:8099 npm run fumaca
 ```
 
-Ele percorre criação de projeto, preenchimento com salvamento automático,
+Ele percorre a liberação de acesso ao painel, criação de projeto,
+preenchimento com salvamento automático,
 persistência após recarregar, modal de apoio, geração dos PDFs nas duas opções
 de foto, exportação do projeto, grade de ensaios e aba de administração.
 
@@ -101,6 +105,7 @@ assim que se atualiza a aplicação no pendrive sem recompilar.
 
 ```
 public/
+  paineis.json            painéis e responsáveis — editável sem build
   forms/                  definições JSON dos formulários — editáveis sem build
     index.json            catálogo dos formulários disponíveis
     sen-plus-montagem.json
@@ -110,11 +115,13 @@ public/
 src/
   app/                    rotas, layout, shell da PWA
   core/
+    access/               painéis, responsáveis e código de aprovação
     db/                   Dexie: schema e repositórios
     forms/                motor: schema Zod, catálogo, progresso
     media/                compressão e normalização de imagem
     export/               ExportTarget, dossiê, PDF, backup .zip
   features/
+    access/               pedido, aprovação e portão de acesso
     projects/             listagem, criação, TAGs
     fill/                 preenchimento e registro de tipos de campo
     pdf/                  diálogo de geração
@@ -141,8 +148,9 @@ diálogo de geração.
 | Novo formulário ou linha de produto | Acrescentar o JSON em `public/forms` e registrá-lo em `index.json`. Nenhuma alteração de código. |
 | Novo tipo de campo | Implementar o componente e registrá-lo em `src/features/fill/campos/registro.tsx`. |
 | Novo destino de exportação | Implementar `ExportTarget` (`src/core/export/ExportTarget.ts`). `PdfExport` é a implementação da v1. |
-| Trocar a persistência | Todo acesso ao Dexie passa por `ProjetoRepository`, `PreenchimentoRepository`, `MidiaRepository` e `FormularioRepository`. Nenhuma tela importa Dexie. |
+| Trocar a persistência | Todo acesso ao Dexie passa por `ProjetoRepository`, `PreenchimentoRepository`, `MidiaRepository`, `FormularioRepository` e `AcessoRepository`. Nenhuma tela importa Dexie. |
 | Conteúdo de apoio | Trocar o arquivo em `public/media`. O caminho fica no JSON. |
+| Novo painel ou troca de responsável | Editar `public/paineis.json`. Nenhuma alteração de código. |
 
 ### Modelo de dados
 
@@ -152,6 +160,8 @@ tags:              ++id, projetoId, nome, ordem, [projetoId+ordem]
 preenchimentos:    ++id, tagId, formId, atualizadoEm, [tagId+formId]
 midias:            ++id, preenchimentoId, etapaId, [preenchimentoId+etapaId]
 formulariosCustom: id, atualizadoEm
+acessos:           ++id, email, painelId, [email+painelId]
+sessao:            id
 ```
 
 Fotos são gravadas como **Blob**, nunca base64. `respostas` é um mapa
@@ -188,6 +198,82 @@ rotina, **apenas registra o valor** — não há validação de faixa nem alerta
 
 Qualquer alteração é validada por `npm run validar-formularios`, que roda
 automaticamente antes do build.
+
+---
+
+## Permissão de acesso à montagem
+
+O montador não entra direto na montagem. O fluxo é:
+
+1. **Pedido** — na tela inicial, o montador informa o e-mail dele e escolhe um
+   dos painéis de `public/paineis.json`. O aplicativo abre o cliente de e-mail
+   com a mensagem pronta para o responsável daquele painel.
+2. **Aprovação** — o responsável recebe um link (`#/aprovar?email=…&painel=…`),
+   abre-o e vê o **código de aprovação** daquele pedido. Aprovar é repassar o
+   código ao montador — há um botão que já monta o e-mail de resposta.
+3. **Liberação** — o montador digita o código. A partir daí o aparelho abre a
+   montagem normalmente. A liberação é **permanente** por par
+   *e-mail + painel*, e a faixa abaixo do cabeçalho mostra quem está montando
+   e qual painel foi liberado. **Sair** encerra a sessão do aparelho.
+
+`/acesso` e `/aprovar` ficam fora do bloqueio — são as telas que concedem o
+acesso. `/admin` segue com a sua própria senha.
+
+### Por que um código, e não um link que aprova sozinho
+
+Não há servidor: o aparelho do montador não tem como saber, por conta própria,
+que o responsável aprovou. O código resolve isso sem rede — é derivado de
+`e-mail + painel + segredo do build` (SHA-256), de modo que o aparelho do
+responsável, rodando o mesmo build, calcula exatamente o mesmo valor. O e-mail
+enviado pelo montador leva **apenas o link**; o código nunca passa por ele.
+
+Consequências assumidas nesta versão:
+
+- O código não expira e é sempre o mesmo para aquele par e-mail + painel. Quem
+  o tiver monta o painel.
+- Aprovar não fica registrado no aparelho do responsável — a tela `/aprovar`
+  só exibe o código, não grava nada.
+- A liberação vale para o aparelho onde o código foi digitado. Outro aparelho
+  exige novo pedido.
+- Trocar `VITE_SEGREDO_APROVACAO` invalida os códigos já distribuídos.
+
+### Configuração
+
+Os painéis e seus responsáveis ficam em `public/paineis.json`, lido em tempo de
+execução como os formulários:
+
+```json
+{
+  "urlAplicacao": "https://verificacao.exemplo.com.br/",
+  "paineis": [
+    {
+      "id": "sen-plus",
+      "nome": "SEN Plus",
+      "responsavelNome": "Eric Goya",
+      "responsavelEmail": "ericg10456@gmail.com",
+      "ativo": true
+    }
+  ]
+}
+```
+
+`urlAplicacao` é o endereço público usado no link de aprovação. Vazio significa
+"o endereço em que o aplicativo está aberto" — o que só serve na modalidade
+hospedada; na modalidade portátil o link sairia como `http://localhost:8080`,
+inútil para o responsável. Preencha o campo ao distribuir o binário.
+
+O segredo que deriva o código fica em `src/core/config.ts`
+(`SEGREDO_APROVACAO`) e é trocável no build:
+
+```bash
+VITE_SEGREDO_APROVACAO='segredo-do-cliente' npm run build
+```
+
+> **Pendência:** o segredo inicial é `abb-montagem-2026` e precisa ser trocado
+> antes de publicar, como a senha da administração. Ele está no pacote
+> JavaScript — quem inspecionar o build consegue gerar códigos. O controle
+> registra e organiza a autorização; não é barreira contra quem quer burlá-la.
+> Barreira real exige servidor, prevista junto com a sincronização.
 
 ---
 
@@ -256,6 +342,8 @@ persistência já está atrás dos repositórios para que a troca não afete as 
 | Imagens de referência das 38 etapas | Ainda não recortadas. Os caminhos já estão no JSON; a lista completa está em `public/media/sen-plus/LEIA-ME.md`. Enquanto o arquivo não existir, o modal de ajuda mostra um aviso com o caminho esperado, sem quebrar a tela. |
 | Redação exata das etapas | Conferir contra o documento original. S1.1, S1.3, S2.2 e S2.6 estão marcadas com `pendenteTranscricao`. |
 | Senha da administração | Provisória (`abb-admin`). Trocar antes de publicar. |
+| Segredo do código de aprovação | Provisório (`abb-montagem-2026`). Trocar antes de publicar. |
+| Responsáveis dos painéis | Os 4 painéis estão com `ericg10456@gmail.com` para teste. Substituir pelos responsáveis reais em `public/paineis.json`. |
 
 ---
 
@@ -265,5 +353,6 @@ Sem julgamento de conformidade no sistema (não existem estados “OK” e “N�
 a etapa é respondida ou fica em branco); sem estado “não aplicável”; PDF sempre
 gerável; ordem de preenchimento livre; operador e data informados uma vez e
 replicados em todas as etapas; dados exclusivamente no aparelho; sem
-autenticação; sem marca d'água nas fotos; sem trilha de auditoria além da data
+autenticação de usuário (a permissão de montagem é autorização por painel, não
+login); sem marca d'água nas fotos; sem trilha de auditoria além da data
 da última alteração.

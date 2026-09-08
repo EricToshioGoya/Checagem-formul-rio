@@ -1,7 +1,8 @@
 /**
  * Teste de fumaça do fluxo completo, no navegador real.
  *
- * Percorre criação de projeto, preenchimento com salvamento automático,
+ * Percorre a liberação de acesso ao painel, criação de projeto,
+ * preenchimento com salvamento automático,
  * persistência após recarregar, modal de apoio, geração dos PDFs nas duas
  * opções de foto, exportação do projeto, grade de ensaios e aba de
  * administração.
@@ -41,6 +42,29 @@ const passo = async (nome, fn) => {
   await fn();
   console.log('ok');
 };
+
+await passo('liberar o acesso à montagem', async () => {
+  await pagina.goto(BASE, { waitUntil: 'networkidle' });
+  await pagina.getByRole('heading', { name: 'Acesso à montagem' }).waitFor();
+  await pagina.locator('#email-montador').fill('montador@parceiro.com.br');
+  await pagina.getByRole('button', { name: /SEN Plus/ }).first().click();
+  await pagina.getByRole('button', { name: 'Solicitar aprovação por e-mail' }).click();
+  await pagina.getByText('Pedido registrado').waitFor();
+
+  // O responsável abre o link recebido por e-mail — aqui, em outra aba — e
+  // lê o código que devolve ao montador.
+  const aprovacao = await contexto.newPage();
+  await aprovacao.goto(
+    `${BASE}/#/aprovar?email=montador%40parceiro.com.br&painel=sen-plus`,
+    { waitUntil: 'networkidle' },
+  );
+  const codigo = (await aprovacao.locator('p.font-mono').innerText()).trim();
+  await aprovacao.close();
+
+  await pagina.locator('#codigo-aprovacao').fill(codigo);
+  await pagina.getByRole('button', { name: 'Liberar acesso à montagem' }).click();
+  await pagina.getByRole('heading', { name: 'Meus projetos' }).waitFor();
+});
 
 await passo('abrir a aplicação', async () => {
   await pagina.goto(BASE, { waitUntil: 'networkidle' });

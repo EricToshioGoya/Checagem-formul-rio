@@ -1,4 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
+import { FaixaMontador } from '../features/access/FaixaMontador';
 
 export function Layout() {
   const { pathname } = useLocation();
@@ -23,6 +24,7 @@ export function Layout() {
           </Link>
         </div>
       </header>
+      <FaixaMontador />
       <main className="mx-auto max-w-5xl px-4 py-5 pb-16">
         <Outlet />
       </main>

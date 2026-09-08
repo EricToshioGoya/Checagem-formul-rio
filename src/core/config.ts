@@ -10,3 +10,12 @@ export const SENHA_ADMIN = import.meta.env.VITE_SENHA_ADMIN ?? 'abb-admin';
 
 /** Nome do produto exibido nas telas e no PDF. */
 export const NOME_APLICACAO = 'Verificação de Montagem de Painéis';
+
+/**
+ * Segredo que deriva o código de aprovação de acesso à montagem (seção
+ * "Permissão de acesso" do README). Precisa ser o mesmo no aparelho do
+ * montador e no do responsável — ou seja, o mesmo build. Trocar no build com
+ * `VITE_SEGREDO_APROVACAO`.
+ */
+export const SEGREDO_APROVACAO =
+  import.meta.env.VITE_SEGREDO_APROVACAO ?? 'abb-montagem-2026';

@@ -45,6 +45,7 @@ export default defineConfig({
         globPatterns: [
           '**/*.{js,css,html,svg,png,ico,woff2}',
           'forms/**/*.json',
+          'paineis.json',
           'media/**/*',
         ],
         maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,

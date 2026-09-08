@@ -1,0 +1,33 @@
+{
+  "urlAplicacao": "",
+  "paineis": [
+    {
+      "id": "sen-plus",
+      "nome": "SEN Plus",
+      "responsavelNome": "Eric Goya",
+      "responsavelEmail": "ericg10456@gmail.com",
+      "ativo": true
+    },
+    {
+      "id": "system-pro-e-energy",
+      "nome": "System pro E Energy",
+      "responsavelNome": "Eric Goya",
+      "responsavelEmail": "ericg10456@gmail.com",
+      "ativo": true
+    },
+    {
+      "id": "system-pro-e-power",
+      "nome": "System pro E Power",
+      "responsavelNome": "Eric Goya",
+      "responsavelEmail": "ericg10456@gmail.com",
+      "ativo": true
+    },
+    {
+      "id": "safr",
+      "nome": "SAFR",
+      "responsavelNome": "Eric Goya",
+      "responsavelEmail": "ericg10456@gmail.com",
+      "ativo": true
+    }
+  ]
+}
