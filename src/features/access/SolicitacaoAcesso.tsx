@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { codigoConfere } from '../../core/access/codigo';
+import { enviarPedidoAprovacao, type ResultadoEnvio } from '../../core/access/envio';
 import { responsavelDoPainel } from '../../core/auth/acesso';
 import { AcessoRepository } from '../../core/db/repositorios';
 import type { Painel } from '../../core/paineis/tipos';
@@ -24,6 +25,7 @@ export function SolicitacaoAcesso() {
   const navegar = useNavigate();
   const { email, painel, aprovado, revalidarAcesso, trocarPainel } = useSessao();
   const [pedido, setPedido] = useState(false);
+  const [envio, setEnvio] = useState<ResultadoEnvio | null>(null);
   const [codigo, setCodigo] = useState('');
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -84,7 +86,12 @@ export function SolicitacaoAcesso() {
     try {
       await registrar(painel);
       setPedido(true);
-      enviarPedidoPorEmail();
+
+      // Com servidor configurado, é ele quem manda a mensagem. Sem ele, resta
+      // o rascunho no programa de e-mail do próprio montador.
+      const resultado = await enviarPedidoAprovacao(email, painel.id);
+      setEnvio(resultado);
+      if (!resultado.enviado) enviarPedidoPorEmail();
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível registrar o pedido.');
     } finally {
@@ -138,7 +145,20 @@ export function SolicitacaoAcesso() {
           {pedido ? 'Reenviar pedido por e-mail' : 'Solicitar aprovação por e-mail'}
         </Botao>
 
-        <details className="text-sm text-abb-gray" open={pedido}>
+        {envio?.enviado ? (
+          <p className="rounded-md border border-green-600 bg-green-50 p-3 text-base text-green-800">
+            Pedido enviado para <strong className="break-all">{envio.destinatario}</strong>.
+            Aguarde o código de aprovação.
+          </p>
+        ) : null}
+        {envio && !envio.enviado ? (
+          <p className="text-sm text-abb-gray">
+            O servidor não enviou o e-mail ({envio.motivo}). Abrimos um rascunho no seu
+            programa de e-mail; se ele não abrir, envie o link abaixo por conta própria.
+          </p>
+        ) : null}
+
+        <details className="text-sm text-abb-gray" open={pedido && !envio?.enviado}>
           <summary className="min-h-8 cursor-pointer">O aplicativo de e-mail não abriu?</summary>
           <p className="mt-2 break-all">
             Envie manualmente para <strong>{responsavel}</strong> este link:

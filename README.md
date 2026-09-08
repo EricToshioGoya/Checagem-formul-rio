@@ -277,8 +277,10 @@ o responsável abre a partir do e-mail, e ela não concede acesso a nada.
 2. **Escolha do painel** — os painéis do catálogo aparecem marcados como
    **Liberado** ou **Requer aprovação**. Escolher um painel ainda não liberado
    leva ao pedido.
-3. **Pedido** — o aplicativo abre o cliente de e-mail com a mensagem pronta
-   para o responsável do painel (`responsavelMontagem` no catálogo).
+3. **Pedido** — com envio configurado, o servidor manda a mensagem ao
+   responsável do painel (`responsavelMontagem` no catálogo) e a tela confirma
+   o destinatário. Sem envio configurado, o aplicativo abre o cliente de
+   e-mail com a mensagem pronta e deixa o link à vista para envio manual.
 4. **Aprovação** — o responsável abre o link do e-mail
    (`#/aprovar?email=…&painel=…`), vê o **código de aprovação** e o repassa ao
    montador; um botão já monta o e-mail de resposta.
@@ -336,6 +338,58 @@ responsável.** O link de aprovação usa o endereço em que o aplicativo está
 aberto: na modalidade portátil ele sai como `http://localhost:8080` e não serve
 ao responsável — publique a modalidade hospedada para usar a aprovação por
 e-mail.
+
+### Envio do pedido por e-mail
+
+O aplicativo, sozinho, não envia nada: `mailto:` apenas abre um rascunho no
+programa do montador, e navegador nenhum permite isso dentro de um iframe
+restrito. Quem envia de verdade é a rota `POST /api/aprovacao`
+(`cmd/servidor/aprovacao.go`), atendida pelo binário portátil.
+
+O pedido informa **só** o e-mail do montador e o painel. Destinatário, assunto,
+corpo e link saem do servidor — que lê o `responsavelMontagem` do catálogo e
+monta o endereço pela origem da requisição. Assim a rota não vira relé de spam.
+Há limite de um envio por minuto para cada par montador + painel e de 20 por
+hora por máquina de origem.
+
+Sem variável de ambiente nenhuma a rota responde `501` e o aplicativo volta ao
+rascunho manual — nada quebra.
+
+| Variável | Para que serve |
+|---|---|
+| `APROVACAO_TRANSPORTE` | `smtp`, `resend` ou `sendgrid` |
+| `APROVACAO_REMETENTE` | endereço que aparece como remetente |
+| `APROVACAO_RESPONSAVEL` | destinatário quando o painel não declara um |
+| `SMTP_HOST` `SMTP_PORTA` `SMTP_USUARIO` `SMTP_SENHA` | servidor SMTP (STARTTLS na 587) |
+| `SMTP_TLS=implicito` | TLS desde o primeiro byte (porta 465) |
+| `EMAIL_API_CHAVE` | chave do Resend ou do SendGrid |
+
+```bash
+APROVACAO_TRANSPORTE=smtp \
+APROVACAO_REMETENTE=verificacao@empresa.com \
+SMTP_HOST=smtp.office365.com SMTP_USUARIO=verificacao@empresa.com SMTP_SENHA=… \
+./verificacao-montagem-windows-amd64.exe
+```
+
+Do lado do aplicativo, `VITE_URL_APROVACAO` diz para onde vai o pedido. O
+padrão é a própria origem (`/api/aprovacao`), que é o binário portátil. String
+vazia desliga o envio e mantém apenas o rascunho manual.
+
+**SharePoint não roda backend** — ele hospeda arquivo estático e não executa
+código de servidor. Publicando o aplicativo lá, aponte `VITE_URL_APROVACAO`
+para um fluxo do Power Automate com gatilho HTTP (ou uma Azure Function): o
+contrato é o mesmo, `POST {"emailMontador","painelId"}` respondendo
+`{"enviado":true,"destinatario":"…"}`. O mesmo vale para qualquer função em
+nuvem.
+
+Limites do modo portátil: só envia com o binário aberto naquela máquina, e quem
+chama precisa alcançá-la pela rede. Outro aparelho acessando por
+`http://192.168.x.x:8080` perde o contexto seguro e **fica sem câmera** — só
+`localhost` e `https` são contexto seguro.
+
+A resposta do responsável (a tela `/aprovar`, que devolve o código) continua
+saindo pelo cliente de e-mail dele: é a máquina de quem aprova, com programa de
+e-mail de verdade.
 
 ---
 

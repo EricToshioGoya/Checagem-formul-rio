@@ -53,3 +53,15 @@ export const ADMIN_PADRAO =
  */
 export const RESPONSAVEL_MONTAGEM_PADRAO =
   import.meta.env.VITE_RESPONSAVEL_MONTAGEM ?? 'ericg10456@gmail.com';
+
+/**
+ * Endereço que recebe o pedido de aprovação e envia o e-mail ao responsável.
+ *
+ * O padrão é a própria origem: o binário portátil atende `/api/aprovacao`
+ * (veja `cmd/servidor/aprovacao.go`). Publicando o aplicativo em lugar sem
+ * servidor — SharePoint, por exemplo —, aponte `VITE_URL_APROVACAO` para o
+ * fluxo do Power Automate ou para a função na nuvem que faz o envio. String
+ * vazia desliga o envio pelo servidor e mantém apenas o rascunho manual.
+ */
+export const URL_APROVACAO =
+  import.meta.env.VITE_URL_APROVACAO ?? `${import.meta.env.BASE_URL}api/aprovacao`;
