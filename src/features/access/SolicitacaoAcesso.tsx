@@ -11,10 +11,17 @@ import { Aviso, Erro } from '../../shared/componentes/Estado';
 import { abrirEmail } from '../../shared/utils/email';
 import { useSessao } from '../auth/SessaoContexto';
 
-/** Link que o responsável abre para ver o código do pedido. */
+/**
+ * Link que o responsável abre para ver o código do pedido.
+ *
+ * Resolvido contra o endereço aberto, e não colado à mão: com base relativa
+ * (`./`, que é como sai o pacote de página única) concatenar origem e base
+ * produzia `https://servidor./#/aprovar` — host com ponto final, que nenhum
+ * certificado atende e o navegador recusa com 421.
+ */
 function linkDeAprovacao(email: string, painelId: string): string {
   const parametros = new URLSearchParams({ email, painel: painelId });
-  return `${window.location.origin}${import.meta.env.BASE_URL}#/aprovar?${parametros.toString()}`;
+  return new URL(`#/aprovar?${parametros.toString()}`, window.location.href).toString();
 }
 
 /**
