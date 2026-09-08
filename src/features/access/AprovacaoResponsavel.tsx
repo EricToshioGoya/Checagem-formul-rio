@@ -6,6 +6,7 @@ import { normalizarEmail, responsavelDoPainel } from '../../core/auth/acesso';
 import type { Painel } from '../../core/paineis/tipos';
 import { Botao } from '../../shared/componentes/Botao';
 import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
+import { abrirEmail } from '../../shared/utils/email';
 
 /**
  * Tela aberta pelo responsável a partir do link recebido por e-mail. Ela não
@@ -60,9 +61,7 @@ export function AprovacaoResponsavel() {
       '',
       'Digite o código na tela de acesso do aplicativo para liberar a montagem.',
     ].join('\n');
-    window.location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(
-      assunto,
-    )}&body=${encodeURIComponent(corpo)}`;
+    abrirEmail(email, assunto, corpo);
   };
 
   if (erro) return <Erro titulo="Aprovação" detalhe={erro} />;

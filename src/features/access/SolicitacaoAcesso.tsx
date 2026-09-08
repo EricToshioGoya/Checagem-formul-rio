@@ -7,6 +7,7 @@ import type { Painel } from '../../core/paineis/tipos';
 import { Botao } from '../../shared/componentes/Botao';
 import { CampoTexto } from '../../shared/componentes/Campos';
 import { Aviso, Erro } from '../../shared/componentes/Estado';
+import { abrirEmail } from '../../shared/utils/email';
 import { useSessao } from '../auth/SessaoContexto';
 
 /** Link que o responsável abre para ver o código do pedido. */
@@ -58,7 +59,7 @@ export function SolicitacaoAcesso() {
    * O e-mail leva apenas o link. O código nunca vai no corpo: quem envia a
    * mensagem é o próprio montador, e ele não pode vê-lo.
    */
-  const abrirEmail = () => {
+  const enviarPedidoPorEmail = () => {
     const assunto = `Autorização de montagem — ${painel.nome}`;
     const corpo = [
       'Prezado(a),',
@@ -74,9 +75,7 @@ export function SolicitacaoAcesso() {
       '',
       'Sem o código o acesso ao painel permanece bloqueado.',
     ].join('\n');
-    window.location.href = `mailto:${encodeURIComponent(responsavel)}?subject=${encodeURIComponent(
-      assunto,
-    )}&body=${encodeURIComponent(corpo)}`;
+    abrirEmail(responsavel, assunto, corpo);
   };
 
   const solicitar = async () => {
@@ -85,7 +84,7 @@ export function SolicitacaoAcesso() {
     try {
       await registrar(painel);
       setPedido(true);
-      abrirEmail();
+      enviarPedidoPorEmail();
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível registrar o pedido.');
     } finally {
@@ -139,7 +138,7 @@ export function SolicitacaoAcesso() {
           {pedido ? 'Reenviar pedido por e-mail' : 'Solicitar aprovação por e-mail'}
         </Botao>
 
-        <details className="text-sm text-abb-gray">
+        <details className="text-sm text-abb-gray" open={pedido}>
           <summary className="min-h-8 cursor-pointer">O aplicativo de e-mail não abriu?</summary>
           <p className="mt-2 break-all">
             Envie manualmente para <strong>{responsavel}</strong> este link:
