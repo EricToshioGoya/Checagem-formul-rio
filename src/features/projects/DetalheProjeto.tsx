@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PAINEL_PADRAO } from '../../core/config';
 import { ProjetoRepository } from '../../core/db/repositorios';
+import { temAcessoAoFormulario } from '../../core/auth/acesso';
+import { useSessao } from '../auth/SessaoContexto';
 import {
   progressoDoProjeto,
   type ProgressoDeProjeto,
@@ -26,6 +28,7 @@ export function DetalheProjeto() {
   const { projetoId } = useParams();
   const id = Number(projetoId);
   const navegar = useNavigate();
+  const { acessos } = useSessao();
 
   const [projeto, setProjeto] = useState<Projeto | null>(null);
   const [dados, setDados] = useState<ProgressoDeProjeto | null>(null);
@@ -121,59 +124,70 @@ export function DetalheProjeto() {
         </Vazio>
       ) : (
         <ul className="space-y-4">
-          {dados.tags.map((tag) => (
-            <li key={tag.tagId} className="rounded-lg border border-abb-line bg-white p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-xl font-bold break-words">{tag.nome}</h2>
-                <div className="flex gap-2">
-                  <Botao
-                    onClick={() => {
-                      setTagParaRenomear({ id: tag.tagId, nome: tag.nome });
-                      setNovoNome(tag.nome);
-                    }}
-                  >
-                    Renomear
-                  </Botao>
-                  <Botao
-                    variante="perigo"
-                    aria-label={`Remover TAG ${tag.nome}`}
-                    onClick={() => setTagParaExcluir({ id: tag.tagId, nome: tag.nome })}
-                  >
-                    <IconeLixeira className="h-5 w-5" />
-                  </Botao>
+          {dados.tags.map((tag) => {
+            const liberados = tag.formularios.filter((f) =>
+              temAcessoAoFormulario(acessos, f.formId),
+            );
+            return (
+              <li key={tag.tagId} className="rounded-lg border border-abb-line bg-white p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-xl font-bold break-words">{tag.nome}</h2>
+                  <div className="flex gap-2">
+                    <Botao
+                      onClick={() => {
+                        setTagParaRenomear({ id: tag.tagId, nome: tag.nome });
+                        setNovoNome(tag.nome);
+                      }}
+                    >
+                      Renomear
+                    </Botao>
+                    <Botao
+                      variante="perigo"
+                      aria-label={`Remover TAG ${tag.nome}`}
+                      onClick={() => setTagParaExcluir({ id: tag.tagId, nome: tag.nome })}
+                    >
+                      <IconeLixeira className="h-5 w-5" />
+                    </Botao>
+                  </div>
                 </div>
-              </div>
 
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                {tag.formularios.map((f) => (
-                  <button
-                    key={f.formId}
-                    type="button"
-                    onClick={() =>
-                      navegar(`/projetos/${id}/tags/${tag.tagId}/formularios/${f.formId}`)
-                    }
-                    className="flex min-h-24 flex-col justify-between rounded-lg border-2 border-abb-line p-3 text-left hover:border-abb-red focus-visible:border-abb-red"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="text-base font-bold">
-                          {f.entrada.tipo === 'montagem' ? 'Montagem' : 'Rotina'}
-                        </p>
-                        <p className="text-sm text-abb-gray">{f.entrada.linhaProduto}</p>
+                {liberados.length === 0 ? (
+                  <p className="mt-3 text-base text-abb-gray">
+                    Nenhum formulário liberado para o seu e-mail nesta TAG.
+                  </p>
+                ) : null}
+
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {liberados.map((f) => (
+                    <button
+                      key={f.formId}
+                      type="button"
+                      onClick={() =>
+                        navegar(`/projetos/${id}/tags/${tag.tagId}/formularios/${f.formId}`)
+                      }
+                      className="flex min-h-24 flex-col justify-between rounded-lg border-2 border-abb-line p-3 text-left hover:border-abb-red focus-visible:border-abb-red"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-base font-bold">
+                            {f.entrada.tipo === 'montagem' ? 'Montagem' : 'Rotina'}
+                          </p>
+                          <p className="text-sm text-abb-gray">{f.entrada.linhaProduto}</p>
+                        </div>
+                        <IconeSeta className="h-5 w-5 shrink-0 text-abb-red" />
                       </div>
-                      <IconeSeta className="h-5 w-5 shrink-0 text-abb-red" />
-                    </div>
-                    <div className="mt-3">
-                      <BarraProgresso percentual={f.progresso.percentual} compacta />
-                      <p className="mt-1 text-sm text-abb-gray">
-                        {f.progresso.respondidas} de {f.progresso.total} etapas
-                      </p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </li>
-          ))}
+                      <div className="mt-3">
+                        <BarraProgresso percentual={f.progresso.percentual} compacta />
+                        <p className="mt-1 text-sm text-abb-gray">
+                          {f.progresso.respondidas} de {f.progresso.total} etapas
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
 

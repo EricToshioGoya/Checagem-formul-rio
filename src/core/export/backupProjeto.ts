@@ -55,6 +55,7 @@ export async function exportarProjeto(projetoId: number): Promise<void> {
       nomeProjeto: projeto.nomeProjeto,
       operador: projeto.operador,
       numeroPedido: projeto.numeroPedido,
+      painel: projeto.painel,
       criadoEm: projeto.criadoEm,
       atualizadoEm: projeto.atualizadoEm,
     },

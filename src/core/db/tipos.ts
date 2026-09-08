@@ -10,6 +10,11 @@ export interface Projeto {
   empresa: string;
   nomeProjeto: string;
   operador: string;
+  /**
+   * Linha de produto (painel) escolhida no login. Projetos gravados antes da
+   * escolha de painel não têm o campo e continuam visíveis em qualquer painel.
+   */
+  painel?: string;
   /** Modelado desde a v1 para a futura integração SAP/ERP. */
   numeroPedido?: string;
   criadoEm: number;

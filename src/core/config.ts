@@ -33,3 +33,15 @@ export const PREFIXO_NUMERO_CERTIFICADO = import.meta.env.VITE_PREFIXO_CERTIFICA
 export const PDF_INSTRUCOES = 'docs/instrucoes-solicitacao-certificacao.pdf';
 export const TITULO_PDF_INSTRUCOES =
   'Instruções de envio de informações para solicitação de certificação';
+
+/**
+ * Administrador padrão dos painéis.
+ *
+ * Cada painel do catálogo (`public/paineis/index.json`) pode declarar a
+ * própria lista `administradores`. Quando não declara, vale este e-mail.
+ * Pode ser sobrescrito no build com `VITE_ADMIN_PADRAO`.
+ *
+ * Valor de teste — trocar antes de publicar para os parceiros.
+ */
+export const ADMIN_PADRAO =
+  import.meta.env.VITE_ADMIN_PADRAO ?? 'ericg10456@gmail.com';
