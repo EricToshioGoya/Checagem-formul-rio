@@ -1,6 +1,6 @@
 import { db } from '../db';
-import { normalizarEmail } from '../../access/codigo';
-import type { AcessoMontagem, SessaoMontador } from '../../access/tipos';
+import { normalizarEmail } from '../../auth/acesso';
+import type { AcessoMontagem } from '../../access/tipos';
 
 export interface PedidoAcesso {
   email: string;
@@ -59,23 +59,6 @@ export const AcessoRepository = {
   },
 
   async revogar(id: number): Promise<void> {
-    const acesso = await db.acessos.get(id);
     await db.acessos.delete(id);
-    const sessao = await this.sessaoAtual();
-    if (acesso && sessao && sessao.email === acesso.email && sessao.painelId === acesso.painelId) {
-      await this.encerrarSessao();
-    }
-  },
-
-  sessaoAtual(): Promise<SessaoMontador | undefined> {
-    return db.sessao.get('atual');
-  },
-
-  async definirSessao(email: string, painelId: string): Promise<void> {
-    await db.sessao.put({ id: 'atual', email: normalizarEmail(email), painelId });
-  },
-
-  async encerrarSessao(): Promise<void> {
-    await db.sessao.delete('atual');
   },
 };

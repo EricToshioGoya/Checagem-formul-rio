@@ -6,9 +6,9 @@ import { Erro } from '../../shared/componentes/Estado';
 import { useSessao } from './SessaoContexto';
 
 /**
- * Porta de entrada da aplicação: sem e-mail liberado em algum painel, nenhuma
- * outra tela é montada. A conferência é local (ver `core/auth/acesso`), porque
- * a aplicação opera offline e não tem servidor de autenticação.
+ * Porta de entrada da aplicação: o montador se identifica pelo e-mail antes
+ * de qualquer tela. Não é autenticação — não há servidor — e sim a
+ * identificação que o pedido de acesso ao painel leva ao responsável.
  */
 export function Login() {
   const { entrar } = useSessao();
@@ -46,12 +46,13 @@ export function Login() {
           <div>
             <h1 className="text-2xl font-bold">Entrar</h1>
             <p className="mt-1 text-base text-abb-gray">
-              Informe o e-mail cadastrado. O acesso a cada painel é liberado pelo
-              administrador daquele painel.
+              Informe o seu e-mail. Ele identifica você no pedido de acesso
+              enviado ao responsável pelo painel.
             </p>
           </div>
 
           <CampoTexto
+            id="email-montador"
             rotulo="E-mail"
             valor={email}
             onChange={setEmail}
@@ -68,7 +69,7 @@ export function Login() {
             larguraTotal
             disabled={enviando || !email.trim()}
           >
-            {enviando ? 'Verificando…' : 'Entrar'}
+            {enviando ? 'Entrando…' : 'Entrar'}
           </Botao>
         </form>
       </main>

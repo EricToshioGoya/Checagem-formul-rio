@@ -2,8 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PAINEL_PADRAO } from '../../core/config';
 import { ProjetoRepository } from '../../core/db/repositorios';
-import { temAcessoAoFormulario } from '../../core/auth/acesso';
-import { useSessao } from '../auth/SessaoContexto';
 import {
   progressoDoProjeto,
   type ProgressoDeProjeto,
@@ -28,8 +26,6 @@ export function DetalheProjeto() {
   const { projetoId } = useParams();
   const id = Number(projetoId);
   const navegar = useNavigate();
-  const { acessos } = useSessao();
-
   const [projeto, setProjeto] = useState<Projeto | null>(null);
   const [dados, setDados] = useState<ProgressoDeProjeto | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -125,9 +121,7 @@ export function DetalheProjeto() {
       ) : (
         <ul className="space-y-4">
           {dados.tags.map((tag) => {
-            const liberados = tag.formularios.filter((f) =>
-              temAcessoAoFormulario(acessos, f.formId),
-            );
+            const liberados = tag.formularios;
             return (
               <li key={tag.tagId} className="rounded-lg border border-abb-line bg-white p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">

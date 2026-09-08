@@ -45,3 +45,11 @@ export const TITULO_PDF_INSTRUCOES =
  */
 export const ADMIN_PADRAO =
   import.meta.env.VITE_ADMIN_PADRAO ?? 'ericg10456@gmail.com';
+
+/**
+ * Responsável que aprova o acesso do montador quando o painel não declara
+ * `responsavelMontagem` no catálogo. Valor de teste — trocar antes de
+ * publicar. Sobrescrevível no build com `VITE_RESPONSAVEL_MONTAGEM`.
+ */
+export const RESPONSAVEL_MONTAGEM_PADRAO =
+  import.meta.env.VITE_RESPONSAVEL_MONTAGEM ?? 'ericg10456@gmail.com';

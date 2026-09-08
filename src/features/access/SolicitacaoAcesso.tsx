@@ -1,87 +1,91 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { carregarPaineis, enderecoAplicacao } from '../../core/access/paineis';
-import { codigoConfere, normalizarEmail } from '../../core/access/codigo';
+import { codigoConfere } from '../../core/access/codigo';
+import { responsavelDoPainel } from '../../core/auth/acesso';
 import { AcessoRepository } from '../../core/db/repositorios';
-import type { CatalogoPaineis, Painel } from '../../core/access/tipos';
+import type { Painel } from '../../core/paineis/tipos';
 import { Botao } from '../../shared/componentes/Botao';
 import { CampoTexto } from '../../shared/componentes/Campos';
-import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
-import { IconeCheck } from '../../shared/componentes/Icones';
+import { Aviso, Erro } from '../../shared/componentes/Estado';
+import { useSessao } from '../auth/SessaoContexto';
 
-const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/** Monta o link que o responsável abre para ver o código do pedido. */
-function linkDeAprovacao(catalogo: CatalogoPaineis, email: string, painelId: string): string {
-  const parametros = new URLSearchParams({ email: normalizarEmail(email), painel: painelId });
-  return `${enderecoAplicacao(catalogo)}#/aprovar?${parametros.toString()}`;
+/** Link que o responsável abre para ver o código do pedido. */
+function linkDeAprovacao(email: string, painelId: string): string {
+  const parametros = new URLSearchParams({ email, painel: painelId });
+  return `${window.location.origin}${import.meta.env.BASE_URL}#/aprovar?${parametros.toString()}`;
 }
 
 /**
- * Porta de entrada do montador: ele se identifica, escolhe o painel e pede a
- * autorização do responsável. O acesso à montagem só abre depois que o
- * código devolvido pelo responsável é digitado aqui.
+ * Pedido de acesso ao painel escolhido. O montador já está identificado pelo
+ * login; aqui ele dispara o e-mail ao responsável e digita o código devolvido.
  */
 export function SolicitacaoAcesso() {
   const navegar = useNavigate();
-  const [catalogo, setCatalogo] = useState<CatalogoPaineis | null>(null);
-  const [falhaCatalogo, setFalhaCatalogo] = useState<string | null>(null);
-
-  const [email, setEmail] = useState('');
-  const [painelId, setPainelId] = useState('');
-  const [pedidoEnviado, setPedidoEnviado] = useState(false);
+  const { email, painel, aprovado, revalidarAcesso, trocarPainel } = useSessao();
+  const [pedido, setPedido] = useState(false);
   const [codigo, setCodigo] = useState('');
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
 
-  useEffect(() => {
-    carregarPaineis()
-      .then(setCatalogo)
-      .catch((e: unknown) =>
-        setFalhaCatalogo(e instanceof Error ? e.message : 'Falha ao ler o catálogo de painéis.'),
-      );
-  }, []);
+  const registrar = useCallback(
+    async (alvo: Painel) => {
+      if (!email) return;
+      await AcessoRepository.registrarPedido({
+        email,
+        painelId: alvo.id,
+        painelNome: alvo.nome,
+        responsavelEmail: responsavelDoPainel(alvo),
+      });
+    },
+    [email],
+  );
 
-  // Reabrir a tela com um pedido já feito para este montador retoma o passo
-  // do código, em vez de exigir um novo pedido.
+  // Reabrir a tela com um pedido já registrado retoma o passo do código.
   useEffect(() => {
-    AcessoRepository.sessaoAtual().then((sessao) => {
-      if (!sessao) return;
-      setEmail((atual) => atual || sessao.email);
-      setPainelId((atual) => atual || sessao.painelId);
-      setPedidoEnviado(true);
-    });
-  }, []);
+    if (!email || !painel) return;
+    AcessoRepository.obter(email, painel.id).then((a) => setPedido(Boolean(a)));
+  }, [email, painel]);
 
-  const paineis = useMemo(() => catalogo?.paineis.filter((p) => p.ativo) ?? [], [catalogo]);
-  const painel: Painel | undefined = paineis.find((p) => p.id === painelId);
-  const emailValido = EMAIL_VALIDO.test(email.trim());
+  useEffect(() => {
+    if (aprovado) navegar('/', { replace: true });
+  }, [aprovado, navegar]);
+
+  if (!email || !painel) return <Erro detalhe="Escolha um painel para pedir o acesso." />;
+
+  const responsavel = responsavelDoPainel(painel);
+
+  /**
+   * O e-mail leva apenas o link. O código nunca vai no corpo: quem envia a
+   * mensagem é o próprio montador, e ele não pode vê-lo.
+   */
+  const abrirEmail = () => {
+    const assunto = `Autorização de montagem — ${painel.nome}`;
+    const corpo = [
+      'Prezado(a),',
+      '',
+      `Solicito autorização para trabalhar no painel ${painel.nome}.`,
+      '',
+      `Montador: ${email}`,
+      `Painel: ${painel.nome}`,
+      `Data do pedido: ${new Date().toLocaleString('pt-BR')}`,
+      '',
+      'Para autorizar, abra o link abaixo e envie o código de aprovação exibido:',
+      linkDeAprovacao(email, painel.id),
+      '',
+      'Sem o código o acesso ao painel permanece bloqueado.',
+    ].join('\n');
+    window.location.href = `mailto:${encodeURIComponent(responsavel)}?subject=${encodeURIComponent(
+      assunto,
+    )}&body=${encodeURIComponent(corpo)}`;
+  };
 
   const solicitar = async () => {
-    if (!emailValido) {
-      setErro('Informe um e-mail válido.');
-      return;
-    }
-    if (!painel || !catalogo) {
-      setErro('Escolha o painel que você vai montar.');
-      return;
-    }
     setErro(null);
     setOcupado(true);
     try {
-      const acesso = await AcessoRepository.registrarPedido({
-        email,
-        painelId: painel.id,
-        painelNome: painel.nome,
-        responsavelEmail: painel.responsavelEmail,
-      });
-      await AcessoRepository.definirSessao(email, painel.id);
-      if (acesso.aprovadoEm) {
-        navegar('/', { replace: true });
-        return;
-      }
-      setPedidoEnviado(true);
-      abrirEmail(catalogo, painel);
+      await registrar(painel);
+      setPedido(true);
+      abrirEmail();
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível registrar o pedido.');
     } finally {
@@ -89,34 +93,7 @@ export function SolicitacaoAcesso() {
     }
   };
 
-  /**
-   * O e-mail leva apenas o link de aprovação. O código nunca vai no corpo:
-   * quem envia a mensagem é o próprio montador, e ele não pode vê-lo.
-   */
-  const abrirEmail = (cat: CatalogoPaineis, alvo: Painel) => {
-    const link = linkDeAprovacao(cat, email, alvo.id);
-    const assunto = `Autorização de montagem — ${alvo.nome}`;
-    const corpo = [
-      `${alvo.responsavelNome ? `${alvo.responsavelNome},` : 'Prezado(a),'}`,
-      '',
-      `Solicito autorização para iniciar a montagem do painel ${alvo.nome}.`,
-      '',
-      `Montador: ${normalizarEmail(email)}`,
-      `Painel: ${alvo.nome}`,
-      `Data do pedido: ${new Date().toLocaleString('pt-BR')}`,
-      '',
-      'Para autorizar, abra o link abaixo e envie o código de aprovação exibido:',
-      link,
-      '',
-      'Sem o código o acesso à montagem permanece bloqueado.',
-    ].join('\n');
-    window.location.href = `mailto:${encodeURIComponent(alvo.responsavelEmail)}?subject=${encodeURIComponent(
-      assunto,
-    )}&body=${encodeURIComponent(corpo)}`;
-  };
-
   const liberar = async () => {
-    if (!painel) return;
     setErro(null);
     setOcupado(true);
     try {
@@ -124,14 +101,9 @@ export function SolicitacaoAcesso() {
         setErro('Código inválido para este e-mail e painel. Confira com o responsável.');
         return;
       }
-      await AcessoRepository.registrarPedido({
-        email,
-        painelId: painel.id,
-        painelNome: painel.nome,
-        responsavelEmail: painel.responsavelEmail,
-      });
+      await registrar(painel);
       await AcessoRepository.aprovar(email, painel.id);
-      await AcessoRepository.definirSessao(email, painel.id);
+      await revalidarAcesso();
       navegar('/', { replace: true });
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível liberar o acesso.');
@@ -140,131 +112,76 @@ export function SolicitacaoAcesso() {
     }
   };
 
-  const trocarPedido = () => {
-    setPedidoEnviado(false);
-    setCodigo('');
-    setErro(null);
-    AcessoRepository.encerrarSessao();
-  };
-
-  if (falhaCatalogo) return <Erro titulo="Catálogo de painéis" detalhe={falhaCatalogo} />;
-  if (!catalogo) return <Carregando mensagem="Carregando painéis…" />;
-
   return (
     <div className="mx-auto max-w-xl space-y-5">
       <div>
-        <h1 className="text-2xl font-bold">Acesso à montagem</h1>
+        <h1 className="text-2xl font-bold">Acesso ao painel {painel.nome}</h1>
         <p className="mt-1 text-base text-abb-gray">
-          A montagem só abre depois que o responsável pelo painel aprovar o seu pedido.
+          O painel só abre depois que o responsável aprovar o seu pedido.
         </p>
       </div>
 
       {erro ? <Erro detalhe={erro} /> : null}
 
-      {!pedidoEnviado ? (
-        <div className="space-y-5 rounded-lg border border-abb-line bg-white p-4">
-          <CampoTexto
-            id="email-montador"
-            rotulo="Seu e-mail"
-            valor={email}
-            onChange={setEmail}
-            placeholder="montador@empresa.com.br"
-            ajuda="Identifica você no pedido enviado ao responsável."
-            obrigatorio
-            autoFoco
-          />
-
+      <div className="space-y-4 rounded-lg border border-abb-line bg-white p-4">
+        <dl className="space-y-2 text-base">
           <div>
-            <p className="mb-1 text-base font-semibold">
-              Painel que você vai montar<span className="text-abb-red"> *</span>
-            </p>
-            <div className="space-y-2">
-              {paineis.map((p) => {
-                const escolhido = p.id === painelId;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setPainelId(p.id)}
-                    aria-pressed={escolhido}
-                    className={[
-                      'flex min-h-12 w-full items-center justify-between gap-3 rounded-md border-2 px-4 py-3 text-left',
-                      escolhido
-                        ? 'border-abb-red bg-red-50'
-                        : 'border-abb-line bg-white hover:bg-neutral-50',
-                    ].join(' ')}
-                  >
-                    <span>
-                      <span className="block text-base font-semibold">{p.nome}</span>
-                      <span className="block text-sm text-abb-gray">
-                        Responsável: {p.responsavelEmail}
-                      </span>
-                    </span>
-                    {escolhido ? <IconeCheck className="h-6 w-6 text-abb-red" /> : null}
-                  </button>
-                );
-              })}
-            </div>
+            <dt className="text-sm font-semibold text-abb-gray">Montador</dt>
+            <dd className="break-all">{email}</dd>
           </div>
-
-          <Botao variante="primario" larguraTotal onClick={solicitar} disabled={ocupado}>
-            Solicitar aprovação por e-mail
-          </Botao>
-        </div>
-      ) : (
-        <div className="space-y-4 rounded-lg border border-abb-line bg-white p-4">
-          <div className="text-base">
-            <p className="font-semibold">Pedido registrado</p>
-            <p className="text-abb-gray">
-              {normalizarEmail(email)} — {painel?.nome ?? painelId}
-            </p>
+          <div>
+            <dt className="text-sm font-semibold text-abb-gray">Responsável pelo painel</dt>
+            <dd className="break-all">{responsavel}</dd>
           </div>
+        </dl>
 
-          <Aviso>
-            O responsável ({painel?.responsavelEmail}) recebe o link de aprovação e devolve um
-            código. Digite esse código abaixo para liberar a montagem neste aparelho.
-          </Aviso>
+        <Botao variante="primario" larguraTotal onClick={solicitar} disabled={ocupado}>
+          {pedido ? 'Reenviar pedido por e-mail' : 'Solicitar aprovação por e-mail'}
+        </Botao>
 
-          {painel ? (
-            <div className="space-y-2">
-              <Botao larguraTotal onClick={() => abrirEmail(catalogo, painel)}>
-                Reenviar pedido por e-mail
-              </Botao>
-              <details className="text-sm text-abb-gray">
-                <summary className="min-h-8 cursor-pointer">
-                  O aplicativo de e-mail não abriu?
-                </summary>
-                <p className="mt-2 break-all">
-                  Envie manualmente para <strong>{painel.responsavelEmail}</strong> este link:
-                  <br />
-                  {linkDeAprovacao(catalogo, email, painel.id)}
-                </p>
-              </details>
-            </div>
-          ) : null}
+        <details className="text-sm text-abb-gray">
+          <summary className="min-h-8 cursor-pointer">O aplicativo de e-mail não abriu?</summary>
+          <p className="mt-2 break-all">
+            Envie manualmente para <strong>{responsavel}</strong> este link:
+            <br />
+            {linkDeAprovacao(email, painel.id)}
+          </p>
+        </details>
+      </div>
 
-          <CampoTexto
-            id="codigo-aprovacao"
-            rotulo="Código de aprovação"
-            valor={codigo}
-            onChange={setCodigo}
-            placeholder="XXXX-XXXX"
-            ajuda="Informado pelo responsável depois de aprovar o pedido."
-          />
-          <Botao
-            variante="primario"
-            larguraTotal
-            onClick={liberar}
-            disabled={ocupado || codigo.trim().length < 8}
-          >
-            Liberar acesso à montagem
-          </Botao>
+      <div className="space-y-3 rounded-lg border border-abb-line bg-white p-4">
+        <Aviso>
+          O responsável abre o link, lê o código e devolve a você. Digite-o abaixo para
+          liberar este painel no aparelho.
+        </Aviso>
 
-          <Botao variante="texto" larguraTotal onClick={trocarPedido}>
-            Trocar e-mail ou painel
-          </Botao>
-        </div>
-      )}
+        <CampoTexto
+          id="codigo-aprovacao"
+          rotulo="Código de aprovação"
+          valor={codigo}
+          onChange={setCodigo}
+          placeholder="XXXX-XXXX"
+        />
+        <Botao
+          variante="primario"
+          larguraTotal
+          onClick={liberar}
+          disabled={ocupado || codigo.trim().length < 8}
+        >
+          Liberar acesso
+        </Botao>
+      </div>
+
+      <Botao
+        variante="texto"
+        larguraTotal
+        onClick={() => {
+          trocarPainel();
+          navegar('/', { replace: true });
+        }}
+      >
+        Escolher outro painel
+      </Botao>
     </div>
   );
 }

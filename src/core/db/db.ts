@@ -9,7 +9,7 @@ import type {
   Solicitacao,
   Tag,
 } from './tipos';
-import type { AcessoMontagem, SessaoMontador } from '../access/tipos';
+import type { AcessoMontagem } from '../access/tipos';
 
 /**
  * Base local do dispositivo. Nenhum componente de tela importa este módulo

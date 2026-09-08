@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SENHA_ADMIN } from '../../core/config';
 import { formulariosAtivos } from '../../core/forms/catalogo';
-import { administraPainel } from '../../core/auth/acesso';
 import { useSessao } from '../auth/SessaoContexto';
 import type { EntradaCatalogo } from '../../core/forms/tipos';
 import { EditorFormulario } from './EditorFormulario';
@@ -13,7 +12,7 @@ import { Erro, Carregando, Vazio } from '../../shared/componentes/Estado';
 const CHAVE_SESSAO = 'admin-liberado';
 
 export function Admin() {
-  const { email, acessos, painel } = useSessao();
+  const { email, painel, administra } = useSessao();
   const [liberado, setLiberado] = useState(
     () => sessionStorage.getItem(CHAVE_SESSAO) === '1',
   );
@@ -25,18 +24,17 @@ export function Admin() {
 
   useEffect(() => {
     if (!liberado) return;
+    // Só os formulários do painel ativo, e só para quem o administra.
     formulariosAtivos()
       .then((todas) =>
         setEntradas(
-          todas.filter(
-            (e) => e.linhaProduto === painel && administraPainel(acessos, e.id),
-          ),
+          administra && painel ? todas.filter((e) => painel.formularios.includes(e.id)) : [],
         ),
       )
       .catch((e: unknown) =>
         setErro(e instanceof Error ? e.message : 'Falha ao ler o catálogo.'),
       );
-  }, [liberado, acessos, painel]);
+  }, [liberado, administra, painel]);
 
   if (!liberado) {
     return (
@@ -119,13 +117,14 @@ export function Admin() {
       {aba === 'formularios' ? (
         <>
       <p className="text-base text-abb-gray">
-        Formulários do painel <span className="font-semibold text-abb-black">{painel}</span>{' '}
+        Formulários do painel{' '}
+        <span className="font-semibold text-abb-black">{painel?.nome}</span>{' '}
         que <span className="font-semibold text-abb-black">{email}</span> administra.
         Escolha um para editar textos, ativar ou desativar etapas, reordenar e
         trocar o conteúdo de apoio.
       </p>
       {entradas.length === 0 ? (
-        <Vazio titulo={`Nenhum formulário do painel ${painel} sob sua administração`}>
+        <Vazio titulo={`Nenhum formulário do painel ${painel?.nome ?? ''} sob sua administração`}>
           Só o administrador de um painel edita os formulários dele.
         </Vazio>
       ) : null}

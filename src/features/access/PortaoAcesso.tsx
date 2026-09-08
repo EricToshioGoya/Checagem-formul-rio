@@ -1,23 +1,23 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { AcessoRepository } from '../../core/db/repositorios';
+import { Navigate, Outlet, useParams } from 'react-router-dom';
+import { useSessao } from '../auth/SessaoContexto';
 import { Carregando } from '../../shared/componentes/Estado';
 
 /**
- * Bloqueia a montagem enquanto o montador identificado no aparelho não tiver
- * aprovação do responsável para o painel escolhido.
+ * Bloqueia as telas do painel enquanto o responsável não aprovar o montador.
+ *
+ * As rotas do fluxo carregam o painel na URL (`/paineis/:tipoPainel/...`);
+ * quando ela discorda do painel em sessão, a sessão é quem vale — abrir a URL
+ * de outro painel não contorna a aprovação.
  */
 export function PortaoAcesso() {
-  const local = useLocation();
-  const estado = useLiveQuery(async () => {
-    const sessao = await AcessoRepository.sessaoAtual();
-    if (!sessao) return { liberado: false };
-    return { liberado: await AcessoRepository.estaAprovado(sessao.email, sessao.painelId) };
-  }, []);
+  const { tipoPainel } = useParams();
+  const { painel, aprovado, carregando } = useSessao();
 
-  if (estado === undefined) return <Carregando mensagem="Verificando acesso…" />;
-  if (!estado.liberado) {
-    return <Navigate to="/acesso" replace state={{ de: local.pathname }} />;
+  if (carregando) return <Carregando mensagem="Verificando acesso…" />;
+  if (!painel) return <Navigate to="/" replace />;
+  if (!aprovado) return <Navigate to="/acesso" replace />;
+  if (tipoPainel && tipoPainel !== painel.id) {
+    return <Navigate to="/" replace />;
   }
   return <Outlet />;
 }

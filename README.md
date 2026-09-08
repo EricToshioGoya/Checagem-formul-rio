@@ -3,7 +3,11 @@
 Aplicação para o montador do parceiro de painel certificado registrar, durante a
 montagem, as verificações exigidas pelos protocolos ABB.
 
-A primeira tela é a **escolha do tipo de painel**, e é ela que decide o fluxo:
+O acesso tem três passos: o montador entra com o e-mail, escolhe o painel e
+espera a aprovação do responsável por aquele painel. Só então o fluxo abre —
+ver [Acesso: e-mail, painel e aprovação](#acesso-e-mail-painel-e-aprovação).
+
+Escolhido o painel, é ele que decide o fluxo:
 
 | Painel | Fluxo | Resultado |
 |---|---|---|
@@ -14,6 +18,7 @@ Implementa a especificação técnica v1.0 (02/09/2026) e a extensão de
 certificação (04/09/2026).
 
 - **Sem backend.** A saída do build é um diretório estático.
+- **Acesso mediante aprovação** do responsável pelo painel, sem servidor.
 - **Offline integral** após o primeiro carregamento (PWA com service worker).
 - **Dados só no aparelho** (IndexedDB via Dexie). Ver [Limitação conhecida](#limitação-conhecida--sem-sincronização).
 
@@ -132,6 +137,8 @@ public/
 src/
   app/                    rotas, layout, shell da PWA
   core/
+    access/               código de aprovação de acesso ao painel
+    auth/                 e-mail em sessão, administradores e responsáveis
     db/                   Dexie: schema e repositórios
     forms/                motor: schema Zod, catálogo, progresso
     paineis/              catálogo dos tipos de painel
@@ -171,6 +178,7 @@ diálogo de geração.
 | Novo tipo de campo | Implementar o componente e registrá-lo em `src/features/fill/campos/registro.tsx`. |
 | Novo destino de exportação | Implementar `ExportTarget` (`src/core/export/ExportTarget.ts`). `PdfExport` é a implementação da v1. |
 | Trocar a persistência | Todo acesso ao Dexie passa pelos repositórios e, na certificação, por `SolicitacaoStore`. Nenhuma tela importa Dexie. |
+| Responsável ou administrador de um painel | Editar `public/paineis/index.json`. Nenhuma alteração de código. |
 | Servidor no lugar do local | Trocar o que `src/core/certificacao/index.ts` aponta em `solicitacaoStore` e `servicoValidacao`. Nenhuma tela muda. |
 | Conteúdo de apoio | Trocar o arquivo em `public/media`. O caminho fica no JSON. |
 
@@ -185,7 +193,13 @@ formulariosCustom: id, atualizadoEm
 solicitacoes:      ++id, tipoPainel, estado, numeroCertificado, criadoEm, atualizadoEm
 certificados:      ++id, &numero, solicitacaoId, tipoPainel, emitidoEm
 contadores:        id
+acessos:           ++id, email, painelId, [email+painelId]
 ```
+
+`acessos` guarda a permissão de montagem: um registro por par *e-mail +
+painel*, com `aprovadoEm` nulo enquanto o responsável não aprova. O e-mail em
+sessão e o painel ativo ficam no `localStorage` (`core/auth/sessao`), não no
+Dexie: são escolha de tela, não dado de trabalho.
 
 Fotos são gravadas como **Blob**, nunca base64. `respostas` é um mapa
 `etapaId → { valor, observacao }`. Excluir um projeto, uma TAG ou uma
@@ -247,6 +261,83 @@ declaradas no JSON e não mudam nada em quem não as usa:
 - `fotoObrigatoria: true` — a etapa só conta como respondida com pelo menos um
   arquivo anexado. É o que torna as evidências fotográficas exigidas pelo Anexo 2
   bloqueantes para o envio.
+
+## Acesso: e-mail, painel e aprovação
+
+```
+login por e-mail  →  escolha do painel  →  aprovação do responsável  →  fluxo do painel
+```
+
+Nenhuma tela de trabalho é montada antes dos três passos — inclusive o
+preenchimento aberto por URL direta. `/aprovar` é a única exceção: é a tela que
+o responsável abre a partir do e-mail, e ela não concede acesso a nada.
+
+1. **Login** — o montador informa o e-mail. Não é autenticação (não há
+   servidor): é a identificação que o pedido leva ao responsável.
+2. **Escolha do painel** — os painéis do catálogo aparecem marcados como
+   **Liberado** ou **Requer aprovação**. Escolher um painel ainda não liberado
+   leva ao pedido.
+3. **Pedido** — o aplicativo abre o cliente de e-mail com a mensagem pronta
+   para o responsável do painel (`responsavelMontagem` no catálogo).
+4. **Aprovação** — o responsável abre o link do e-mail
+   (`#/aprovar?email=…&painel=…`), vê o **código de aprovação** e o repassa ao
+   montador; um botão já monta o e-mail de resposta.
+5. **Liberação** — o montador digita o código. A liberação é **permanente** por
+   par *e-mail + painel*, naquele aparelho.
+
+A liberação é por painel: quem foi aprovado no SEN Plus continua precisando de
+aprovação para o System pro E Power. Outro e-mail no mesmo aparelho também
+começa do zero.
+
+### Por que um código, e não um link que aprova sozinho
+
+Não há servidor: o aparelho do montador não tem como saber, por conta própria,
+que o responsável aprovou. O código resolve isso sem rede — é derivado de
+`e-mail + painel + segredo do build` (SHA-256), de modo que o aparelho do
+responsável, rodando o mesmo build, calcula exatamente o mesmo valor. O e-mail
+enviado pelo montador leva **apenas o link**; o código nunca passa por ele.
+
+Consequências assumidas nesta versão:
+
+- O código não expira e é sempre o mesmo para aquele par e-mail + painel. Quem
+  o tiver acessa o painel.
+- Aprovar não fica registrado no aparelho do responsável — a tela `/aprovar`
+  só exibe o código, não grava nada.
+- A liberação vale para o aparelho onde o código foi digitado. Outro aparelho
+  exige novo pedido.
+- Trocar `VITE_SEGREDO_APROVACAO` invalida os códigos já distribuídos.
+
+Não é barreira criptográfica: o segredo viaja no pacote JavaScript, e quem
+inspecionar o build consegue gerar códigos. O controle organiza e registra a
+autorização. Barreira real exige servidor, prevista junto com a sincronização.
+
+### Configuração
+
+Cada painel do catálogo (`public/paineis/index.json`) declara quem aprova o
+acesso e quem administra os formulários:
+
+```json
+{
+  "id": "sen-plus",
+  "nome": "SEN Plus",
+  "responsavelMontagem": "ericg10456@gmail.com",
+  "administradores": ["ericg10456@gmail.com"]
+}
+```
+
+| Campo | Sem valor no catálogo | Onde muda no build |
+|---|---|---|
+| `responsavelMontagem` | vale `RESPONSAVEL_MONTAGEM_PADRAO` | `VITE_RESPONSAVEL_MONTAGEM` |
+| `administradores` | vale `ADMIN_PADRAO` | `VITE_ADMIN_PADRAO` |
+| segredo do código | `abb-montagem-2026` | `VITE_SEGREDO_APROVACAO` |
+
+**Para teste, os quatro painéis estão com `ericg10456@gmail.com` como
+responsável.** O link de aprovação usa o endereço em que o aplicativo está
+aberto: na modalidade portátil ele sai como `http://localhost:8080` e não serve
+ao responsável — publique a modalidade hospedada para usar a aprovação por
+e-mail.
+
+---
 
 ## Fluxo de certificação
 
@@ -380,6 +471,8 @@ persistência já está atrás dos repositórios para que a troca não afete as 
 | Imagens de referência das 38 etapas | Ainda não recortadas. Os caminhos já estão no JSON; a lista completa está em `public/media/sen-plus/LEIA-ME.md`. Enquanto o arquivo não existir, o modal de ajuda mostra um aviso com o caminho esperado, sem quebrar a tela. |
 | Redação exata das etapas | Conferir contra o documento original. S1.1, S1.3, S2.2 e S2.6 estão marcadas com `pendenteTranscricao`. |
 | Senha da administração | Provisória (`abb-admin`). Trocar antes de publicar — agora protege também a aprovação de certificados. |
+| Segredo do código de aprovação | Provisório (`abb-montagem-2026`). Trocar antes de publicar. |
+| Responsáveis pela liberação de acesso | Os 4 painéis estão com `ericg10456@gmail.com` para teste. Substituir pelos responsáveis reais em `public/paineis/index.json`. |
 | E-mails dos responsáveis ABB | `taina.gioia@br.abb.com` e `carlos.e.silva@br.abb.com`, reconstruídos do PDF do Anexo 2 (o OCR do arquivo suprime pontos). Conferir antes de publicar; ficam em `public/paineis/index.json`. |
 | Imagens de apoio dos ensaios de rotina | O checklist da NBR IEC 61439 ainda não tem `midiaApoio`. Os textos de orientação estão em `detalhes`; as imagens entram no JSON quando existirem. |
 
@@ -391,7 +484,8 @@ Sem julgamento de conformidade no sistema (não existem estados “OK” e “N�
 a etapa é respondida ou fica em branco); sem estado “não aplicável”; PDF sempre
 gerável; ordem de preenchimento livre; operador e data informados uma vez e
 replicados em todas as etapas; dados exclusivamente no aparelho; sem
-autenticação; sem marca d'água nas fotos; sem trilha de auditoria além da data
+autenticação de usuário (o acesso é autorização por painel, não login); sem
+marca d'água nas fotos; sem trilha de auditoria além da data
 da última alteração.
 
 Da extensão de certificação: o comportamento do SEN Plus não mudou — os novos

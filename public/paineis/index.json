@@ -77,6 +77,7 @@
   "paineis": [
     {
       "id": "sen-plus",
+      "responsavelMontagem": "ericg10456@gmail.com",
       "nome": "SEN Plus",
       "descricao": "Verificação de montagem e ensaios de rotina, com dossiê em PDF enviado ao inspetor.",
       "fluxo": "verificacao",
@@ -85,6 +86,7 @@
     },
     {
       "id": "spee",
+      "responsavelMontagem": "ericg10456@gmail.com",
       "nome": "System pro E Energy",
       "descricao": "Solicitação de emissão de certificado de produto conforme NBR IEC 61439.",
       "fluxo": "certificacao",
@@ -101,6 +103,7 @@
     },
     {
       "id": "spep",
+      "responsavelMontagem": "ericg10456@gmail.com",
       "nome": "System pro E Power",
       "descricao": "Solicitação de emissão de certificado de produto conforme NBR IEC 61439.",
       "fluxo": "certificacao",
@@ -117,6 +120,7 @@
     },
     {
       "id": "safr",
+      "responsavelMontagem": "ericg10456@gmail.com",
       "nome": "SAFR",
       "descricao": "Solicitação de emissão de certificado de produto conforme NBR IEC 61439.",
       "fluxo": "certificacao",

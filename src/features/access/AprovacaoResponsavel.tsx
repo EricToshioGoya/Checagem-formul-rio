@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { carregarPaineis } from '../../core/access/paineis';
-import { formatarCodigo, gerarCodigo, normalizarEmail } from '../../core/access/codigo';
-import type { Painel } from '../../core/access/tipos';
+import { obterPainel } from '../../core/paineis/catalogo';
+import { formatarCodigo, gerarCodigo } from '../../core/access/codigo';
+import { normalizarEmail, responsavelDoPainel } from '../../core/auth/acesso';
+import type { Painel } from '../../core/paineis/tipos';
 import { Botao } from '../../shared/componentes/Botao';
 import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
 
@@ -28,12 +29,7 @@ export function AprovacaoResponsavel() {
     }
     (async () => {
       try {
-        const catalogo = await carregarPaineis();
-        const encontrado = catalogo.paineis.find((p) => p.id === painelId);
-        if (!encontrado) {
-          setErro(`Painel "${painelId}" não existe no catálogo desta versão.`);
-          return;
-        }
+        const encontrado = await obterPainel(painelId);
         setPainel(encontrado);
         setCodigo(await gerarCodigo(email, encontrado.id));
       } catch (e) {
@@ -75,7 +71,7 @@ export function AprovacaoResponsavel() {
   return (
     <div className="mx-auto max-w-xl space-y-5">
       <div>
-        <h1 className="text-2xl font-bold">Pedido de acesso à montagem</h1>
+        <h1 className="text-2xl font-bold">Pedido de acesso ao painel</h1>
         <p className="mt-1 text-base text-abb-gray">
           Confira os dados antes de repassar o código.
         </p>
@@ -92,7 +88,7 @@ export function AprovacaoResponsavel() {
         </div>
         <div>
           <dt className="text-sm font-semibold text-abb-gray">Responsável</dt>
-          <dd className="break-all">{painel.responsavelEmail}</dd>
+          <dd className="break-all">{responsavelDoPainel(painel)}</dd>
         </div>
       </dl>
 
@@ -114,7 +110,7 @@ export function AprovacaoResponsavel() {
 
       <Aviso>
         O código vale só para este e-mail e este painel, e não expira. Repasse-o apenas se
-        reconhecer o montador — quem tiver o código monta o painel.
+        reconhecer o montador — quem tiver o código acessa o painel.
       </Aviso>
     </div>
   );

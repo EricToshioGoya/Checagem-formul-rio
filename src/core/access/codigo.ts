@@ -1,4 +1,5 @@
 import { SEGREDO_APROVACAO } from '../config';
+import { normalizarEmail } from '../auth/acesso';
 
 /**
  * Código de aprovação.
@@ -17,10 +18,6 @@ import { SEGREDO_APROVACAO } from '../config';
 // Sem 0/O/1/I: o código é lido em voz alta e digitado com luva.
 const ALFABETO = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 const TAMANHO = 8;
-
-export function normalizarEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
 
 /** Aceita espaços, hífens e minúsculas na digitação do montador. */
 export function normalizarCodigo(codigo: string): string {

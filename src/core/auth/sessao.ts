@@ -1,9 +1,10 @@
 /**
  * Sessão do usuário no aparelho.
  *
- * Não há backend: o login confere o e-mail contra a lista de acesso de cada
- * painel (ver `acesso.ts`) e guarda apenas o e-mail aceito, para que o montador
- * não precise digitar de novo a cada abertura — inclusive offline.
+ * Não há backend: o login apenas identifica o montador pelo e-mail e guarda a
+ * escolha, para que ele não precise digitar de novo a cada abertura —
+ * inclusive offline. Quem libera a montagem é o responsável pelo painel, pela
+ * aprovação registrada em `core/access`.
  */
 const CHAVE = 'sessao-usuario';
 const CHAVE_PAINEL = 'painel-ativo';
@@ -43,7 +44,7 @@ export function limparSessao(): void {
   }
 }
 
-/** Painel (linha de produto) escolhido depois do login. */
+/** Id do painel escolhido depois do login. */
 export function lerPainel(): string | null {
   try {
     return localStorage.getItem(CHAVE_PAINEL) || null;
@@ -52,9 +53,9 @@ export function lerPainel(): string | null {
   }
 }
 
-export function gravarPainel(painel: string): void {
+export function gravarPainel(painelId: string): void {
   try {
-    localStorage.setItem(CHAVE_PAINEL, painel);
+    localStorage.setItem(CHAVE_PAINEL, painelId);
   } catch {
     // Armazenamento bloqueado: a escolha vale só nesta aba.
   }
