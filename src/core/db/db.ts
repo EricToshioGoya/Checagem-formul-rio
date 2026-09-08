@@ -4,6 +4,7 @@ import type {
   Contador,
   FormularioCustomizado,
   Midia,
+  PermissaoCustomizada,
   Preenchimento,
   Projeto,
   Solicitacao,
@@ -24,6 +25,7 @@ class BancoVerificacao extends Dexie {
   solicitacoes!: Table<Solicitacao, number>;
   certificados!: Table<Certificado, number>;
   contadores!: Table<Contador, string>;
+  permissoes!: Table<PermissaoCustomizada, string>;
 
   constructor() {
     super('verificacao-montagem');
@@ -54,6 +56,9 @@ class BancoVerificacao extends Dexie {
     // v3 — a ferramenta deixou de ter login e aprovação de acesso. A tabela
     // sai do banco, e com ela os e-mails que ficavam gravados no aparelho.
     this.version(3).stores({ acessos: null });
+
+    // v4 — permissões de uso por painel, editáveis na aba de administração.
+    this.version(4).stores({ permissoes: 'painelId, atualizadoEm' });
   }
 }
 

@@ -6,7 +6,14 @@ import {
   validarDefinicao,
 } from '../../core/forms/catalogo';
 import { FormularioRepository } from '../../core/db/repositorios';
-import type { DefinicaoFormulario, Etapa, MidiaApoio } from '../../core/forms/tipos';
+import { tiposResposta } from '../../core/forms/schema';
+import type {
+  DefinicaoFormulario,
+  Etapa,
+  MidiaApoio,
+  Secao,
+  TipoResposta,
+} from '../../core/forms/tipos';
 import { baixarBlob } from '../../shared/utils/download';
 import { Botao } from '../../shared/componentes/Botao';
 import { CampoSelecao, CampoTexto } from '../../shared/componentes/Campos';
@@ -21,12 +28,76 @@ interface Props {
 
 type Estado = 'ocioso' | 'salvando' | 'salvo';
 
+/** Remoção pendente de confirmação. */
+type Remocao =
+  | { tipo: 'secao'; secaoId: string }
+  | { tipo: 'etapa'; secaoId: string; etapaId: string };
+
+/**
+ * Id novo que não colide com nenhum existente. A resposta gravada é indexada
+ * pelo id da etapa: reaproveitar um id colaria a resposta antiga na pergunta
+ * nova.
+ */
+function idLivre(usados: Set<string>, prefixo: string): string {
+  for (let n = usados.size + 1; ; n += 1) {
+    const candidato = `${prefixo}${n}`;
+    if (!usados.has(candidato)) return candidato;
+  }
+}
+
+/**
+ * Troca de tipo de resposta sem deixar a etapa inconsistente: seleção precisa
+ * de opções e grade precisa de linhas e colunas para ser renderizada.
+ */
+function ajustarAoTipo(etapa: Etapa, tipoResposta: TipoResposta): Partial<Etapa> {
+  const mudanca: Partial<Etapa> = { tipoResposta };
+  if (tipoResposta === 'selecao' && !etapa.opcoes?.length) {
+    mudanca.opcoes = ['Sim', 'Não'];
+  }
+  if (tipoResposta === 'grade_numerica' && !etapa.grade) {
+    mudanca.grade = {
+      linhas: [{ id: 'linha-1', rotulo: 'Linha 1' }],
+      colunas: [{ id: 'coluna-1', rotulo: 'Valor medido' }],
+    };
+  }
+  return mudanca;
+}
+
+type Grade = NonNullable<Etapa['grade']>;
+
+function paraId(rotulo: string, indice: number): string {
+  const limpo = rotulo
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return limpo || `item-${indice + 1}`;
+}
+
+const emLinhas = (texto: string) =>
+  texto.split('\n').map((l) => l.trim()).filter(Boolean);
+
+const lerLinhasGrade = (texto: string): Grade['linhas'] =>
+  emLinhas(texto).map((rotulo, i) => ({ id: paraId(rotulo, i), rotulo }));
+
+/** `Rótulo|unidade` por linha, que é como a grade é editada em texto. */
+const lerColunasGrade = (texto: string): Grade['colunas'] =>
+  emLinhas(texto).map((linha, i) => {
+    const [rotulo, unidade] = linha.split('|').map((parte) => parte.trim());
+    return { id: paraId(rotulo, i), rotulo, ...(unidade ? { unidade } : {}) };
+  });
+
+const escreverColunasGrade = (colunas: Grade['colunas']) =>
+  colunas.map((c) => (c.unidade ? `${c.rotulo}|${c.unidade}` : c.rotulo)).join('\n');
+
 export function EditorFormulario({ formId, onVoltar }: Props) {
   const [definicao, setDefinicao] = useState<DefinicaoFormulario | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [estado, setEstado] = useState<Estado>('ocioso');
   const [secaoAberta, setSecaoAberta] = useState<string | null>(null);
   const [confirmarRestauro, setConfirmarRestauro] = useState(false);
+  const [remocao, setRemocao] = useState<Remocao | null>(null);
   const entradaArquivo = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -103,6 +174,83 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
     alterarEtapa(secaoId, etapaId, { midiaApoio: midias });
   };
 
+  const alterarSecao = (secaoId: string, mudanca: Partial<Secao>) => {
+    if (!definicao) return;
+    void gravar({
+      ...definicao,
+      secoes: definicao.secoes.map((s) => (s.id === secaoId ? { ...s, ...mudanca } : s)),
+    });
+  };
+
+  const idsUsados = (d: DefinicaoFormulario) =>
+    new Set(d.secoes.flatMap((s) => [s.id, ...s.etapas.map((e) => e.id)]));
+
+  const etapaNova = (secaoId: string, usados: Set<string>): Etapa => ({
+    id: idLivre(usados, `${secaoId}.`),
+    descricao: 'Nova pergunta',
+    tipoResposta: 'check',
+    observacao: true,
+    ativa: true,
+    fotoObrigatoria: false,
+    midiaApoio: [],
+  });
+
+  const adicionarEtapa = (secaoId: string) => {
+    if (!definicao) return;
+    const nova = etapaNova(secaoId, idsUsados(definicao));
+    void gravar({
+      ...definicao,
+      secoes: definicao.secoes.map((s) =>
+        s.id === secaoId ? { ...s, etapas: [...s.etapas, nova] } : s,
+      ),
+    });
+  };
+
+  const removerEtapa = (secaoId: string, etapaId: string) => {
+    if (!definicao) return;
+    const secao = definicao.secoes.find((s) => s.id === secaoId);
+    if (secao && secao.etapas.length === 1) {
+      setErro(
+        'Uma seção precisa de pelo menos uma pergunta. Remova a seção inteira, ou ' +
+          'acrescente outra pergunta antes de remover esta.',
+      );
+      return;
+    }
+    void gravar({
+      ...definicao,
+      secoes: definicao.secoes.map((s) =>
+        s.id !== secaoId ? s : { ...s, etapas: s.etapas.filter((e) => e.id !== etapaId) },
+      ),
+    });
+  };
+
+  const adicionarSecao = () => {
+    if (!definicao) return;
+    const usados = idsUsados(definicao);
+    const id = idLivre(usados, 'S');
+    usados.add(id);
+    void gravar({
+      ...definicao,
+      secoes: [
+        ...definicao.secoes,
+        { id, titulo: 'Nova seção', etapas: [etapaNova(id, usados)] },
+      ],
+    });
+    setSecaoAberta(id);
+  };
+
+  const removerSecao = (secaoId: string) => {
+    if (!definicao) return;
+    if (definicao.secoes.length === 1) {
+      setErro('O formulário precisa de pelo menos uma seção.');
+      return;
+    }
+    void gravar({
+      ...definicao,
+      secoes: definicao.secoes.filter((s) => s.id !== secaoId),
+    });
+  };
+
   const importar = async (arquivo: File) => {
     try {
       const texto = await arquivo.text();
@@ -173,6 +321,12 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
         e substitua o arquivo em <code>/public/forms</code> na próxima publicação.
       </Aviso>
 
+      <Aviso>
+        Remover uma pergunta, ou trocar o tipo de resposta dela, não apaga o que já foi
+        preenchido: a resposta antiga fica órfã nos registros existentes. Em formulário
+        já em uso, prefira desativar a pergunta a removê-la.
+      </Aviso>
+
       {definicao.secoes.map((secao) => {
         const aberta = secaoAberta === secao.id;
         return (
@@ -193,6 +347,33 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
 
             {aberta ? (
               <div className="space-y-4 border-t border-abb-line p-4">
+                <div className="space-y-3 rounded-md border border-dashed border-abb-line p-3">
+                  <CampoTexto
+                    rotulo="Título da seção"
+                    valor={secao.titulo}
+                    onChange={(v) => alterarSecao(secao.id, { titulo: v })}
+                  />
+                  <CampoTexto
+                    rotulo="Descrição da seção"
+                    multilinha
+                    valor={secao.descricao ?? ''}
+                    onChange={(v) =>
+                      alterarSecao(secao.id, { descricao: v.trim() || undefined })
+                    }
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Botao variante="primario" onClick={() => adicionarEtapa(secao.id)}>
+                      Adicionar pergunta
+                    </Botao>
+                    <Botao
+                      variante="perigo"
+                      onClick={() => setRemocao({ tipo: 'secao', secaoId: secao.id })}
+                    >
+                      Remover seção
+                    </Botao>
+                  </div>
+                </div>
+
                 {secao.etapas.map((etapa, indice) => (
                   <article
                     key={etapa.id}
@@ -228,6 +409,14 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
                         >
                           {etapa.ativa === false ? 'Ativar' : 'Desativar'}
                         </Botao>
+                        <Botao
+                          variante="perigo"
+                          onClick={() =>
+                            setRemocao({ tipo: 'etapa', secaoId: secao.id, etapaId: etapa.id })
+                          }
+                        >
+                          Remover
+                        </Botao>
                       </div>
                     </div>
 
@@ -248,6 +437,111 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
                         })
                       }
                     />
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <CampoSelecao
+                        rotulo="Tipo de resposta"
+                        valor={etapa.tipoResposta}
+                        opcoes={[...tiposResposta]}
+                        onChange={(v) =>
+                          alterarEtapa(
+                            secao.id,
+                            etapa.id,
+                            ajustarAoTipo(etapa, v as TipoResposta),
+                          )
+                        }
+                      />
+                      <CampoTexto
+                        rotulo="Referência (norma, documento)"
+                        valor={etapa.referencia ?? ''}
+                        onChange={(v) =>
+                          alterarEtapa(secao.id, etapa.id, {
+                            referencia: v.trim() || undefined,
+                          })
+                        }
+                      />
+                    </div>
+
+                    {etapa.tipoResposta === 'selecao' ? (
+                      <CampoTexto
+                        rotulo="Opções (uma por linha)"
+                        multilinha
+                        valor={(etapa.opcoes ?? []).join('\n')}
+                        onChange={(v) =>
+                          alterarEtapa(secao.id, etapa.id, {
+                            opcoes: v.split('\n').map((o) => o.trim()).filter(Boolean),
+                          })
+                        }
+                      />
+                    ) : null}
+
+                    {etapa.tipoResposta === 'numero' ? (
+                      <CampoTexto
+                        rotulo="Unidade"
+                        valor={etapa.unidade ?? ''}
+                        placeholder="A, kA, V, N·m"
+                        onChange={(v) =>
+                          alterarEtapa(secao.id, etapa.id, { unidade: v.trim() || undefined })
+                        }
+                      />
+                    ) : null}
+
+                    {etapa.tipoResposta === 'grade_numerica' && etapa.grade ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <CampoTexto
+                          rotulo="Linhas da grade (uma por linha)"
+                          multilinha
+                          valor={etapa.grade.linhas.map((l) => l.rotulo).join('\n')}
+                          onChange={(v) => {
+                            const linhas = lerLinhasGrade(v);
+                            if (!linhas.length || !etapa.grade) return;
+                            alterarEtapa(secao.id, etapa.id, {
+                              grade: { ...etapa.grade, linhas },
+                            });
+                          }}
+                        />
+                        <CampoTexto
+                          rotulo="Colunas da grade"
+                          multilinha
+                          ajuda="Uma por linha, no formato Rótulo|unidade."
+                          valor={escreverColunasGrade(etapa.grade.colunas)}
+                          onChange={(v) => {
+                            const colunas = lerColunasGrade(v);
+                            if (!colunas.length || !etapa.grade) return;
+                            alterarEtapa(secao.id, etapa.id, {
+                              grade: { ...etapa.grade, colunas },
+                            });
+                          }}
+                        />
+                      </div>
+                    ) : null}
+
+                    <div className="flex flex-wrap gap-4">
+                      <label className="flex min-h-12 items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="h-6 w-6"
+                          checked={etapa.observacao !== false}
+                          onChange={(e) =>
+                            alterarEtapa(secao.id, etapa.id, { observacao: e.target.checked })
+                          }
+                        />
+                        <span className="text-base">Aceita observação</span>
+                      </label>
+                      <label className="flex min-h-12 items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="h-6 w-6"
+                          checked={etapa.fotoObrigatoria === true}
+                          onChange={(e) =>
+                            alterarEtapa(secao.id, etapa.id, {
+                              fotoObrigatoria: e.target.checked,
+                            })
+                          }
+                        />
+                        <span className="text-base">Exige anexo para contar como respondida</span>
+                      </label>
+                    </div>
 
                     <div className="space-y-2">
                       <p className="text-base font-semibold">Conteúdo de apoio</p>
@@ -301,6 +595,27 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
           </section>
         );
       })}
+
+      <Botao variante="primario" larguraTotal onClick={adicionarSecao}>
+        Adicionar seção
+      </Botao>
+
+      <Confirmacao
+        aberto={remocao !== null}
+        titulo={remocao?.tipo === 'secao' ? 'Remover seção' : 'Remover pergunta'}
+        mensagem={
+          remocao?.tipo === 'secao'
+            ? 'A seção e todas as perguntas dela saem do formulário.\n\nRespostas já gravadas para essas perguntas ficam órfãs nos registros existentes.'
+            : 'A pergunta sai do formulário.\n\nRespostas já gravadas para ela ficam órfãs nos registros existentes.'
+        }
+        textoConfirmar="Remover"
+        onCancelar={() => setRemocao(null)}
+        onConfirmar={() => {
+          if (remocao?.tipo === 'secao') removerSecao(remocao.secaoId);
+          if (remocao?.tipo === 'etapa') removerEtapa(remocao.secaoId, remocao.etapaId);
+          setRemocao(null);
+        }}
+      />
 
       <Confirmacao
         aberto={confirmarRestauro}

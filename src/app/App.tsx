@@ -12,12 +12,16 @@ import { DetalheSolicitacao } from '../features/solicitacoes/DetalheSolicitacao'
 import { Preenchimento } from '../features/fill/Preenchimento';
 import { Admin } from '../features/admin/Admin';
 import { PainelProvider, usePainelAtivo } from '../features/paineis/PainelAtivo';
+import { Identificacao } from '../features/paineis/Identificacao';
+import { PortaoPainel } from '../features/paineis/PortaoPainel';
 import { Carregando } from '../shared/componentes/Estado';
 
 /**
- * A ferramenta não tem login nem aprovação: quem abre o endereço usa. O
- * controle de quem pode registrar montagem é organizacional — cada parceiro
- * recebe o endereço do painel que lhe cabe.
+ * A ferramenta não tem login: quem abre o endereço usa. Painéis que pedem
+ * identificação (configurado por painel na aba de administração) exigem nome e
+ * e-mail de uma empresa liberada antes do fluxo — declaração, não
+ * autenticação; a validação técnica da ABB continua sendo a trava do
+ * certificado.
  *
  * A escolha do painel decide o fluxo (verificação ou certificação) e o
  * conjunto de formulários; ela fica gravada no aparelho, então a abertura
@@ -32,24 +36,29 @@ function Rotas() {
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<SelecaoPainel />} />
+        <Route path="/identificacao" element={<Identificacao />} />
         <Route path="/admin" element={<Admin />} />
 
-        <Route path="/paineis/:tipoPainel/projetos" element={<ListaProjetos />} />
-        <Route path="/projetos" element={<ListaProjetos />} />
-        <Route path="/projetos/novo" element={<NovoProjeto />} />
-        <Route path="/paineis/:tipoPainel/projetos/novo" element={<NovoProjeto />} />
-        <Route path="/projetos/:projetoId" element={<DetalheProjeto />} />
+        <Route element={<PortaoPainel />}>
+          <Route path="/paineis/:tipoPainel/projetos" element={<ListaProjetos />} />
+          <Route path="/projetos" element={<ListaProjetos />} />
+          <Route path="/projetos/novo" element={<NovoProjeto />} />
+          <Route path="/paineis/:tipoPainel/projetos/novo" element={<NovoProjeto />} />
+          <Route path="/projetos/:projetoId" element={<DetalheProjeto />} />
 
-        <Route path="/paineis/:tipoPainel/solicitacoes" element={<ListaSolicitacoes />} />
-        <Route path="/paineis/:tipoPainel/solicitacoes/nova" element={<NovaSolicitacao />} />
-        <Route path="/solicitacoes/:solicitacaoId" element={<DetalheSolicitacao />} />
+          <Route path="/paineis/:tipoPainel/solicitacoes" element={<ListaSolicitacoes />} />
+          <Route path="/paineis/:tipoPainel/solicitacoes/nova" element={<NovaSolicitacao />} />
+          <Route path="/solicitacoes/:solicitacaoId" element={<DetalheSolicitacao />} />
+        </Route>
       </Route>
 
-      <Route
-        path="/projetos/:projetoId/tags/:tagId/formularios/:formId"
-        element={<Preenchimento />}
-      />
-      <Route path="/solicitacoes/:solicitacaoId/checklist" element={<Preenchimento />} />
+      <Route element={<PortaoPainel />}>
+        <Route
+          path="/projetos/:projetoId/tags/:tagId/formularios/:formId"
+          element={<Preenchimento />}
+        />
+        <Route path="/solicitacoes/:solicitacaoId/checklist" element={<Preenchimento />} />
+      </Route>
 
       <Route path="*" element={<SelecaoPainel />} />
     </Routes>

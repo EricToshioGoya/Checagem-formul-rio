@@ -192,12 +192,14 @@ tags:              ++id, projetoId, nome, ordem, [projetoId+ordem]
 preenchimentos:    ++id, tagId, solicitacaoId, formId, atualizadoEm, [tagId+formId]
 midias:            ++id, preenchimentoId, etapaId, [preenchimentoId+etapaId]
 formulariosCustom: id, atualizadoEm
+permissoes:        painelId, atualizadoEm
 solicitacoes:      ++id, tipoPainel, estado, numeroCertificado, criadoEm, atualizadoEm
 certificados:      ++id, &numero, solicitacaoId, tipoPainel, emitidoEm
 contadores:        id
 ```
 
-A v3 do banco derruba a tabela `acessos`, que guardava a permissão de montagem
+`permissoes` guarda a configuração de quem pode usar cada painel, editada na
+administração. A v3 do banco derruba a tabela `acessos`, que guardava a permissão de montagem
 enquanto existia login — e, com ela, os e-mails que ficavam gravados no
 aparelho. O painel em uso fica no `localStorage`
 (`core/paineis/preferencia`), não no Dexie: é escolha de tela, não dado de
@@ -266,37 +268,63 @@ declaradas no JSON e não mudam nada em quem não as usa:
 
 ## Quem pode usar
 
-Nenhum controle dentro da ferramenta: **quem abre o endereço usa**. Não há
-login, cadastro, senha de entrada nem aprovação — só a senha de build que
-separa a aba de administração (`VITE_SENHA_ADMIN`).
+Não há login. Cada painel decide, na aba de administração, se exige
+**identificação** e de quais empresas ela é aceita — e essa configuração é
+independente painel a painel.
 
-A separação por painel é de distribuição: cada parceiro recebe o endereço (ou o
-binário) do painel que lhe cabe, e o endereço já abre naquele fluxo:
+- **Painel sem exigência** (o padrão): quem abre o endereço usa.
+- **Painel com exigência**: antes do fluxo, o montador informa nome, e-mail da
+  empresa e a empresa. A ferramenta confere o **domínio do e-mail** contra a
+  lista de empresas liberadas naquele painel. Sem espera e sem código: informou,
+  entrou.
 
+A lista é de **empresas, não de pessoas** — parceiro entra e sai devagar,
+montador entra e sai toda hora. Ninguém precisa cadastrar montador.
+
+```json
+{
+  "paineis": {
+    "sen-plus": {
+      "exigirIdentificacao": true,
+      "dominios": ["parceiro1.com.br", "parceiro2.com.br"]
+    }
+  }
+}
 ```
-#/paineis/sen-plus/projetos        verificação de montagem
-#/paineis/spee/solicitacoes        solicitação de certificação
-```
 
-### Por que não há aprovação aqui
+Lista vazia com identificação exigida aceita qualquer domínio: pede o e-mail,
+mas não restringe a empresa — vira registro, não restrição.
 
-A ferramenta é offline-first e não tem servidor: os dados vivem no aparelho.
-Nesse desenho, aprovar e **revogar** acesso só é possível por rituais manuais —
-o montador pede por e-mail, o responsável devolve um código, o montador digita.
-Foi implementado e descartado: em campo ninguém completa esse caminho, e sem
-servidor a revogação nunca é imediata. O histórico está no PR que trouxe esta
-simplificação.
+### Como liberar e como tirar
 
-Controle de acesso de verdade — lista central, revogação na hora, auditoria —
-exige servidor. Numa conta ABB o caminho natural é login pelo Entra ID com
-acesso por grupo, junto com a sincronização já registrada em
-[Limitação conhecida](#limitação-conhecida--sem-sincronização).
+1. **Liberar uma empresa**: acrescente o domínio na aba *Quem pode usar*.
+2. **Tirar**: remova o domínio. Quem já estava identificado com aquele domínio
+   é devolvido à tela de identificação **na entrada seguinte no fluxo** — a
+   permissão é reconferida a cada entrada, não só na abertura.
+3. **Montador que saiu da empresa**: a própria empresa desliga o e-mail dele.
+   Nada a fazer aqui.
+4. **Distribuir a mudança**: exporte o JSON pela aba e publique-o como
+   `public/paineis/permissoes.json`. Cada aparelho relê o arquivo ao abrir.
+   Sem publicar, a alteração vale só no aparelho onde foi feita.
 
-### Aba de administração
+Precedência: o que a administração gravou no aparelho vence o arquivo
+publicado; sem nenhum dos dois, o painel abre livre.
 
-A senha do build libera a edição dos formulários **do painel em uso**. Ela não
-identifica ninguém: é uma tranca simples para o conteúdo não ser editado por
-engano por quem só preenche.
+### O que isto é, e o que não é
+
+É **declaração, não autenticação**. Barra o uso casual por quem não é do
+parceiro e deixa o registro de quem preencheu. Não barra quem edita o pacote
+JavaScript — o portão roda no navegador, e o segredo de qualquer trava local
+viaja junto com ela.
+
+A trava com consequência é outra, e já existe: **o certificado só é numerado
+depois da validação técnica da ABB**. Mesmo que alguém contorne a entrada, não
+sai documento oficial.
+
+Barreira dura na entrada exige servidor ou login corporativo. Numa conta ABB o
+caminho natural é o Entra ID com acesso por grupo — e é esta mesma
+configuração, por painel, que alimentaria a lista de domínios de lá. Fica
+registrado junto da [limitação de sincronização](#limitação-conhecida--sem-sincronização).
 
 ---
 
@@ -360,22 +388,34 @@ Nenhum texto do certificado está no código: o gerador em
 
 ## Aba de administração
 
-Acesso em **Administração**, no cabeçalho. Duas abas.
+Acesso em **Administração**, no cabeçalho. Três abas.
 
 **Validação ABB** — lista as solicitações enviadas com os dados informados e a
 situação do checklist, e permite aprovar (atribuindo o número do certificado) ou
 devolver com apontamentos. Abaixo, o registro de todas as emissões. Quando o
 preenchimento tiver pendências, elas são exibidas antes da decisão.
 
-**Formulários** — permite, sem programação: editar descrição e detalhes de
-qualquer etapa, ativar e desativar etapas, reordenar etapas dentro de uma seção,
-trocar o conteúdo de apoio, exportar o JSON e importar um JSON com validação e
-mensagem de erro legível.
+**Formulários** — permite, sem programação: criar e remover perguntas, criar e
+remover seções, editar título e descrição da seção, editar descrição e detalhes
+de qualquer pergunta, trocar o **tipo de resposta** (com as opções da seleção e
+as linhas e colunas da grade numérica editáveis ali mesmo), definir a
+referência normativa, exigir anexo, aceitar observação, ativar e desativar,
+reordenar dentro da seção, trocar o conteúdo de apoio, exportar o JSON e
+importar um JSON com validação e mensagem de erro legível.
+
+Remover uma pergunta, ou trocar o tipo de resposta dela, **não** apaga o que já
+foi preenchido: a resposta antiga fica órfã nos registros existentes. Em
+formulário já em uso, desativar é mais seguro que remover — a tela avisa isso.
+
+**Quem pode usar** — a exigência de identificação e a lista de domínios do
+painel em uso (veja [Quem pode usar](#quem-pode-usar)), com exportação e
+importação do `permissoes.json`.
 
 As edições ficam no IndexedDB do aparelho e têm precedência sobre o arquivo
 publicado. Para distribuir uma alteração a todos, exporte o JSON e substitua o
-arquivo em `public/forms` na próxima publicação. O botão **Restaurar original**
-descarta as edições locais.
+arquivo em `public/forms` (ou `public/paineis/permissoes.json`) na próxima
+publicação. Os botões **Restaurar original** e **Restaurar publicada**
+descartam as edições locais.
 
 A senha fica em `src/core/config.ts` (constante `SENHA_ADMIN`) e pode ser
 trocada no build com a variável `VITE_SENHA_ADMIN`:

@@ -4,6 +4,7 @@ import { formulariosAtivos } from '../../core/forms/catalogo';
 import { usePainelAtivo } from '../paineis/PainelAtivo';
 import type { EntradaCatalogo } from '../../core/forms/tipos';
 import { EditorFormulario } from './EditorFormulario';
+import { PermissoesPainel } from './PermissoesPainel';
 import { ValidacaoAbb } from './ValidacaoAbb';
 import { Botao } from '../../shared/componentes/Botao';
 import { CampoTexto } from '../../shared/componentes/Campos';
@@ -20,7 +21,7 @@ export function Admin() {
   const [erro, setErro] = useState<string | null>(null);
   const [entradas, setEntradas] = useState<EntradaCatalogo[] | null>(null);
   const [selecionado, setSelecionado] = useState<string | null>(null);
-  const [aba, setAba] = useState<'validacao' | 'formularios'>('validacao');
+  const [aba, setAba] = useState<'validacao' | 'formularios' | 'acesso'>('validacao');
 
   useEffect(() => {
     if (!liberado) return;
@@ -91,6 +92,7 @@ export function Admin() {
           [
             ['validacao', 'Validação ABB'],
             ['formularios', 'Formulários'],
+            ['acesso', 'Quem pode usar'],
           ] as const
         ).map(([chave, rotulo]) => (
           <button
@@ -112,6 +114,16 @@ export function Admin() {
       </div>
 
       {aba === 'validacao' ? <ValidacaoAbb /> : null}
+
+      {aba === 'acesso' ? (
+        painel ? (
+          <PermissoesPainel painel={painel} />
+        ) : (
+          <Vazio titulo="Nenhum painel em uso">
+            Escolha um painel na tela inicial para configurar quem pode usá-lo.
+          </Vazio>
+        )
+      ) : null}
 
       {aba === 'formularios' ? (
         <>

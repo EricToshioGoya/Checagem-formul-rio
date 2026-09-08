@@ -66,6 +66,13 @@ export interface FormularioCustomizado {
   atualizadoEm: number;
 }
 
+/** Permissões de um painel editadas na aba de administração. */
+export interface PermissaoCustomizada {
+  painelId: string;
+  permissao: unknown;
+  atualizadoEm: number;
+}
+
 /**
  * Ciclo de vida da solicitação de certificação.
  *

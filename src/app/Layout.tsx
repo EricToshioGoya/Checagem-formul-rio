@@ -6,7 +6,7 @@ import { usePainelAtivo } from '../features/paineis/PainelAtivo';
 export function Layout() {
   const { pathname } = useLocation();
   const navegar = useNavigate();
-  const { painel, trocarPainel } = usePainelAtivo();
+  const { painel, identificacao, trocarPainel } = usePainelAtivo();
   const naAdmin = pathname.startsWith('/admin');
 
   return (
@@ -34,6 +34,12 @@ export function Layout() {
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-1.5">
             <p className="min-w-0 truncate text-sm text-abb-gray">
               Painel <span className="font-semibold text-abb-black">{painel.nome}</span>
+              {identificacao ? (
+                <>
+                  {' • '}
+                  <span className="font-semibold text-abb-black">{identificacao.email}</span>
+                </>
+              ) : null}
             </p>
             <button
               type="button"
