@@ -1,26 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import {
-  MidiaRepository,
-  PreenchimentoRepository,
-  ProjetoRepository,
-} from '../../core/db/repositorios';
-import { carregarFormulario } from '../../core/forms/catalogo';
-import { calcularProgresso, etapaRespondida } from '../../core/forms/progresso';
+import { MidiaRepository, PreenchimentoRepository } from '../../core/db/repositorios';
+import { calcularProgresso, etapaRespondida, etapaVisivel } from '../../core/forms/progresso';
 import type {
-  DefinicaoFormulario,
   Etapa,
   MapaRespostas,
   ValorResposta,
   ValoresCabecalho,
 } from '../../core/forms/tipos';
-import type { Projeto, Tag } from '../../core/db/tipos';
+import {
+  contextoDaSolicitacao,
+  contextoDoProjeto,
+  type ContextoPreenchimento,
+} from './contexto';
 import { useSalvamentoAutomatico } from '../../shared/hooks/useSalvamentoAutomatico';
 import { useDesktop } from '../../shared/hooks/useMediaQuery';
 import { Botao } from '../../shared/componentes/Botao';
 import { BarraProgresso } from '../../shared/componentes/BarraProgresso';
-import { Carregando, Erro } from '../../shared/componentes/Estado';
+import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
 import { Modal } from '../../shared/componentes/Modal';
 import { IconeCheck, IconeVoltar } from '../../shared/componentes/Icones';
 import { EtapaCard } from './EtapaCard';
@@ -30,24 +28,18 @@ import { CabecalhoFormulario } from './CabecalhoFormulario';
 const ID_CABECALHO = '__cabecalho__';
 type Filtro = 'todas' | 'respondidas' | 'pendentes';
 
-interface Contexto {
-  projeto: Projeto;
-  tag: Tag;
-  definicao: DefinicaoFormulario;
-  preenchimentoId: number;
-}
-
 export function Preenchimento() {
-  const { projetoId, tagId, formId } = useParams();
+  const { projetoId, tagId, formId, solicitacaoId } = useParams();
   const navegar = useNavigate();
   const desktop = useDesktop();
 
-  const [contexto, setContexto] = useState<Contexto | null>(null);
+  const [contexto, setContexto] = useState<ContextoPreenchimento | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [respostas, setRespostas] = useState<MapaRespostas>({});
   const [cabecalho, setCabecalho] = useState<ValoresCabecalho>({});
   const [filtro, setFiltro] = useState<Filtro>('todas');
   const [selecionada, setSelecionada] = useState<string>(ID_CABECALHO);
+  const temCabecalho = (contexto?.definicao.cabecalho.length ?? 0) > 0;
   const [ajuda, setAjuda] = useState<Etapa | null>(null);
   const [indiceAberto, setIndiceAberto] = useState(false);
 
@@ -66,43 +58,41 @@ export function Preenchimento() {
     {} as Record<string, number>,
   );
 
+  // Em somente leitura nada é gravado: a solicitação já saiu das mãos do montador.
   const salvamentoRespostas = useSalvamentoAutomatico<MapaRespostas>(async (valor) => {
-    if (!contexto) return;
+    if (!contexto || contexto.somenteLeitura) return;
     await PreenchimentoRepository.substituirRespostas(contexto.preenchimentoId, valor);
-    await ProjetoRepository.marcarAlteracao(contexto.projeto.id!);
+    await contexto.marcarAlteracao();
   });
 
   const salvamentoCabecalho = useSalvamentoAutomatico<ValoresCabecalho>(async (valor) => {
-    if (!contexto) return;
+    if (!contexto || contexto.somenteLeitura) return;
     await PreenchimentoRepository.salvarCabecalho(contexto.preenchimentoId, valor);
-    await ProjetoRepository.marcarAlteracao(contexto.projeto.id!);
+    await contexto.marcarAlteracao();
   });
 
   useEffect(() => {
     let ativo = true;
     (async () => {
       try {
-        const idProjeto = Number(projetoId);
-        const idTag = Number(tagId);
-        const [projeto, tag] = await Promise.all([
-          ProjetoRepository.obter(idProjeto),
-          ProjetoRepository.obterTag(idTag),
-        ]);
-        if (!projeto || !tag) throw new Error('Projeto ou TAG não encontrados.');
-        const definicao = await carregarFormulario(String(formId));
-        const preenchimento = await PreenchimentoRepository.obterOuCriar(
-          idTag,
-          definicao.id,
-          definicao.revisao,
+        const resolvido = solicitacaoId
+          ? await contextoDaSolicitacao(Number(solicitacaoId))
+          : await contextoDoProjeto(Number(projetoId), Number(tagId), String(formId));
+        const preenchimento = await PreenchimentoRepository.obterPorId(
+          resolvido.preenchimentoId,
         );
         if (!ativo) return;
-        setContexto({ projeto, tag, definicao, preenchimentoId: preenchimento.id });
-        setRespostas(preenchimento.respostas ?? {});
-        // O cabeçalho começa com os dados já conhecidos do projeto.
-        setCabecalho({
-          numeroPedido: projeto.numeroPedido ?? '',
-          ...(preenchimento.cabecalho ?? {}),
-        });
+        setContexto(resolvido);
+        setRespostas(preenchimento?.respostas ?? {});
+        setCabecalho(resolvido.cabecalhoInicial);
+        // Sem campos de cabeçalho (checklist de solicitação), a tela abre
+        // direto na primeira etapa em vez de uma aba vazia.
+        if (resolvido.definicao.cabecalho.length === 0) {
+          const primeira = resolvido.definicao.secoes
+            .flatMap((sec) => sec.etapas)
+            .find((e) => e.ativa !== false && !e.exibirSe);
+          if (primeira) setSelecionada(primeira.id);
+        }
       } catch (e) {
         if (ativo) setErro(e instanceof Error ? e.message : 'Falha ao abrir o formulário.');
       }
@@ -110,16 +100,19 @@ export function Preenchimento() {
     return () => {
       ativo = false;
     };
-  }, [projetoId, tagId, formId]);
+  }, [projetoId, tagId, formId, solicitacaoId]);
 
+  // As etapas condicionais entram e saem conforme a resposta que as governa.
   const etapas = useMemo(
     () =>
       contexto
         ? contexto.definicao.secoes.flatMap((s) =>
-            s.etapas.filter((e) => e.ativa !== false).map((e) => ({ etapa: e, secao: s })),
+            s.etapas
+              .filter((e) => etapaVisivel(e, respostas))
+              .map((e) => ({ etapa: e, secao: s })),
           )
         : [],
-    [contexto],
+    [contexto, respostas],
   );
 
   const estaRespondida = useCallback(
@@ -177,7 +170,7 @@ export function Preenchimento() {
 
   const sair = async () => {
     await Promise.all([salvamentoRespostas.descarregar(), salvamentoCabecalho.descarregar()]);
-    navegar(`/projetos/${projetoId}`);
+    navegar(contexto?.voltarPara ?? '/');
   };
 
   if (erro) return <div className="p-4"><Erro detalhe={erro} /></div>;
@@ -197,21 +190,23 @@ export function Preenchimento() {
 
   const indice = (
     <nav aria-label="Etapas do formulário" className="space-y-4">
-      <button
-        type="button"
-        onClick={() => {
-          selecionar(ID_CABECALHO);
-          setIndiceAberto(false);
-        }}
-        className={[
-          'flex min-h-12 w-full items-center rounded-md border-2 px-3 text-left text-base font-semibold',
-          selecionada === ID_CABECALHO
-            ? 'border-abb-red bg-red-50'
-            : 'border-abb-line bg-white',
-        ].join(' ')}
-      >
-        Dados do painel
-      </button>
+      {temCabecalho ? (
+        <button
+          type="button"
+          onClick={() => {
+            selecionar(ID_CABECALHO);
+            setIndiceAberto(false);
+          }}
+          className={[
+            'flex min-h-12 w-full items-center rounded-md border-2 px-3 text-left text-base font-semibold',
+            selecionada === ID_CABECALHO
+              ? 'border-abb-red bg-red-50'
+              : 'border-abb-line bg-white',
+          ].join(' ')}
+        >
+          Dados do painel
+        </button>
+      ) : null}
 
       {contexto.definicao.secoes.map((secao) => {
         const daSecao = visiveis.filter((v) => v.secao.id === secao.id);
@@ -267,8 +262,8 @@ export function Preenchimento() {
     </nav>
   );
 
-  const painel =
-    selecionada === ID_CABECALHO ? (
+  const conteudo =
+    selecionada === ID_CABECALHO && temCabecalho ? (
       <CabecalhoFormulario
         definicao={contexto.definicao}
         valores={cabecalho}
@@ -283,13 +278,21 @@ export function Preenchimento() {
         onAlterarValor={(v) => alterarValor(etapaAtual.etapa.id, v)}
         onAlterarObservacao={(t) => alterarObservacao(etapaAtual.etapa.id, t)}
         onAbrirAjuda={() => setAjuda(etapaAtual.etapa)}
-        onFotosAlteradas={() => ProjetoRepository.marcarAlteracao(contexto.projeto.id!)}
+        onFotosAlteradas={() => void contexto.marcarAlteracao()}
       />
     ) : (
       <p className="rounded-lg border border-abb-line bg-white p-6 text-center text-base text-abb-gray">
         Nenhuma etapa neste filtro.
       </p>
     );
+
+  // `fieldset disabled` desliga todos os controles de uma vez, inclusive os
+  // botões de foto, sem duplicar a lógica em cada tipo de campo.
+  const painel = (
+    <fieldset disabled={contexto.somenteLeitura} className="min-w-0 border-0 p-0">
+      {conteudo}
+    </fieldset>
+  );
 
   return (
     <div className="min-h-dvh bg-abb-bg">
@@ -300,29 +303,31 @@ export function Preenchimento() {
               <IconeVoltar />
             </Botao>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-base font-bold">
-                {contexto.tag.nome} — {contexto.definicao.tipo === 'montagem' ? 'Montagem' : 'Rotina'}
-              </p>
+              <p className="truncate text-base font-bold">{contexto.titulo}</p>
               <p className="hidden truncate text-sm text-abb-gray sm:block">
-                {contexto.definicao.nome} • {contexto.definicao.revisao}
+                {contexto.subtitulo}
               </p>
             </div>
             <span
               className={[
                 'shrink-0 rounded px-2 py-1 text-sm font-semibold',
-                estadoSalvamento === 'erro'
-                  ? 'bg-red-100 text-abb-red'
-                  : estadoSalvamento === 'salvo'
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-neutral-100 text-abb-gray',
+                contexto.somenteLeitura
+                  ? 'bg-neutral-100 text-abb-gray'
+                  : estadoSalvamento === 'erro'
+                    ? 'bg-red-100 text-abb-red'
+                    : estadoSalvamento === 'salvo'
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-neutral-100 text-abb-gray',
               ].join(' ')}
               role="status"
             >
-              {estadoSalvamento === 'erro'
-                ? 'Falha ao salvar'
-                : estadoSalvamento === 'salvo'
-                  ? 'Salvo'
-                  : 'Salvando…'}
+              {contexto.somenteLeitura
+                ? 'Somente leitura'
+                : estadoSalvamento === 'erro'
+                  ? 'Falha ao salvar'
+                  : estadoSalvamento === 'salvo'
+                    ? 'Salvo'
+                    : 'Salvando…'}
             </span>
           </div>
 
@@ -362,7 +367,8 @@ export function Preenchimento() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-3 py-4">
+      <div className="mx-auto max-w-6xl space-y-4 px-3 py-4">
+        {contexto.avisoBloqueio ? <Aviso>{contexto.avisoBloqueio}</Aviso> : null}
         {desktop ? (
           <div className="grid grid-cols-[20rem_1fr] gap-4">
             <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto pr-1">{indice}</div>
@@ -391,7 +397,7 @@ export function Preenchimento() {
                 </Botao>
               </div>
             ) : null}
-            {selecionada === ID_CABECALHO && visiveis.length > 0 ? (
+            {selecionada === ID_CABECALHO && temCabecalho && visiveis.length > 0 ? (
               <Botao
                 variante="primario"
                 larguraTotal

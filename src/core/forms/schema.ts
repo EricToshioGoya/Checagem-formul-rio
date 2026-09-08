@@ -23,13 +23,24 @@ export const midiaApoioSchema = z.object({
   legenda: z.string().optional(),
 });
 
+export const tiposCampo = [
+  'texto',
+  'numero',
+  'selecao',
+  'data',
+  'email',
+  'telefone',
+] as const;
+
 export const campoCabecalhoSchema = z.object({
   id: z.string().min(1),
   rotulo: z.string().min(1),
-  tipo: z.enum(['texto', 'numero', 'selecao', 'data']),
+  tipo: z.enum(tiposCampo),
   unidade: z.string().optional(),
   opcoes: z.array(z.string()).optional(),
   ajuda: z.string().optional(),
+  /** Campo sem valor bloqueia o avanço da solicitação. */
+  obrigatorio: z.boolean().optional().default(false),
 });
 
 export const tabelaReferenciaSchema = z.object({
@@ -52,6 +63,16 @@ export const gradeSchema = z.object({
     .min(1),
 });
 
+/**
+ * Condição de exibição de uma etapa, avaliada contra a resposta de outra.
+ * Etapa sem `exibirSe` é sempre exibida — o comportamento dos formulários
+ * já publicados não muda.
+ */
+export const condicaoSchema = z.object({
+  etapaId: z.string().min(1),
+  igualA: z.array(z.string().min(1)).min(1),
+});
+
 export const etapaSchema = z.object({
   id: z.string().min(1),
   descricao: z.string().min(1),
@@ -62,6 +83,12 @@ export const etapaSchema = z.object({
   unidade: z.string().optional(),
   opcoes: z.array(z.string()).optional(),
   grade: gradeSchema.optional(),
+  exibirSe: condicaoSchema.optional(),
+  /**
+   * Exige pelo menos um arquivo anexado para a etapa contar como respondida.
+   * Ausente, vale o comportamento original: a marcação basta.
+   */
+  fotoObrigatoria: z.boolean().optional().default(false),
   midiaApoio: z.array(midiaApoioSchema).optional().default([]),
   tabelaReferencia: tabelaReferenciaSchema.optional(),
   referencia: z.string().optional(),

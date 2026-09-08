@@ -2,6 +2,7 @@ import type { z } from 'zod';
 import type {
   campoCabecalhoSchema,
   catalogoSchema,
+  condicaoSchema,
   definicaoFormularioSchema,
   entradaCatalogoSchema,
   etapaSchema,
@@ -9,10 +10,13 @@ import type {
   midiaApoioSchema,
   secaoSchema,
   tabelaReferenciaSchema,
+  tiposCampo,
   tiposResposta,
 } from './schema';
 
 export type TipoResposta = (typeof tiposResposta)[number];
+export type TipoCampo = (typeof tiposCampo)[number];
+export type Condicao = z.output<typeof condicaoSchema>;
 export type MidiaApoio = z.output<typeof midiaApoioSchema>;
 export type CampoCabecalho = z.output<typeof campoCabecalhoSchema>;
 export type TabelaReferencia = z.output<typeof tabelaReferenciaSchema>;

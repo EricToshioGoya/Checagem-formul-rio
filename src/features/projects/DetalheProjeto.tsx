@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { PAINEL_PADRAO } from '../../core/config';
 import { ProjetoRepository } from '../../core/db/repositorios';
 import {
   progressoDoProjeto,
@@ -63,7 +64,13 @@ export function DetalheProjeto() {
   return (
     <div className="space-y-5">
       <div className="flex items-start gap-2">
-        <Botao variante="texto" onClick={() => navegar('/')} aria-label="Voltar aos projetos">
+        <Botao
+          variante="texto"
+          onClick={() =>
+            navegar(`/paineis/${projeto.tipoPainel ?? PAINEL_PADRAO}/projetos`)
+          }
+          aria-label="Voltar aos projetos"
+        >
           <IconeVoltar />
         </Botao>
         <div className="min-w-0 flex-1">

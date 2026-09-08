@@ -3,6 +3,7 @@ import { SENHA_ADMIN } from '../../core/config';
 import { formulariosAtivos } from '../../core/forms/catalogo';
 import type { EntradaCatalogo } from '../../core/forms/tipos';
 import { EditorFormulario } from './EditorFormulario';
+import { ValidacaoAbb } from './ValidacaoAbb';
 import { Botao } from '../../shared/componentes/Botao';
 import { CampoTexto } from '../../shared/componentes/Campos';
 import { Erro, Carregando } from '../../shared/componentes/Estado';
@@ -17,6 +18,7 @@ export function Admin() {
   const [erro, setErro] = useState<string | null>(null);
   const [entradas, setEntradas] = useState<EntradaCatalogo[] | null>(null);
   const [selecionado, setSelecionado] = useState<string | null>(null);
+  const [aba, setAba] = useState<'validacao' | 'formularios'>('validacao');
 
   useEffect(() => {
     if (!liberado) return;
@@ -77,6 +79,36 @@ export function Admin() {
           Bloquear
         </Botao>
       </div>
+
+      <div className="flex flex-wrap gap-2" role="tablist">
+        {(
+          [
+            ['validacao', 'Validação ABB'],
+            ['formularios', 'Formulários'],
+          ] as const
+        ).map(([chave, rotulo]) => (
+          <button
+            key={chave}
+            type="button"
+            role="tab"
+            aria-selected={aba === chave}
+            onClick={() => setAba(chave)}
+            className={[
+              'min-h-12 rounded-md border px-4 text-base font-semibold',
+              aba === chave
+                ? 'border-abb-red bg-abb-red text-white'
+                : 'border-abb-line bg-white text-abb-black',
+            ].join(' ')}
+          >
+            {rotulo}
+          </button>
+        ))}
+      </div>
+
+      {aba === 'validacao' ? <ValidacaoAbb /> : null}
+
+      {aba === 'formularios' ? (
+        <>
       <p className="text-base text-abb-gray">
         Escolha um formulário para editar textos, ativar ou desativar etapas,
         reordenar e trocar o conteúdo de apoio.
@@ -100,6 +132,8 @@ export function Admin() {
           </li>
         ))}
       </ul>
+        </>
+      ) : null}
     </div>
   );
 }

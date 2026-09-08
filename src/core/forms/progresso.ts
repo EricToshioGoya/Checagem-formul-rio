@@ -13,9 +13,25 @@ export interface Progresso {
   percentual: number;
 }
 
-/** Etapas ativas de todas as seções, na ordem de exibição. */
-export function etapasAtivas(definicao: DefinicaoFormulario): Etapa[] {
-  return definicao.secoes.flatMap((s) => s.etapas.filter((e) => e.ativa !== false));
+/**
+ * Uma etapa é exibida quando está ativa e, havendo `exibirSe`, quando a etapa
+ * apontada foi respondida com um dos valores esperados. Etapa sem `exibirSe`
+ * segue sempre visível: os formulários já publicados não mudam.
+ */
+export function etapaVisivel(etapa: Etapa, respostas: MapaRespostas = {}): boolean {
+  if (etapa.ativa === false) return false;
+  const condicao = etapa.exibirSe;
+  if (!condicao) return true;
+  const valor = respostas[condicao.etapaId]?.valor;
+  return typeof valor === 'string' && condicao.igualA.includes(valor);
+}
+
+/** Etapas visíveis de todas as seções, na ordem de exibição. */
+export function etapasAtivas(
+  definicao: DefinicaoFormulario,
+  respostas: MapaRespostas = {},
+): Etapa[] {
+  return definicao.secoes.flatMap((s) => s.etapas.filter((e) => etapaVisivel(e, respostas)));
 }
 
 function gradePreenchida(valor: ValorGrade): boolean {
@@ -40,7 +56,9 @@ export function etapaRespondida(
     case 'check':
       return resposta?.valor === true;
     case 'check_com_foto':
-      return resposta?.valor === true;
+      return (
+        resposta?.valor === true && (!etapa.fotoObrigatoria || quantidadeFotos > 0)
+      );
     case 'numero':
       return typeof resposta?.valor === 'number' && Number.isFinite(resposta.valor);
     case 'texto':
@@ -63,7 +81,7 @@ export function calcularProgresso(
   respostas: MapaRespostas,
   fotosPorEtapa: Record<string, number> = {},
 ): Progresso {
-  const etapas = etapasAtivas(definicao);
+  const etapas = etapasAtivas(definicao, respostas);
   const respondidas = etapas.filter((e) =>
     etapaRespondida(e, respostas[e.id], fotosPorEtapa[e.id] ?? 0),
   ).length;
@@ -81,7 +99,7 @@ export function idsPendentes(
   respostas: MapaRespostas,
   fotosPorEtapa: Record<string, number> = {},
 ): string[] {
-  return etapasAtivas(definicao)
+  return etapasAtivas(definicao, respostas)
     .filter((e) => !etapaRespondida(e, respostas[e.id], fotosPorEtapa[e.id] ?? 0))
     .map((e) => e.id);
 }

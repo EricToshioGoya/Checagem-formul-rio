@@ -40,12 +40,15 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Formulários e mídias entram no precache: o aplicativo abre offline
-        // já com o conteúdo de apoio disponível.
+        // Formulários, painéis, templates de certificado, instruções e mídias
+        // entram no precache: o aplicativo abre offline já com todo o conteúdo
+        // de apoio disponível.
         globPatterns: [
           '**/*.{js,css,html,svg,png,ico,woff2}',
           'forms/**/*.json',
-          'paineis.json',
+          'paineis/**/*.json',
+          'certificados/**/*.json',
+          'docs/**/*.pdf',
           'media/**/*',
         ],
         maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,

@@ -1,11 +1,13 @@
 /**
- * Teste de fumaça do fluxo completo, no navegador real.
+ * Teste de fumaça dos dois fluxos, no navegador real.
  *
- * Percorre a liberação de acesso ao painel, criação de projeto,
- * preenchimento com salvamento automático,
- * persistência após recarregar, modal de apoio, geração dos PDFs nas duas
- * opções de foto, exportação do projeto, grade de ensaios e aba de
- * administração.
+ * Verificação (SEN Plus): criação de projeto, preenchimento com salvamento
+ * automático, persistência após recarregar, modal de apoio, geração dos PDFs
+ * nas duas opções de foto, exportação do projeto e grade de ensaios.
+ *
+ * Certificação (SPEE): solicitação com campos obrigatórios, checklist de
+ * ensaios de rotina com etapa condicional, envio, validação ABB com
+ * numeração sequencial e geração do certificado.
  *
  * Uso:
  *   npm run build && npx vite preview --port 8099
@@ -43,31 +45,25 @@ const passo = async (nome, fn) => {
   console.log('ok');
 };
 
-await passo('liberar o acesso à montagem', async () => {
+await passo('abrir a aplicação na seleção de painel', async () => {
   await pagina.goto(BASE, { waitUntil: 'networkidle' });
-  await pagina.getByRole('heading', { name: 'Acesso à montagem' }).waitFor();
-  await pagina.locator('#email-montador').fill('montador@parceiro.com.br');
-  await pagina.getByRole('button', { name: /SEN Plus/ }).first().click();
-  await pagina.getByRole('button', { name: 'Solicitar aprovação por e-mail' }).click();
-  await pagina.getByText('Pedido registrado').waitFor();
-
-  // O responsável abre o link recebido por e-mail — aqui, em outra aba — e
-  // lê o código que devolve ao montador.
-  const aprovacao = await contexto.newPage();
-  await aprovacao.goto(
-    `${BASE}/#/aprovar?email=montador%40parceiro.com.br&painel=sen-plus`,
-    { waitUntil: 'networkidle' },
-  );
-  const codigo = (await aprovacao.locator('p.font-mono').innerText()).trim();
-  await aprovacao.close();
-
-  await pagina.locator('#codigo-aprovacao').fill(codigo);
-  await pagina.getByRole('button', { name: 'Liberar acesso à montagem' }).click();
-  await pagina.getByRole('heading', { name: 'Meus projetos' }).waitFor();
+  await pagina.getByRole('heading', { name: 'Escolha o tipo de painel' }).waitFor();
+  for (const nome of ['SEN Plus', 'System pro E Energy', 'System pro E Power', 'SAFR']) {
+    if (!(await pagina.getByRole('heading', { name: nome, exact: true }).count())) {
+      throw new Error(`painel ausente na tela inicial: ${nome}`);
+    }
+  }
+  const instrucoes = pagina.getByRole('link', {
+    name: 'Instruções de envio de informações para solicitação de certificação',
+  });
+  if (!(await instrucoes.count())) throw new Error('link do PDF de instruções ausente');
+  const href = await instrucoes.getAttribute('href');
+  const resposta = await pagina.request.get(new URL(href, BASE).toString());
+  if (!resposta.ok()) throw new Error(`PDF de instruções inacessível (${resposta.status()})`);
 });
 
-await passo('abrir a aplicação', async () => {
-  await pagina.goto(BASE, { waitUntil: 'networkidle' });
+await passo('entrar no SEN Plus', async () => {
+  await pagina.getByRole('heading', { name: 'SEN Plus', exact: true }).click();
   await pagina.getByRole('heading', { name: 'Meus projetos' }).waitFor();
 });
 
@@ -187,11 +183,215 @@ await passo('administração: senha e edição', async () => {
   await pagina.goto(`${BASE}/#/admin`, { waitUntil: 'networkidle' });
   await pagina.getByLabel('Senha').fill('abb-admin');
   await pagina.getByRole('button', { name: 'Entrar' }).click();
+  await pagina.getByRole('tab', { name: 'Formulários' }).click();
   await pagina.getByRole('button', { name: /Verificação de Montagem/ }).click();
   await pagina.getByRole('button', { name: /S1 —/ }).click();
   const descricao = pagina.locator('textarea').first();
   await descricao.fill('Descrição alterada pelo administrador.');
   await pagina.getByText('Alterações gravadas').waitFor({ timeout: 15000 });
+});
+
+// ---------------------------------------------------------------------------
+// Fluxo de certificação — System pro E Energy
+// ---------------------------------------------------------------------------
+
+await passo('abrir o System pro E Energy', async () => {
+  await pagina.goto(`${BASE}/#/`, { waitUntil: 'networkidle' });
+  await pagina.getByRole('heading', { name: 'System pro E Energy', exact: true }).click();
+  await pagina.getByRole('heading', { name: 'System pro E Energy' }).waitFor();
+  await pagina.getByText('Responsável ABB: Tainá Gioia').waitFor();
+});
+
+await passo('bloquear a criação com campo obrigatório vazio', async () => {
+  await pagina.getByRole('button', { name: 'Nova solicitação' }).click();
+  await pagina.getByRole('heading', { name: 'Nova solicitação' }).waitFor();
+  const criar = pagina.getByRole('button', { name: 'Criar solicitação' });
+  if (!(await criar.isDisabled())) {
+    throw new Error('criação liberada com os obrigatórios em branco');
+  }
+});
+
+await passo('preencher os dados da solicitação', async () => {
+  const valores = {
+    montador: 'Parceiro Painéis Ltda',
+    emailMontador: 'montador@parceiro.com.br',
+    celularMontador: '(11) 98888-7777',
+    projeto: 'Subestação Norte',
+    tagPainel: 'QGBT-1',
+    clienteFinal: 'Indústria XYZ',
+    correnteNominal: '4000',
+    correnteCurtoCircuito: '65',
+    empresa: 'Parceiro Painéis Ltda',
+    operador: 'Ana Souza',
+  };
+  for (const [campo, valor] of Object.entries(valores)) {
+    await pagina.locator(`#sol-${campo}`).fill(valor);
+  }
+  await pagina.getByRole('button', { name: 'Criar solicitação' }).click();
+  await pagina.getByRole('heading', { name: 'QGBT-1' }).waitFor();
+  await pagina.getByText('Rascunho').first().waitFor();
+});
+
+await passo('bloquear o envio com checklist pendente', async () => {
+  const enviar = pagina.getByRole('button', { name: 'Enviar para validação da ABB' });
+  if (!(await enviar.isDisabled())) {
+    throw new Error('envio liberado com o checklist em branco');
+  }
+});
+
+await passo('preencher o checklist de ensaios de rotina', async () => {
+  await pagina.getByRole('button', { name: 'Preencher checklist' }).click();
+  const itens = pagina.locator('nav button').filter({ hasText: /^11\./ });
+  await itens.first().waitFor();
+
+  // 11.5.1 governa 11.5.2 e 11.5.3: sem substituição, elas não aparecem.
+  const antes = await itens.count();
+  await pagina.locator('nav button').filter({ hasText: '11.5.1' }).click();
+  await pagina
+    .locator('#campo-11\\.5\\.1')
+    .selectOption('Sim — há substituição por outro fabricante');
+  await pagina.waitForTimeout(600);
+  const depois = await itens.count();
+  if (depois !== antes + 2) {
+    throw new Error(`etapas condicionais não apareceram (${antes} → ${depois})`);
+  }
+  await pagina
+    .locator('#campo-11\\.5\\.1')
+    .selectOption('Não — todos os componentes internos são ABB');
+  await pagina.waitForTimeout(600);
+  const voltou = await itens.count();
+  if (voltou !== antes) {
+    throw new Error(`etapas condicionais não sumiram (${voltou} ≠ ${antes})`);
+  }
+
+  // As etapas com foto exigem imagem; o teste injeta um JPEG mínimo.
+  const jpeg = Buffer.from(
+    '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a' +
+      'HBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAA' +
+      'AAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==',
+    'base64',
+  );
+
+  const etapas = ['11.2', '11.3', '11.4', '11.5', '11.6', '11.7', '11.8', '11.9', '11.10'];
+  for (const etapa of etapas) {
+    // O texto do item do índice é "11.5Integração…": o id precisa terminar
+    // sem outro dígito nem ponto para não casar com "11.5.1".
+    const alvo = new RegExp(`^${etapa.replace(/\./g, '\\.')}(?![\\d.])`);
+    await pagina.locator('nav button').filter({ hasText: alvo }).first().click();
+    const marcar = pagina.getByRole('button', { name: 'Marcar como verificado' });
+    if (await marcar.count()) await marcar.click();
+    const entrada = pagina.locator('input[type="file"]').first();
+    if (await entrada.count()) {
+      await entrada.setInputFiles({ name: `${etapa}.jpg`, mimeType: 'image/jpeg', buffer: jpeg });
+      await pagina.waitForTimeout(500);
+    }
+  }
+  await pagina.waitForTimeout(1200);
+  const progresso = await pagina.getByText(/\d+\/\d+ etapas/).textContent();
+  if (!/^(\d+)\/\1 etapas$/.test((progresso ?? '').trim())) {
+    throw new Error(`checklist incompleto: "${progresso}"`);
+  }
+});
+
+await passo('enviar para validação da ABB', async () => {
+  await pagina.getByRole('button', { name: 'Voltar ao projeto' }).click();
+  await pagina.getByRole('heading', { name: 'QGBT-1' }).waitFor();
+  await pagina.getByRole('button', { name: 'Enviar para validação da ABB' }).click();
+  await pagina.getByRole('dialog').waitFor();
+  await pagina.getByRole('button', { name: 'Enviar', exact: true }).click();
+  await pagina.getByText('Enviada para validação').first().waitFor({ timeout: 15000 });
+});
+
+await passo('checklist travado após o envio', async () => {
+  await pagina.getByRole('button', { name: 'Ver checklist' }).click();
+  await pagina.getByText('Somente leitura').waitFor();
+  const marcar = pagina.getByRole('button', { name: 'Verificado' }).first();
+  if ((await marcar.count()) && !(await marcar.isDisabled())) {
+    throw new Error('checklist editável com a solicitação enviada');
+  }
+  await pagina.getByRole('button', { name: 'Voltar ao projeto' }).click();
+});
+
+await passo('ABB devolve com apontamentos', async () => {
+  await pagina.goto(`${BASE}/#/admin`, { waitUntil: 'networkidle' });
+  await pagina.getByRole('tab', { name: 'Validação ABB' }).click();
+  await pagina.getByRole('heading', { name: 'Solicitações aguardando validação' }).waitFor();
+  await pagina.getByRole('button', { name: 'Devolver com apontamentos' }).click();
+  await pagina
+    .getByRole('textbox', { name: 'Apontamentos' })
+    .fill('Refazer a foto do aterramento das portas.');
+  await pagina.getByRole('button', { name: 'Devolver', exact: true }).click();
+  await pagina.getByText('Solicitação devolvida ao montador').waitFor({ timeout: 15000 });
+});
+
+await passo('montador vê o apontamento e reenvia', async () => {
+  await pagina.goto(`${BASE}/#/paineis/spee/solicitacoes`, { waitUntil: 'networkidle' });
+  await pagina.getByRole('button', { name: /Abrir/ }).first().click();
+  await pagina.getByText('Devolvida com apontamentos').first().waitFor();
+  // Aparece no alerta do topo e no histórico.
+  await pagina.getByText('Refazer a foto do aterramento das portas.').first().waitFor();
+  // O preenchimento foi preservado: o envio volta a ficar liberado de imediato.
+  await pagina.getByRole('button', { name: 'Enviar para validação da ABB' }).click();
+  await pagina.getByRole('dialog').waitFor();
+  await pagina.getByRole('button', { name: 'Enviar', exact: true }).click();
+  await pagina.getByText('Enviada para validação').first().waitFor({ timeout: 15000 });
+});
+
+let numeroCertificado = '';
+
+await passo('ABB aprova e numera', async () => {
+  await pagina.goto(`${BASE}/#/admin`, { waitUntil: 'networkidle' });
+  await pagina.getByRole('tab', { name: 'Validação ABB' }).click();
+  await pagina.getByRole('button', { name: 'Aprovar e numerar' }).click();
+  const aviso = pagina.getByText(/Certificado nº \S+ atribuído/);
+  await aviso.waitFor({ timeout: 15000 });
+  numeroCertificado = (await aviso.textContent())?.match(/nº (\S+) atribuído/)?.[1] ?? '';
+  if (!numeroCertificado) throw new Error('número do certificado não atribuído');
+  console.log(`   ↳ certificado nº ${numeroCertificado}`);
+  await pagina.getByRole('heading', { name: 'Registro de emissões' }).waitFor();
+  await pagina.getByRole('cell', { name: numeroCertificado }).waitFor();
+});
+
+await passo('baixar o certificado emitido', async () => {
+  await pagina.goto(`${BASE}/#/paineis/spee/solicitacoes`, { waitUntil: 'networkidle' });
+  await pagina.getByRole('button', { name: /Abrir/ }).first().click();
+  await pagina.getByText(`Certificado nº ${numeroCertificado}`).first().waitFor();
+  const [download] = await Promise.all([
+    pagina.waitForEvent('download', { timeout: 60000 }),
+    pagina.getByRole('button', { name: 'Baixar certificado' }).click(),
+  ]);
+  const destino = join(SAIDA, download.suggestedFilename());
+  await download.saveAs(destino);
+  if (!existsSync(destino) || statSync(destino).size < 1000) {
+    throw new Error(`certificado vazio: ${destino}`);
+  }
+  console.log(`   ↳ ${download.suggestedFilename()} (${statSync(destino).size} bytes)`);
+  await pagina.getByText('Certificado emitido').first().waitFor({ timeout: 15000 });
+});
+
+await passo('numeração é imutável e sequencial', async () => {
+  await pagina.goto(`${BASE}/#/paineis/safr/solicitacoes`, { waitUntil: 'networkidle' });
+  await pagina.getByRole('button', { name: 'Nova solicitação' }).click();
+  for (const [campo, valor] of Object.entries({
+    montador: 'Parceiro Painéis Ltda',
+    emailMontador: 'montador@parceiro.com.br',
+    celularMontador: '(11) 98888-7777',
+    projeto: 'Subestação Sul',
+    tagPainel: 'QGBT-2',
+    clienteFinal: 'Indústria XYZ',
+    correnteNominal: '2500',
+    correnteCurtoCircuito: '50',
+    empresa: 'Parceiro Painéis Ltda',
+    operador: 'Ana Souza',
+  })) {
+    await pagina.locator(`#sol-${campo}`).fill(valor);
+  }
+  await pagina.getByRole('button', { name: 'Criar solicitação' }).click();
+  await pagina.getByRole('heading', { name: 'QGBT-2' }).waitFor();
+  // Sem aprovação não há certificado para baixar.
+  if (await pagina.getByRole('button', { name: 'Baixar certificado' }).count()) {
+    throw new Error('certificado oferecido antes da aprovação');
+  }
 });
 
 await pagina.screenshot({ path: join(SAIDA, 'tela-final.png'), fullPage: false });

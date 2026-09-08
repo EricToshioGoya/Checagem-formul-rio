@@ -29,10 +29,14 @@ export async function exportarProjeto(projetoId: number): Promise<void> {
   if (!projeto) throw new Error('Projeto não encontrado.');
 
   const tags = await ProjetoRepository.listarTags(projetoId);
-  const preenchimentos = await db.preenchimentos
-    .where('tagId')
-    .anyOf(tags.map((t) => t.id!))
-    .toArray();
+  // Só o fluxo de projeto/TAG entra no backup; solicitações de certificação
+  // têm ciclo próprio e não viajam neste pacote.
+  const preenchimentos = (
+    await db.preenchimentos
+      .where('tagId')
+      .anyOf(tags.map((t) => t.id!))
+      .toArray()
+  ).filter((p): p is Preenchimento & { id: number; tagId: number } => p.tagId !== undefined);
   const midias = await db.midias
     .where('preenchimentoId')
     .anyOf(preenchimentos.map((p) => p.id!))
@@ -46,6 +50,7 @@ export async function exportarProjeto(projetoId: number): Promise<void> {
     versao: VERSAO,
     exportadoEm: new Date().toISOString(),
     projeto: {
+      tipoPainel: projeto.tipoPainel,
       empresa: projeto.empresa,
       nomeProjeto: projeto.nomeProjeto,
       operador: projeto.operador,

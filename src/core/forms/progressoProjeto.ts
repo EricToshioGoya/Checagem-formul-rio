@@ -3,7 +3,8 @@ import {
   PreenchimentoRepository,
   ProjetoRepository,
 } from '../db/repositorios';
-import { carregarFormulario, formulariosAtivos } from './catalogo';
+import { PAINEL_PADRAO } from '../config';
+import { carregarFormulario, formulariosDoPainel } from './catalogo';
 import { calcularProgresso, idsPendentes, type Progresso } from './progresso';
 import type { DefinicaoFormulario, EntradaCatalogo } from './tipos';
 
@@ -44,9 +45,10 @@ function somar(partes: Progresso[]): Progresso {
  * Serve à tela do projeto, à lista inicial e ao resumo de pendências do PDF.
  */
 export async function progressoDoProjeto(projetoId: number): Promise<ProgressoDeProjeto> {
+  const projeto = await ProjetoRepository.obter(projetoId);
   const [tags, entradas] = await Promise.all([
     ProjetoRepository.listarTags(projetoId),
-    formulariosAtivos(),
+    formulariosDoPainel(projeto?.tipoPainel ?? PAINEL_PADRAO),
   ]);
   const definicoes = new Map<string, DefinicaoFormulario>();
   for (const entrada of entradas) {

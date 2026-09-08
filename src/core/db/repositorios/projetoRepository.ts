@@ -1,7 +1,10 @@
 import { db } from '../db';
+import { PAINEL_PADRAO } from '../../config';
 import type { Projeto, Tag } from '../tipos';
 
 export interface NovoProjetoEntrada {
+  /** Tipo de painel do catálogo. Omitido, o projeto é do painel padrão. */
+  tipoPainel?: string;
   empresa: string;
   nomeProjeto: string;
   operador: string;
@@ -25,8 +28,13 @@ async function excluirPreenchimentosDeTags(tagIds: number[]): Promise<void> {
 }
 
 export const ProjetoRepository = {
-  async listar(): Promise<ResumoProjeto[]> {
-    const projetos = await db.projetos.orderBy('atualizadoEm').reverse().toArray();
+  /**
+   * Projetos de um tipo de painel. Registros gravados antes da inclusão dos
+   * demais painéis não têm `tipoPainel` e contam como do painel padrão.
+   */
+  async listar(tipoPainel: string = PAINEL_PADRAO): Promise<ResumoProjeto[]> {
+    const todos = await db.projetos.orderBy('atualizadoEm').reverse().toArray();
+    const projetos = todos.filter((p) => (p.tipoPainel ?? PAINEL_PADRAO) === tipoPainel);
     return Promise.all(
       projetos.map(async (p) => ({
         ...(p as Projeto & { id: number }),
@@ -43,6 +51,7 @@ export const ProjetoRepository = {
     const agora = Date.now();
     return db.transaction('rw', db.projetos, db.tags, async () => {
       const projetoId = await db.projetos.add({
+        tipoPainel: entrada.tipoPainel ?? PAINEL_PADRAO,
         empresa: entrada.empresa.trim(),
         nomeProjeto: entrada.nomeProjeto.trim(),
         operador: entrada.operador.trim(),

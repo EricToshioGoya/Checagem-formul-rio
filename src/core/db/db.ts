@@ -1,9 +1,12 @@
 import Dexie, { type Table } from 'dexie';
 import type {
+  Certificado,
+  Contador,
   FormularioCustomizado,
   Midia,
   Preenchimento,
   Projeto,
+  Solicitacao,
   Tag,
 } from './tipos';
 import type { AcessoMontagem, SessaoMontador } from '../access/tipos';
@@ -19,8 +22,10 @@ class BancoVerificacao extends Dexie {
   preenchimentos!: Table<Preenchimento, number>;
   midias!: Table<Midia, number>;
   formulariosCustom!: Table<FormularioCustomizado, string>;
+  solicitacoes!: Table<Solicitacao, number>;
+  certificados!: Table<Certificado, number>;
+  contadores!: Table<Contador, string>;
   acessos!: Table<AcessoMontagem, number>;
-  sessao!: Table<SessaoMontador, string>;
 
   constructor() {
     super('verificacao-montagem');
@@ -31,11 +36,21 @@ class BancoVerificacao extends Dexie {
       midias: '++id, preenchimentoId, etapaId, [preenchimentoId+etapaId]',
       formulariosCustom: 'id, atualizadoEm',
     });
-    // v2 acrescenta a permissão de acesso à montagem. As tabelas anteriores
-    // não mudam, portanto o Dexie migra a base existente sem perda de dados.
+
+    // v2 — fluxo de certificação (SPEE, SPEP e SAFR) e permissão de acesso ao
+    // painel. As tabelas da v1 são redeclaradas sem alteração; os registros
+    // existentes continuam válidos e nenhuma migração de dados é necessária.
     this.version(2).stores({
+      projetos: '++id, tipoPainel, empresa, nomeProjeto, operador, criadoEm, atualizadoEm',
+      tags: '++id, projetoId, nome, ordem, [projetoId+ordem]',
+      preenchimentos:
+        '++id, tagId, solicitacaoId, formId, atualizadoEm, [tagId+formId]',
+      midias: '++id, preenchimentoId, etapaId, [preenchimentoId+etapaId]',
+      formulariosCustom: 'id, atualizadoEm',
+      solicitacoes: '++id, tipoPainel, estado, numeroCertificado, criadoEm, atualizadoEm',
+      certificados: '++id, &numero, solicitacaoId, tipoPainel, emitidoEm',
+      contadores: 'id',
       acessos: '++id, email, painelId, [email+painelId]',
-      sessao: 'id',
     });
   }
 }

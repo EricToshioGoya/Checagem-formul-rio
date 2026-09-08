@@ -15,6 +15,14 @@
       "tipo": "rotina",
       "linhaProduto": "Baixa tensão",
       "ativo": true
+    },
+    {
+      "id": "ensaios-rotina-61439",
+      "arquivo": "ensaios-rotina-61439.json",
+      "nome": "Ensaios de Rotina — NBR IEC 61439",
+      "tipo": "rotina",
+      "linhaProduto": "Painéis certificados ABB",
+      "ativo": true
     }
   ]
 }

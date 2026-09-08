@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { formulariosAtivos } from '../../core/forms/catalogo';
+import { PAINEL_PADRAO } from '../../core/config';
+import { ProjetoRepository } from '../../core/db/repositorios';
+import { formulariosDoPainel } from '../../core/forms/catalogo';
 import { progressoDoProjeto } from '../../core/forms/progressoProjeto';
 import type { EntradaCatalogo } from '../../core/forms/tipos';
 import { baixarBlob } from '../../shared/utils/download';
@@ -28,7 +30,8 @@ export function DialogoGerarPdf({ aberto, projetoId, onFechar }: Props) {
     setConcluido(null);
     (async () => {
       try {
-        const lista = await formulariosAtivos();
+        const projeto = await ProjetoRepository.obter(projetoId);
+        const lista = await formulariosDoPainel(projeto?.tipoPainel ?? PAINEL_PADRAO);
         setEntradas(lista);
         setSelecionados(lista.map((e) => e.id));
         setPendentes((await progressoDoProjeto(projetoId)).progresso.pendentes);
