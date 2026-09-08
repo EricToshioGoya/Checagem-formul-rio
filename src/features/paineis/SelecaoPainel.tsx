@@ -4,6 +4,7 @@ import { AcessoRepository } from '../../core/db/repositorios';
 import type { Painel } from '../../core/paineis/tipos';
 import { Carregando, Erro } from '../../shared/componentes/Estado';
 import { IconeCheck, IconeSeta } from '../../shared/componentes/Icones';
+import { dataBr } from '../../shared/utils/texto';
 import { useSessao } from '../auth/SessaoContexto';
 
 /**
@@ -15,16 +16,17 @@ import { useSessao } from '../auth/SessaoContexto';
 export function SelecaoPainel() {
   const navegar = useNavigate();
   const { email, paineis, escolherPainel, carregando } = useSessao();
-  const [liberados, setLiberados] = useState<Record<string, boolean>>({});
+  /** Fim do prazo de cada painel liberado; ausente ou nulo, exige aprovação. */
+  const [liberados, setLiberados] = useState<Record<string, number | null>>({});
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
     if (!email || !paineis.length) return;
     let ativo = true;
     (async () => {
-      const mapa: Record<string, boolean> = {};
+      const mapa: Record<string, number | null> = {};
       for (const painel of paineis) {
-        mapa[painel.id] = await AcessoRepository.estaAprovado(email, painel.id);
+        mapa[painel.id] = await AcessoRepository.validadeDe(email, painel.id);
       }
       if (ativo) setLiberados(mapa);
     })();
@@ -89,7 +91,7 @@ export function SelecaoPainel() {
                   {liberado ? (
                     <span className="inline-flex items-center gap-1 text-sm font-semibold text-abb-black">
                       <IconeCheck className="h-4 w-4 text-abb-red" />
-                      Liberado
+                      Liberado até {dataBr(liberado)}
                     </span>
                   ) : (
                     <span className="rounded-md border border-amber-400 bg-amber-50 px-2 py-0.5 text-sm font-semibold text-amber-900">

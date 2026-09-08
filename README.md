@@ -282,10 +282,12 @@ o responsável abre a partir do e-mail, e ela não concede acesso a nada.
    o destinatário. Sem envio configurado, o aplicativo abre o cliente de
    e-mail com a mensagem pronta e deixa o link à vista para envio manual.
 4. **Aprovação** — o responsável abre o link do e-mail
-   (`#/aprovar?email=…&painel=…`), vê o **código de aprovação** e o repassa ao
-   montador; um botão já monta o e-mail de resposta.
-5. **Liberação** — o montador digita o código. A liberação é **permanente** por
-   par *e-mail + painel*, naquele aparelho.
+   (`#/aprovar?email=…&painel=…`), escolhe o **prazo** (30, 60, 90 ou 180
+   dias), vê o **código de aprovação** correspondente e o repassa ao montador;
+   um botão já monta o e-mail de resposta.
+5. **Liberação** — o montador digita o código. A liberação vale para o par
+   *e-mail + painel*, naquele aparelho, **até o fim do prazo**; vencida, a tela
+   do painel volta a pedir aprovação.
 
 A liberação é por painel: quem foi aprovado no SEN Plus continua precisando de
 aprovação para o System pro E Power. Outro e-mail no mesmo aparelho também
@@ -294,24 +296,38 @@ começa do zero.
 ### Por que um código, e não um link que aprova sozinho
 
 Não há servidor: o aparelho do montador não tem como saber, por conta própria,
-que o responsável aprovou. O código resolve isso sem rede — é derivado de
-`e-mail + painel + segredo do build` (SHA-256), de modo que o aparelho do
-responsável, rodando o mesmo build, calcula exatamente o mesmo valor. O e-mail
-enviado pelo montador leva **apenas o link**; o código nunca passa por ele.
+que o responsável aprovou — nem que ele mudou de ideia. O código resolve as
+duas coisas sem rede. Ele tem nove caracteres (`XXX-XXX-XXX`): três carregam o
+**dia de vencimento** e seis são a assinatura de
+`e-mail + painel + vencimento + segredo do build` (SHA-256). O aparelho do
+responsável, rodando o mesmo build, gera; o do montador confere e aprende até
+quando aquilo vale. O e-mail enviado pelo montador leva **apenas o link**; o
+código nunca passa por ele.
+
+É o prazo que torna a permissão revogável sem servidor: **para tirar o acesso
+de alguém, basta não repassar código novo** — no vencimento o aplicativo
+fecha o painel sozinho, inclusive offline. A permissão é reconferida a cada
+entrada no fluxo, então o vencimento também alcança quem deixou o aplicativo
+aberto.
 
 Consequências assumidas nesta versão:
 
-- O código não expira e é sempre o mesmo para aquele par e-mail + painel. Quem
-  o tiver acessa o painel.
+- Revogar não é imediato: o acesso cai no vencimento do código em curso.
+  Prazo curto encurta essa janela.
 - Aprovar não fica registrado no aparelho do responsável — a tela `/aprovar`
-  só exibe o código, não grava nada.
+  só exibe o código, não grava nada. Não há lista central de quem tem acesso.
 - A liberação vale para o aparelho onde o código foi digitado. Outro aparelho
   exige novo pedido.
+- Renovar é digitar o código novo: o prazo passa a valer a partir dele.
 - Trocar `VITE_SEGREDO_APROVACAO` invalida os códigos já distribuídos.
+- Registro aprovado numa versão anterior, sem prazo gravado, conta como
+  vencido e pede código novo.
 
 Não é barreira criptográfica: o segredo viaja no pacote JavaScript, e quem
-inspecionar o build consegue gerar códigos. O controle organiza e registra a
-autorização. Barreira real exige servidor, prevista junto com a sincronização.
+inspecionar o build consegue gerar códigos para qualquer painel e qualquer
+prazo. O controle organiza a autorização; barreira real, com lista central e
+revogação imediata, exige servidor — por conta ABB, o caminho natural é login
+pelo Entra ID com acesso por grupo, e está previsto junto com a sincronização.
 
 ### Configuração
 
@@ -332,6 +348,7 @@ acesso e quem administra os formulários:
 | `responsavelMontagem` | vale `RESPONSAVEL_MONTAGEM_PADRAO` | `VITE_RESPONSAVEL_MONTAGEM` |
 | `administradores` | vale `ADMIN_PADRAO` | `VITE_ADMIN_PADRAO` |
 | segredo do código | `abb-montagem-2026` | `VITE_SEGREDO_APROVACAO` |
+| prazos oferecidos | 30, 60, 90 e 180 dias | `PRAZOS_APROVACAO`, em `src/core/access/codigo.ts` |
 
 **Para teste, os quatro painéis estão com `ericg10456@gmail.com` como
 responsável.** O link de aprovação usa o endereço em que o aplicativo está

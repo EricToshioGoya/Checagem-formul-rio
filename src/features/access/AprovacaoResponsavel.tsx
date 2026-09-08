@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { obterPainel } from '../../core/paineis/catalogo';
-import { formatarCodigo, gerarCodigo } from '../../core/access/codigo';
+import {
+  PRAZOS_APROVACAO,
+  PRAZO_PADRAO,
+  formatarCodigo,
+  gerarCodigo,
+  validadeDoCodigo,
+} from '../../core/access/codigo';
 import { normalizarEmail, responsavelDoPainel } from '../../core/auth/acesso';
 import type { Painel } from '../../core/paineis/tipos';
 import { Botao } from '../../shared/componentes/Botao';
 import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
+import { dataBr } from '../../shared/utils/texto';
 import { abrirEmail } from '../../shared/utils/email';
 
 /**
@@ -20,6 +27,7 @@ export function AprovacaoResponsavel() {
 
   const [painel, setPainel] = useState<Painel | null>(null);
   const [codigo, setCodigo] = useState('');
+  const [prazo, setPrazo] = useState<number>(PRAZO_PADRAO);
   const [erro, setErro] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
 
@@ -32,12 +40,12 @@ export function AprovacaoResponsavel() {
       try {
         const encontrado = await obterPainel(painelId);
         setPainel(encontrado);
-        setCodigo(await gerarCodigo(email, encontrado.id));
+        setCodigo(await gerarCodigo(email, encontrado.id, prazo));
       } catch (e) {
         setErro(e instanceof Error ? e.message : 'Falha ao gerar o código.');
       }
     })();
-  }, [email, painelId]);
+  }, [email, painelId, prazo]);
 
   const copiar = async () => {
     try {
@@ -49,6 +57,8 @@ export function AprovacaoResponsavel() {
     }
   };
 
+  const validoAte = validadeDoCodigo(codigo);
+
   const responder = () => {
     if (!painel) return;
     const assunto = `Autorização aprovada — ${painel.nome}`;
@@ -58,8 +68,10 @@ export function AprovacaoResponsavel() {
       `Painel: ${painel.nome}`,
       `Montador: ${email}`,
       `Código de aprovação: ${formatarCodigo(codigo)}`,
+      `Válido até: ${dataBr(validoAte ?? undefined)}`,
       '',
       'Digite o código na tela de acesso do aplicativo para liberar a montagem.',
+      'Vencido o prazo, o acesso fecha sozinho e um código novo é necessário.',
     ].join('\n');
     abrirEmail(email, assunto, corpo);
   };
@@ -91,10 +103,34 @@ export function AprovacaoResponsavel() {
         </div>
       </dl>
 
+      <div className="rounded-lg border border-abb-line bg-white p-4">
+        <p className="text-sm font-semibold text-abb-gray">Prazo do acesso</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {PRAZOS_APROVACAO.map((dias) => (
+            <button
+              key={dias}
+              type="button"
+              aria-pressed={prazo === dias}
+              onClick={() => setPrazo(dias)}
+              className={`min-h-12 rounded-md border-2 px-4 text-base font-semibold ${
+                prazo === dias
+                  ? 'border-abb-red bg-red-50 text-abb-red'
+                  : 'border-abb-line bg-white text-abb-black'
+              }`}
+            >
+              {dias} dias
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="rounded-lg border-2 border-abb-red bg-red-50 p-4 text-center">
         <p className="text-sm font-semibold text-abb-gray">Código de aprovação</p>
         <p className="mt-1 font-mono text-3xl font-bold tracking-widest text-abb-red">
           {formatarCodigo(codigo)}
+        </p>
+        <p className="mt-2 text-base font-semibold text-abb-black">
+          Vale até {dataBr(validoAte ?? undefined)}
         </p>
       </div>
 
@@ -108,8 +144,10 @@ export function AprovacaoResponsavel() {
       </div>
 
       <Aviso>
-        O código vale só para este e-mail e este painel, e não expira. Repasse-o apenas se
-        reconhecer o montador — quem tiver o código acessa o painel.
+        O código vale só para este e-mail, este painel e este prazo. Vencido, o acesso
+        fecha sozinho no aparelho do montador: para tirar o acesso de alguém, basta não
+        repassar código novo. Repasse apenas se reconhecer o montador — quem tiver o
+        código acessa o painel até o vencimento.
       </Aviso>
     </div>
   );

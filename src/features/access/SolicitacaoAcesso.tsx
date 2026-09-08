@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { codigoConfere } from '../../core/access/codigo';
+import { normalizarCodigo, verificarCodigo, type Verificacao } from '../../core/access/codigo';
 import { enviarPedidoAprovacao, type ResultadoEnvio } from '../../core/access/envio';
+import { dataBr } from '../../shared/utils/texto';
 import { responsavelDoPainel } from '../../core/auth/acesso';
 import { AcessoRepository } from '../../core/db/repositorios';
 import type { Painel } from '../../core/paineis/tipos';
@@ -22,6 +23,18 @@ import { useSessao } from '../auth/SessaoContexto';
 function linkDeAprovacao(email: string, painelId: string): string {
   const parametros = new URLSearchParams({ email, painel: painelId });
   return new URL(`#/aprovar?${parametros.toString()}`, window.location.href).toString();
+}
+
+/** Cada recusa do código tem uma saída diferente para o montador. */
+function mensagemDoCodigo(recusa: Extract<Verificacao, { valido: false }>): string {
+  switch (recusa.motivo) {
+    case 'formato':
+      return 'Código incompleto: são nove caracteres, no formato XXX-XXX-XXX.';
+    case 'expirado':
+      return `Código vencido em ${dataBr(recusa.validoAte)}. Peça um código novo ao responsável.`;
+    default:
+      return 'Código inválido para este e-mail e painel. Confira com o responsável.';
+  }
 }
 
 /**
@@ -110,12 +123,13 @@ export function SolicitacaoAcesso() {
     setErro(null);
     setOcupado(true);
     try {
-      if (!(await codigoConfere(email, painel.id, codigo))) {
-        setErro('Código inválido para este e-mail e painel. Confira com o responsável.');
+      const conferencia = await verificarCodigo(email, painel.id, codigo);
+      if (!conferencia.valido) {
+        setErro(mensagemDoCodigo(conferencia));
         return;
       }
       await registrar(painel);
-      await AcessoRepository.aprovar(email, painel.id);
+      await AcessoRepository.aprovar(email, painel.id, conferencia.validoAte);
       await revalidarAcesso();
       navegar('/', { replace: true });
     } catch (e) {
@@ -177,8 +191,9 @@ export function SolicitacaoAcesso() {
 
       <div className="space-y-3 rounded-lg border border-abb-line bg-white p-4">
         <Aviso>
-          O responsável abre o link, lê o código e devolve a você. Digite-o abaixo para
-          liberar este painel no aparelho.
+          O responsável abre o link, escolhe o prazo e devolve o código a você. Digite-o
+          abaixo para liberar este painel no aparelho. O acesso vale até o fim do prazo;
+          depois disso, é preciso um código novo.
         </Aviso>
 
         <CampoTexto
@@ -186,13 +201,13 @@ export function SolicitacaoAcesso() {
           rotulo="Código de aprovação"
           valor={codigo}
           onChange={setCodigo}
-          placeholder="XXXX-XXXX"
+          placeholder="XXX-XXX-XXX"
         />
         <Botao
           variante="primario"
           larguraTotal
           onClick={liberar}
-          disabled={ocupado || codigo.trim().length < 8}
+          disabled={ocupado || normalizarCodigo(codigo).length < 9}
         >
           Liberar acesso
         </Botao>

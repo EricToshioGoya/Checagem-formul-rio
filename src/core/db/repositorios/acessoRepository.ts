@@ -17,7 +17,7 @@ export interface PedidoAcesso {
 export const AcessoRepository = {
   /**
    * Registra (ou reaproveita) o pedido do montador para o painel. Um pedido
-   * já aprovado é devolvido intacto — a aprovação é permanente.
+   * já existente é devolvido intacto, inclusive com o prazo em curso.
    */
   async registrarPedido(pedido: PedidoAcesso): Promise<AcessoMontagem> {
     const email = normalizarEmail(pedido.email);
@@ -30,6 +30,7 @@ export const AcessoRepository = {
       responsavelEmail: pedido.responsavelEmail,
       solicitadoEm: Date.now(),
       aprovadoEm: null,
+      validoAte: null,
     };
     const id = await db.acessos.add(registro);
     return { ...registro, id };
@@ -39,19 +40,30 @@ export const AcessoRepository = {
     return db.acessos.where('[email+painelId]').equals([normalizarEmail(email), painelId]).first();
   },
 
-  async estaAprovado(email: string, painelId: string): Promise<boolean> {
+  /**
+   * Até quando o acesso vale; nulo quando não há aprovação ou o prazo já
+   * venceu. Registro sem `validoAte` conta como vencido.
+   */
+  async validadeDe(email: string, painelId: string): Promise<number | null> {
     const acesso = await this.obter(email, painelId);
-    return Boolean(acesso?.aprovadoEm);
+    if (!acesso?.aprovadoEm || !acesso.validoAte) return null;
+    return acesso.validoAte > Date.now() ? acesso.validoAte : null;
   },
 
-  /** Chamado depois de o código digitado conferir. */
-  async aprovar(email: string, painelId: string): Promise<void> {
+  async estaAprovado(email: string, painelId: string): Promise<boolean> {
+    return (await this.validadeDe(email, painelId)) !== null;
+  },
+
+  /**
+   * Chamado depois de o código digitado conferir. Renovar é aprovar de novo
+   * com o prazo do código novo — por isso o registro é sempre reescrito.
+   */
+  async aprovar(email: string, painelId: string, validoAte: number): Promise<void> {
     const acesso = await this.obter(email, painelId);
     if (!acesso?.id) {
       throw new Error('Pedido de acesso não encontrado neste aparelho.');
     }
-    if (acesso.aprovadoEm) return;
-    await db.acessos.update(acesso.id, { aprovadoEm: Date.now() });
+    await db.acessos.update(acesso.id, { aprovadoEm: Date.now(), validoAte });
   },
 
   listar(): Promise<AcessoMontagem[]> {
