@@ -71,7 +71,12 @@ console.log(`==> ${Object.keys(dados).length} arquivos de dados embutidos`);
  */
 const escaparSubstituicao = (texto) => texto.replaceAll('\uFFFD', '\\uFFFD');
 
-const pagina = `<title>Verificação de Montagem de Painéis</title>
+// O `charset` precisa vir antes de qualquer texto acentuado: aberto direto do
+// disco, sem ele o navegador decodifica o arquivo como latin-1 e o pacote
+// JavaScript quebra no primeiro acento. Publicado dentro de um invólucro que
+// já declara o seu, este é ignorado.
+const pagina = `<meta charset="utf-8" />
+<title>Verificação de Montagem de Painéis</title>
 <meta name="theme-color" content="#ff000f" />
 <style>
 ${readFileSync(join(saidaBuild, caminhoCss), 'utf8')}

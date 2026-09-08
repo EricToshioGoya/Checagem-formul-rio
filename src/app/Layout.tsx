@@ -1,12 +1,12 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { PDF_INSTRUCOES, TITULO_PDF_INSTRUCOES } from '../core/config';
 import { IconePdf } from '../shared/componentes/Icones';
-import { useSessao } from '../features/auth/SessaoContexto';
+import { usePainelAtivo } from '../features/paineis/PainelAtivo';
 
 export function Layout() {
   const { pathname } = useLocation();
   const navegar = useNavigate();
-  const { email, painel, administra, trocarPainel, sair } = useSessao();
+  const { painel, trocarPainel } = usePainelAtivo();
   const naAdmin = pathname.startsWith('/admin');
 
   return (
@@ -20,53 +20,31 @@ export function Layout() {
             </span>
             <span className="text-base font-semibold sm:hidden">Verificação</span>
           </Link>
-          <div className="flex items-center gap-1">
-            {administra ? (
-              <Link
-                to={naAdmin ? '/' : '/admin'}
-                className="flex min-h-12 items-center rounded-md px-3 text-base font-semibold hover:bg-white/15"
-              >
-                {naAdmin ? 'Sair da administração' : 'Administração'}
-              </Link>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => {
-                sair();
-                navegar('/');
-              }}
-              className="flex min-h-12 items-center rounded-md px-3 text-base font-semibold hover:bg-white/15"
-            >
-              Sair
-            </button>
-          </div>
+          <Link
+            to={naAdmin ? '/' : '/admin'}
+            className="flex min-h-12 items-center rounded-md px-3 text-base font-semibold hover:bg-white/15"
+          >
+            {naAdmin ? 'Sair da administração' : 'Administração'}
+          </Link>
         </div>
       </header>
 
-      {email ? (
+      {painel ? (
         <div className="border-b border-abb-line bg-neutral-50">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-1.5">
             <p className="min-w-0 truncate text-sm text-abb-gray">
-              {painel ? (
-                <>
-                  Painel <span className="font-semibold text-abb-black">{painel.nome}</span>
-                  {' • '}
-                </>
-              ) : null}
-              <span className="font-semibold text-abb-black">{email}</span>
+              Painel <span className="font-semibold text-abb-black">{painel.nome}</span>
             </p>
-            {painel ? (
-              <button
-                type="button"
-                onClick={() => {
-                  trocarPainel();
-                  navegar('/');
-                }}
-                className="text-sm font-semibold text-abb-red underline underline-offset-2"
-              >
-                Trocar painel
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                trocarPainel();
+                navegar('/');
+              }}
+              className="text-sm font-semibold text-abb-red underline underline-offset-2"
+            >
+              Trocar painel
+            </button>
           </div>
         </div>
       ) : null}

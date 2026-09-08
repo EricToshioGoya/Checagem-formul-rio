@@ -9,7 +9,6 @@ import type {
   Solicitacao,
   Tag,
 } from './tipos';
-import type { AcessoMontagem } from '../access/tipos';
 
 /**
  * Base local do dispositivo. Nenhum componente de tela importa este módulo
@@ -25,7 +24,6 @@ class BancoVerificacao extends Dexie {
   solicitacoes!: Table<Solicitacao, number>;
   certificados!: Table<Certificado, number>;
   contadores!: Table<Contador, string>;
-  acessos!: Table<AcessoMontagem, number>;
 
   constructor() {
     super('verificacao-montagem');
@@ -52,6 +50,10 @@ class BancoVerificacao extends Dexie {
       contadores: 'id',
       acessos: '++id, email, painelId, [email+painelId]',
     });
+
+    // v3 — a ferramenta deixou de ter login e aprovação de acesso. A tabela
+    // sai do banco, e com ela os e-mails que ficavam gravados no aparelho.
+    this.version(3).stores({ acessos: null });
   }
 }
 

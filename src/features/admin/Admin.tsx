@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { SENHA_ADMIN } from '../../core/config';
 import { formulariosAtivos } from '../../core/forms/catalogo';
-import { useSessao } from '../auth/SessaoContexto';
+import { usePainelAtivo } from '../paineis/PainelAtivo';
 import type { EntradaCatalogo } from '../../core/forms/tipos';
 import { EditorFormulario } from './EditorFormulario';
 import { ValidacaoAbb } from './ValidacaoAbb';
@@ -12,7 +12,7 @@ import { Erro, Carregando, Vazio } from '../../shared/componentes/Estado';
 const CHAVE_SESSAO = 'admin-liberado';
 
 export function Admin() {
-  const { email, painel, administra } = useSessao();
+  const { painel } = usePainelAtivo();
   const [liberado, setLiberado] = useState(
     () => sessionStorage.getItem(CHAVE_SESSAO) === '1',
   );
@@ -24,17 +24,16 @@ export function Admin() {
 
   useEffect(() => {
     if (!liberado) return;
-    // Só os formulários do painel ativo, e só para quem o administra.
+    // Só os formulários do painel em uso: a senha libera a área, o painel
+    // escolhido decide o que ela mostra.
     formulariosAtivos()
       .then((todas) =>
-        setEntradas(
-          administra && painel ? todas.filter((e) => painel.formularios.includes(e.id)) : [],
-        ),
+        setEntradas(painel ? todas.filter((e) => painel.formularios.includes(e.id)) : []),
       )
       .catch((e: unknown) =>
         setErro(e instanceof Error ? e.message : 'Falha ao ler o catálogo.'),
       );
-  }, [liberado, administra, painel]);
+  }, [liberado, painel]);
 
   if (!liberado) {
     return (
@@ -118,14 +117,13 @@ export function Admin() {
         <>
       <p className="text-base text-abb-gray">
         Formulários do painel{' '}
-        <span className="font-semibold text-abb-black">{painel?.nome}</span>{' '}
-        que <span className="font-semibold text-abb-black">{email}</span> administra.
-        Escolha um para editar textos, ativar ou desativar etapas, reordenar e
-        trocar o conteúdo de apoio.
+        <span className="font-semibold text-abb-black">{painel?.nome}</span>. Escolha um
+        para editar textos, ativar ou desativar etapas, reordenar e trocar o conteúdo de
+        apoio.
       </p>
       {entradas.length === 0 ? (
-        <Vazio titulo={`Nenhum formulário do painel ${painel?.nome ?? ''} sob sua administração`}>
-          Só o administrador de um painel edita os formulários dele.
+        <Vazio titulo="Nenhum formulário para editar">
+          Escolha um painel na tela inicial para ver os formulários dele.
         </Vazio>
       ) : null}
       <ul className="space-y-3">

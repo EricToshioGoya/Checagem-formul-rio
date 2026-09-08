@@ -34,11 +34,11 @@ export const painelSchema = z
     certificado: z.string().min(1).optional(),
     responsavel: responsavelSchema.optional(),
     /**
-     * Quem aprova o acesso do montador a este painel. Sem valor, vale
-     * `RESPONSAVEL_MONTAGEM_PADRAO` do build.
+     * Contatos de referência do painel, aceitos no catálogo e hoje sem efeito
+     * na aplicação: não há login, e a área de administração é liberada pela
+     * senha do build, não por e-mail.
      */
     responsavelMontagem: z.email().optional(),
-    /** Quem edita os formulários deste painel. Sem lista, vale `ADMIN_PADRAO`. */
     administradores: z.array(z.email()).optional(),
     /** Sobrescreve `camposPadrao` do catálogo, quando este painel pedir outros campos. */
     campos: z.array(campoCabecalhoSchema).optional(),

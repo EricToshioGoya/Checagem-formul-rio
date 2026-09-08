@@ -122,15 +122,8 @@ func ouvir(porta int) (net.Listener, int, error) {
 
 func manipulador(arquivos fs.FS) http.Handler {
 	servidorArquivos := http.FileServer(http.FS(arquivos))
-	aprovacao := manipuladorAprovacao(arquivos)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Única rota dinâmica do servidor portátil (veja aprovacao.go).
-		if r.URL.Path == rotaAprovacao {
-			aprovacao.ServeHTTP(w, r)
-			return
-		}
-
 		caminho := strings.TrimPrefix(r.URL.Path, "/")
 		if caminho == "" {
 			caminho = "index.html"
