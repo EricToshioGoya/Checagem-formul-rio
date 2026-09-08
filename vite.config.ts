@@ -8,6 +8,11 @@ import { fileURLToPath, URL } from 'node:url';
 // O padrão "/" atende a raiz do servidor e o binário Go (modalidade B).
 const base = process.env.VITE_BASE ?? '/';
 
+// `VITE_ALVO=demo` gera o pacote de página única usado na demonstração
+// compartilhável (veja scripts/build-demo.mjs): tudo num arquivo só, sem
+// service worker — que não faz sentido dentro de um iframe de terceiro.
+const demo = process.env.VITE_ALVO === 'demo';
+
 export default defineConfig({
   base,
   plugins: [
@@ -56,6 +61,9 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
       },
       devOptions: { enabled: false },
+      // Na demonstração o plugin fica só pelos módulos virtuais: service
+      // worker dentro de iframe de terceiro não registra.
+      disable: demo,
     }),
   ],
   resolve: {
@@ -64,5 +72,10 @@ export default defineConfig({
   build: {
     target: 'es2020',
     chunkSizeWarningLimit: 1200,
+    // A demonstração precisa caber num arquivo: sem divisão de código e com
+    // um único bloco de CSS.
+    ...(demo
+      ? { cssCodeSplit: false, rollupOptions: { output: { codeSplitting: false } } }
+      : {}),
   },
 });

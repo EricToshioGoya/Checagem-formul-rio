@@ -1,10 +1,14 @@
 node_modules/
 dist/
+dist-demo/
 dist-ssr/
 *.local
 .DS_Store
 .vite/
 *.tsbuildinfo
+
+# Demonstração de página única (npm run build-demo)
+demo/
 
 # Saída do teste de fumaça
 saida-fumaca/

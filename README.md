@@ -44,7 +44,13 @@ Requer Node 20 ou superior.
 | `npm run typecheck` | Somente a checagem de tipos |
 | `npm run validar-formularios` | Valida formulários, painéis e templates de certificado contra os schemas Zod |
 | `npm run fumaca` | Teste de fumaça dos dois fluxos em navegador real |
+| `npm run build-demo` | Gera a demonstração de página única (`demo/verificacao-paineis.html`) |
 | `scripts/build-portatil.sh` | Gera o binário portátil (modalidade B) |
+
+A demonstração de página única embute os dados nos próprios arquivos e dispensa
+servidor: serve para mostrar o aplicativo a quem não vai instalar nada. Sem
+backend, ela não envia e-mail nem baixa PDF — o pedido de aprovação cai no
+caminho manual.
 
 O teste de fumaça exige Playwright, que **não** é dependência do projeto:
 
