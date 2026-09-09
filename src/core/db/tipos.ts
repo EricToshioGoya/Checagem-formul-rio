@@ -52,3 +52,14 @@ export interface FormularioCustomizado {
   definicao: unknown;
   atualizadoEm: number;
 }
+
+/**
+ * Registro chave-valor do aparelho. Guarda o identificador do dispositivo e
+ * a credencial de acesso: dois valores que precisam sobreviver ao fechamento
+ * do aplicativo para que o montador não peça autorização toda vez.
+ */
+export interface EntradaSessao {
+  chave: 'dispositivo' | 'credencial';
+  valor: string;
+  atualizadoEm: number;
+}

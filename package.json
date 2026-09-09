@@ -11,7 +11,8 @@
     "typecheck": "tsc -b --noEmit",
     "lint": "tsc -b --noEmit",
     "validar-formularios": "tsx scripts/validarFormularios.ts",
-    "fumaca": "node scripts/fumaca.mjs"
+    "fumaca": "node scripts/fumaca.mjs",
+    "fumaca-autorizacao": "node scripts/fumaca-autorizacao.mjs"
   },
   "dependencies": {
     "dexie": "^4.4.5",

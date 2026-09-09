@@ -7,9 +7,12 @@ conformidade é feito **fora do sistema**.
 
 Implementa a especificação técnica v1.0 (02/09/2026).
 
-- **Sem backend.** A saída do build é um diretório estático.
+- **Aplicativo estático.** A saída do build é um diretório de arquivos.
 - **Offline integral** após o primeiro carregamento (PWA com service worker).
 - **Dados só no aparelho** (IndexedDB via Dexie). Ver [Limitação conhecida](#limitação-conhecida--sem-sincronização).
+- **Acesso controlado** por autorização do responsável pelo painel. Exige uma
+  API de apoio (`cmd/api`), que não recebe dado de formulário nenhum. Ver
+  [Controle de acesso](#controle-de-acesso).
 
 ---
 
@@ -33,14 +36,23 @@ Requer Node 20 ou superior.
 | `npm run typecheck` | Somente a checagem de tipos |
 | `npm run validar-formularios` | Valida `public/forms/*.json` contra o schema Zod |
 | `npm run fumaca` | Teste de fumaça do fluxo completo em navegador real |
+| `npm run fumaca-autorizacao` | Teste de fumaça do controle de acesso, com a API real |
 | `scripts/build-portatil.sh` | Gera o binário portátil (modalidade B) |
 
 O teste de fumaça exige Playwright, que **não** é dependência do projeto:
 
 ```bash
-npm run build && npx vite preview --port 8099 &
+VITE_SEM_AUTORIZACAO=1 npm run build && npx vite preview --port 8099 &
 npm i -D playwright && npx playwright install chromium
 BASE_URL=http://localhost:8099 npm run fumaca
+```
+
+`VITE_SEM_AUTORIZACAO=1` desliga a tela de acesso, que não é o objeto deste
+teste. O controle de acesso tem o seu próprio, que sobe a API e percorre o
+fluxo inteiro no navegador:
+
+```bash
+npm run fumaca-autorizacao      # exige Go, além do Playwright
 ```
 
 Ele percorre criação de projeto, preenchimento com salvamento automático,
@@ -64,6 +76,14 @@ Para publicar em subdiretório, informe a base no build:
 
 ```bash
 VITE_BASE=/verificacao/ npm run build
+```
+
+O build também precisa saber onde está a API de autorização:
+
+```bash
+VITE_API_URL=https://autorizacao.empresa.com.br \
+VITE_AUTH_CHAVE_PUBLICA='{"kty":"EC","crv":"P-256","x":"…","y":"…"}' \
+npm run build
 ```
 
 > **iPhone e iPad:** o Safari descarta o IndexedDB de sites não instalados após
@@ -114,12 +134,15 @@ src/
     forms/                motor: schema Zod, catálogo, progresso
     media/                compressão e normalização de imagem
     export/               ExportTarget, dossiê, PDF, backup .zip
+    auth/                 credencial de acesso, cliente da API, estado da sessão
   features/
     projects/             listagem, criação, TAGs
     fill/                 preenchimento e registro de tipos de campo
     pdf/                  diálogo de geração
     admin/                aba de administração
+    auth/                 tela de bloqueio e tela de autorizações
   shared/                 componentes de UI, ícones, hooks, utilidades
+cmd/api/                  API de autorização em Go (ver cmd/api/README.md)
 cmd/servidor/             servidor portátil em Go (modalidade B)
 scripts/                  validação de formulários, build portátil, fumaça
 ```
@@ -152,6 +175,7 @@ tags:              ++id, projetoId, nome, ordem, [projetoId+ordem]
 preenchimentos:    ++id, tagId, formId, atualizadoEm, [tagId+formId]
 midias:            ++id, preenchimentoId, etapaId, [preenchimentoId+etapaId]
 formulariosCustom: id, atualizadoEm
+sessao:            chave        (identificador do aparelho e credencial de acesso)
 ```
 
 Fotos são gravadas como **Blob**, nunca base64. `respostas` é um mapa
@@ -191,6 +215,42 @@ automaticamente antes do build.
 
 ---
 
+## Controle de acesso
+
+O aplicativo não abre sem autorização. Na primeira execução o montador informa
+o e-mail e o painel que vai verificar; o responsável por aquele painel recebe a
+solicitação por e-mail e decide. Aprovado, o aparelho guarda uma credencial
+assinada e **passa a abrir offline** — a rede só é necessária para pedir o
+acesso e, depois, para renovar e receber revogações.
+
+A autorização vale para **aquele aparelho**. Digitar um e-mail já aprovado em
+outro aparelho gera uma solicitação nova, e o responsável recebe outro aviso.
+
+Quem tem o próprio endereço cadastrado como responsável de um painel recebe o
+link de confirmação na própria caixa e ganha a aba **Autorizações**, onde
+decide vários pedidos de uma vez e revoga acessos.
+
+O servidor que sustenta isso é o `cmd/api`, um binário Go que guarda as
+solicitações e envia os e-mails. **Ele não recebe dado de formulário nenhum:**
+os preenchimentos continuam exclusivamente no aparelho. Instalação,
+configuração e rotas estão em [`cmd/api/README.md`](cmd/api/README.md).
+
+Para o build do aplicativo:
+
+| Variável | Efeito |
+|---|---|
+| `VITE_API_URL` | Endereço da API de autorização |
+| `VITE_AUTH_CHAVE_PUBLICA` | Chave pública (JWK) que confere a credencial offline. Sai de `go run . -gerar-chave` |
+| `VITE_SEM_AUTORIZACAO=1` | Desliga o controle de acesso. Só para desenvolvimento — o aplicativo exibe uma faixa amarela permanente |
+
+> **O que isto protege.** A credencial protege o acesso à tela. Os
+> preenchimentos e as fotos continuam no IndexedDB do aparelho, alcançáveis
+> pelas ferramentas do navegador por quem estiver com o aparelho na mão.
+> Fechar isso exige mover os dados para o servidor, o que está fora do escopo
+> desta versão.
+
+---
+
 ## Aba de administração
 
 Acesso em **Administração**, no cabeçalho. Permite, sem programação: editar
@@ -211,8 +271,9 @@ VITE_SENHA_ADMIN='senha-do-cliente' npm run build
 ```
 
 > **Pendência da especificação (seção 15):** a senha inicial é `abb-admin` e
-> **precisa ser trocada antes de publicar** para os parceiros. Não há
-> autenticação nem controle de usuários: a senha só evita edição acidental.
+> **precisa ser trocada antes de publicar** para os parceiros. A senha só evita
+> edição acidental do conteúdo dos formulários; quem controla o acesso ao
+> sistema é a autorização por painel, descrita acima.
 
 ---
 
@@ -256,6 +317,8 @@ persistência já está atrás dos repositórios para que a troca não afete as 
 | Imagens de referência das 38 etapas | Ainda não recortadas. Os caminhos já estão no JSON; a lista completa está em `public/media/sen-plus/LEIA-ME.md`. Enquanto o arquivo não existir, o modal de ajuda mostra um aviso com o caminho esperado, sem quebrar a tela. |
 | Redação exata das etapas | Conferir contra o documento original. S1.1, S1.3, S2.2 e S2.6 estão marcadas com `pendenteTranscricao`. |
 | Senha da administração | Provisória (`abb-admin`). Trocar antes de publicar. |
+| Painéis e responsáveis | `cmd/api/paineis.exemplo.json` traz dois painéis nomeados e dois marcados como `A DEFINIR`, todos com e-mail `TROCAR@empresa.com.br`. Preencher antes de publicar. |
+| Servidor de e-mail | Sem `SMTP_HOST` a API sobe com o emissor de log e **nenhum e-mail sai**. Definir o SMTP com o TI. |
 
 ---
 
@@ -264,6 +327,13 @@ persistência já está atrás dos repositórios para que a troca não afete as 
 Sem julgamento de conformidade no sistema (não existem estados “OK” e “Não OK”:
 a etapa é respondida ou fica em branco); sem estado “não aplicável”; PDF sempre
 gerável; ordem de preenchimento livre; operador e data informados uma vez e
-replicados em todas as etapas; dados exclusivamente no aparelho; sem
-autenticação; sem marca d'água nas fotos; sem trilha de auditoria além da data
-da última alteração.
+replicados em todas as etapas; dados exclusivamente no aparelho; sem marca
+d'água nas fotos; sem trilha de auditoria de preenchimento além da data da
+última alteração.
+
+Sobre o acesso: sem senha — a identidade é o reconhecimento do responsável,
+que sabe quem está na obra, somado à posse do aparelho; autorização amarrada
+ao aparelho, não ao endereço digitado; credencial válida offline, aceitando
+que uma revogação só alcança o aparelho quando ele reencontrar a rede; e
+trilha de auditoria completa dos acessos (quem pediu, de qual aparelho, quem
+decidiu e quando).
