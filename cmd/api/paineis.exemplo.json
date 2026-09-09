@@ -1,0 +1,22 @@
+[
+  {
+    "id": "system-pro-e-power",
+    "nome": "System Pro E Power",
+    "emailResponsavel": "TROCAR@empresa.com.br"
+  },
+  {
+    "id": "system-pro-e-energy",
+    "nome": "System Pro E Energy",
+    "emailResponsavel": "TROCAR@empresa.com.br"
+  },
+  {
+    "id": "painel-3",
+    "nome": "A DEFINIR — terceiro painel",
+    "emailResponsavel": "TROCAR@empresa.com.br"
+  },
+  {
+    "id": "painel-4",
+    "nome": "A DEFINIR — quarto painel",
+    "emailResponsavel": "TROCAR@empresa.com.br"
+  }
+]

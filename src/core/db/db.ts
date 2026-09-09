@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import type {
+  EntradaSessao,
   FormularioCustomizado,
   Midia,
   Preenchimento,
@@ -18,6 +19,7 @@ class BancoVerificacao extends Dexie {
   preenchimentos!: Table<Preenchimento, number>;
   midias!: Table<Midia, number>;
   formulariosCustom!: Table<FormularioCustomizado, string>;
+  sessao!: Table<EntradaSessao, string>;
 
   constructor() {
     super('verificacao-montagem');
@@ -27,6 +29,11 @@ class BancoVerificacao extends Dexie {
       preenchimentos: '++id, tagId, formId, atualizadoEm, [tagId+formId]',
       midias: '++id, preenchimentoId, etapaId, [preenchimentoId+etapaId]',
       formulariosCustom: 'id, atualizadoEm',
+    });
+    // v2 acrescenta a sessão de acesso. Uma versão nova, e não uma alteração
+    // da v1, para que os aparelhos já em campo migrem sem perder projeto.
+    this.version(2).stores({
+      sessao: 'chave',
     });
   }
 }

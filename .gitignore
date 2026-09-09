@@ -17,3 +17,10 @@ cmd/servidor/web/*
 !cmd/servidor/web/.gitkeep
 cmd/servidor/servidor
 cmd/servidor/servidor.exe
+
+# Dados e chave da API de autorização. A chave privada assina as credenciais
+# de acesso: nunca pode ser versionada.
+cmd/api/dados/
+cmd/api/api
+cmd/api/paineis.json
+*.pem
