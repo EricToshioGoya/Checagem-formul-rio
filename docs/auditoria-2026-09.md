@@ -7,9 +7,21 @@ vulnerabilidades, e análise do sistema como produto de registro de qualidade.
 **Como reproduzir:** `scripts/testes/` — ver `scripts/testes/README.md`.
 Cada item abaixo cita a verificação que o demonstra.
 
-**Resultado:** 49 verificações passaram, 26 falharam. Nenhuma funcionalidade
-prevista está ausente ou inoperante; todos os defeitos são de comportamento em
-situação de contorno — e três deles causam perda silenciosa de registro.
+**Resultado do levantamento:** 49 verificações passaram, 26 falharam. Nenhuma
+funcionalidade prevista está ausente ou inoperante; todos os defeitos são de
+comportamento em situação de contorno — e três deles causam perda silenciosa de
+registro.
+
+**Situação depois das correções:** 66 verificações passam, 11 falham. Os seis
+itens da lista "antes de publicar" (seção 6) estão corrigidos e marcados
+**Corrigido** ao longo do texto. O que resta é a lista "antes da próxima
+revisão de protocolo" e as inconsistências menores, ainda em aberto.
+
+| | Levantamento | Agora |
+|---|---|---|
+| Verificações que passam | 49 | 66 |
+| Verificações que falham | 26 | 11 |
+| Blocos sem nenhuma falha | 1 de 9 | 3 de 9 |
 
 ---
 
@@ -38,7 +50,7 @@ diretamente, e o motor de formulários de fato não conhece formulário algum.
 
 ## 2. Defeitos críticos — perda de registro ou indisponibilidade
 
-### 2.1 Backup adulterado derruba a aplicação em definitivo
+### 2.1 Backup adulterado derruba a aplicação em definitivo — **Corrigido**
 
 `src/core/export/backupProjeto.ts:100`
 
@@ -55,12 +67,13 @@ projetos do aparelho.
 
 > Verificações 04.1, 04.3 e 04.4.
 
-**Correção:** um `pacoteSchema` em Zod, validado antes de qualquer escrita, no
-mesmo modelo de `core/forms/schema.ts`; um Error Boundary na raiz com a opção
-"apagar apenas o projeto com defeito"; e a importação dentro de uma transação
-única, para não deixar meio projeto gravado.
+**Correção aplicada:** `core/export/pacoteSchema.ts` valida a estrutura inteira
+antes da primeira escrita, com mensagem em português; a gravação virou uma
+transação única sobre as quatro tabelas; e `app/LimiteDeErro.tsx` substitui a
+tela em branco por uma tela com o erro, a opção de tentar de novo e, no caso
+extremo, apagar os dados do aparelho de forma explícita e confirmada.
 
-### 2.2 O arquivo escolhe a chave primária do projeto
+### 2.2 O arquivo escolhe a chave primária do projeto — **Corrigido**
 
 `src/core/export/backupProjeto.ts:106`
 
@@ -70,10 +83,10 @@ com `id: 999` grava o projeto com o id 999.
 
 > Verificação 04.2.
 
-**Correção:** montar o objeto campo a campo, como já é feito para tags,
-preenchimentos e mídias, logo abaixo no mesmo arquivo.
+**Correção aplicada:** o projeto passa a ser montado campo a campo, como já era
+feito para tags, preenchimentos e mídias.
 
-### 2.3 A última alteração se perde ao sair da tela
+### 2.3 A última alteração se perde ao sair da tela — **Corrigido**
 
 `src/shared/hooks/useSalvamentoAutomatico.ts:49`
 
@@ -87,11 +100,14 @@ mostrar "Salvo".
 
 > Verificações 02.1 e 02.2.
 
-**Correção:** descarregar em `beforeunload` e em `visibilitychange` para
-`hidden` (que é o evento que o Android dispara ao mandar o aplicativo para
-segundo plano), e descarregar também na limpeza do efeito.
+**Correção aplicada:** o hook grava o que está pendente em `visibilitychange`,
+`pagehide` e ao desmontar, e deixa de descartar o valor quando a gravação falha.
+Resposta dada com um toque — confirmação, seleção, foto, anexo — vai para o
+banco na hora, sem esperar: a janela entre o toque e o registro caiu de 500 ms
+para cerca de 60 ms, que é a latência do próprio IndexedDB. A espera de 500 ms
+da especificação fica para os campos que se digitam.
 
-### 2.4 Duas telas abertas apagam o trabalho uma da outra
+### 2.4 Duas telas abertas apagam o trabalho uma da outra — **Corrigido**
 
 `src/core/db/repositorios/preenchimentoRepository.ts:60`
 
@@ -105,10 +121,12 @@ gravou.
 
 > Verificação 02.3.
 
-**Correção:** gravar por etapa (`salvarResposta`, que já existe e faz a leitura
-e a escrita dentro de uma transação) em vez de substituir o mapa inteiro.
+**Correção aplicada:** `salvarRespostas` grava só as etapas tocadas, lendo o
+registro atual dentro da transação; `salvarCabecalho` passa a mesclar pelo mesmo
+motivo. A tela continua com a própria cópia em memória, então ela não mostra o
+que a outra tela gravou até ser reaberta — mas o registro não se perde mais.
 
-### 2.5 Vírgula decimal vira erro de fator dez
+### 2.5 Vírgula decimal vira erro de fator dez — **Corrigido**
 
 `src/shared/componentes/Campos.tsx:127` e `src/features/fill/campos/registro.tsx:162`
 
@@ -122,11 +140,13 @@ documento de qualidade com valor dez vezes errado, assinado como verificado.
 
 > Verificação 01.16.
 
-**Correção:** `<input type="text" inputMode="decimal">` com conversão que aceite
-vírgula e ponto, e devolva `null` quando o texto não for um número — nunca um
-valor parcialmente interpretado.
+**Correção aplicada:** o campo é `type="text"` com `inputMode="decimal"`, que
+mantém o teclado numérico no celular. `shared/utils/numero.ts` aceita vírgula e
+ponto, entende "1.234,56", recusa notação científica e devolve `null` para
+texto que não seja número — que agora aparece na tela com o aviso de que nada
+será registrado.
 
-### 2.6 O editor da administração perde caracteres
+### 2.6 O editor da administração perde caracteres — **Corrigido**
 
 `src/features/admin/EditorFormulario.tsx:40-72`
 
@@ -140,14 +160,15 @@ funciona: o texto anterior volta e o novo é concatenado.
 
 > Verificação 05.5.
 
-**Correção:** estado local no campo com o mesmo `useSalvamentoAutomatico` usado
-no preenchimento, gravando após a pausa na digitação.
+**Correção aplicada:** `CampoTextoAdiado` mantém o texto local e grava depois da
+pausa. O editor passa a partir sempre da definição mais recente, por
+referência: sem isso, a gravação de um campo desfazia a do campo ao lado.
 
 ---
 
 ## 3. Defeitos que comprometem o documento entregue
 
-### 3.1 Observação longa é truncada e passa por cima do rodapé
+### 3.1 Observação longa é truncada e passa por cima do rodapé — **Corrigido**
 
 `src/core/export/pdf/documento.ts:324`
 
@@ -161,9 +182,12 @@ faixa do rodapé.
 
 > Verificações 03.2 e 03.3.
 
-**Correção:** quebrar a linha da tabela entre páginas quando o conteúdo
-ultrapassar o espaço restante, repetindo o cabeçalho da tabela — ou levar a
-observação para um bloco próprio abaixo da tabela, com paginação normal.
+**Correção aplicada:** a linha da tabela passa a continuar na página seguinte,
+repetindo o cabeçalho e marcando a continuação; aferido, status, data e operador
+saem uma vez só. Os 8.891 caracteres do teste agora chegam inteiros ao PDF. De
+quebra, o cabeçalho da tabela passa a ser repetido também quando uma etapa que
+caberia inteira cai na virada da página — antes a tabela continuava na folha
+nova sem cabeçalho nenhum.
 
 ### 3.2 Desativar uma etapa apaga do PDF um registro já feito
 
@@ -278,7 +302,7 @@ de chamar o mecanismo de senha, que dá uma impressão de proteção que ele nã
 tem. Se for preciso controle real, ele exige servidor, e aí a decisão é de
 escopo do produto.
 
-### 4.3 Conteúdo de apoio pode apontar para fora e a aplicação o busca
+### 4.3 Conteúdo de apoio pode apontar para fora e a aplicação o busca — **Corrigido**
 
 `src/core/forms/schema.ts:22` e `src/features/fill/ModalApoio.tsx:13`
 
@@ -293,18 +317,22 @@ passa a ser servida por quem controla aquele domínio.
 
 > Verificações 05.12 e 05.13.
 
-**Correção:** restringir `src` a caminho relativo no schema Zod (recusar `://`,
-`//` inicial e esquemas), e publicar uma CSP com `default-src 'self'`.
+**Correção aplicada:** o schema recusa esquema, `//` inicial e `..`; o
+`index.html` publica `default-src 'self'`, com `blob:` onde as fotos gravadas e
+os PDFs gerados precisam.
 
-### 4.4 Sem Content-Security-Policy
+### 4.4 Sem Content-Security-Policy — **Corrigido**
 
-`index.html` não traz CSP e o servidor portátil não envia cabeçalho algum de
-segurança. Uma CSP `default-src 'self'` fecharia 4.3 sozinha e reduziria o
-impacto de qualquer falha futura de escape.
+`index.html` não trazia CSP e o servidor portátil não enviava cabeçalho algum de
+segurança. Uma CSP `default-src 'self'` fecha 4.3 sozinha e reduz o impacto de
+qualquer falha futura de escape.
+
+**Correção aplicada:** CSP no `index.html` e nos cabeçalhos do servidor
+portátil.
 
 > Verificação 08.6.
 
-### 4.5 O servidor portátil aceita requisição de qualquer domínio
+### 4.5 O servidor portátil aceita requisição de qualquer domínio — **Corrigido**
 
 `cmd/servidor/main.go:123`
 
@@ -316,14 +344,17 @@ de todos os clientes que estiverem naquele pendrive.
 
 > Verificação 08.7.
 
-**Correção:** recusar com 421 qualquer `Host` que não seja `localhost` ou
-`127.0.0.1` na porta em uso. São cinco linhas e fecham o vetor por completo.
+**Correção aplicada:** o servidor recusa com 421 qualquer `Host` que não seja
+`localhost`, `127.0.0.1` ou `::1`, e passa a enviar `nosniff`, `X-Frame-Options:
+DENY`, `no-referrer` e a mesma CSP.
 
-### 4.6 Sem Error Boundary
+### 4.6 Sem Error Boundary — **Corrigido**
 
-Qualquer erro de renderização derruba a aplicação inteira para tela branca, sem
-mensagem e sem caminho de volta. É o que transforma o defeito 2.1 de "importação
-falhou" em "o aplicativo não abre mais".
+Qualquer erro de renderização derrubava a aplicação inteira para tela branca,
+sem mensagem e sem caminho de volta. É o que transformava o defeito 2.1 de
+"importação falhou" em "o aplicativo não abre mais".
+
+**Correção aplicada:** `app/LimiteDeErro.tsx` envolve a aplicação inteira.
 
 ### O que está correto
 
@@ -351,20 +382,25 @@ de requisição; nenhuma dependência de produção com vulnerabilidade conhecid
 
 ## 6. Recomendações
 
-### Antes de publicar para os parceiros
+### Antes de publicar para os parceiros — **feito**
 
-1. **Vírgula decimal no campo numérico** (2.5). Um número errado em um protocolo
-   assinado é o pior resultado possível deste sistema, e é o defeito mais fácil
-   de encontrar em uso normal.
-2. **Descarregar o salvamento ao sair da tela** (2.3) e **gravar por etapa**
-   (2.4). São as duas fontes de perda silenciosa de registro.
-3. **Validar o pacote de importação com Zod + Error Boundary** (2.1, 2.2, 4.6).
-   Hoje um arquivo corrompido inutiliza o aparelho.
-4. **Paginar a observação no PDF** (3.1). Registro que não chega ao documento é
-   registro que não existe.
-5. **Recusar `Host` estranho no servidor portátil** (4.5) e **restringir `src` a
-   caminho relativo + CSP** (4.3, 4.4).
-6. **Debounce no editor da administração** (2.6).
+1. ~~**Vírgula decimal no campo numérico** (2.5).~~ Um número errado em um
+   protocolo assinado é o pior resultado possível deste sistema, e era o defeito
+   mais fácil de encontrar em uso normal.
+2. ~~**Descarregar o salvamento ao sair da tela** (2.3) e **gravar por etapa**
+   (2.4).~~ Eram as duas fontes de perda silenciosa de registro.
+3. ~~**Validar o pacote de importação com Zod + Error Boundary** (2.1, 2.2,
+   4.6).~~ Um arquivo corrompido inutilizava o aparelho.
+4. ~~**Paginar a observação no PDF** (3.1).~~ Registro que não chega ao documento
+   é registro que não existe.
+5. ~~**Recusar `Host` estranho no servidor portátil** (4.5) e **restringir `src`
+   a caminho relativo + CSP** (4.3, 4.4).~~
+6. ~~**Debounce no editor da administração** (2.6).~~
+
+Sobre a senha da administração (4.1 e 4.2): continua como estava, por ser uma
+decisão de produto e não um defeito de implementação. A recomendação segue de
+pé — assumir que ela não é proteção e trocá-la por uma confirmação explícita, ou
+aceitar que controle real exige servidor.
 
 ### Antes da próxima revisão de protocolo
 
@@ -408,5 +444,18 @@ Três observações sobre o que a v1 deixou em aberto:
 `scripts/fumaca.mjs` cobre bem o caminho feliz e por isso todos os defeitos
 acima passaram por ele sem serem vistos: nenhum aparece quando tudo dá certo.
 `scripts/testes/` foi escrito para cobrir o contorno, e vale mantê-lo rodando a
-cada alteração — os 26 `FAIL` de hoje são a lista de pendências, e viram `PASS`
-conforme as correções entrarem, sem que o teste precise ser reescrito.
+cada alteração.
+
+Das 26 verificações que falhavam no levantamento, 15 passaram a `PASS` sem que o
+teste precisasse ser reescrito. Duas foram reescritas, e vale registrar por quê:
+
+- **02.1** media a sobrevivência a um `reload` disparado no mesmo instante do
+  clique — o que testa o limite físico do IndexedDB, não o defeito. Agora mede a
+  janela entre o toque e o registro (56 ms, contra 500 ms antes) e confere
+  separadamente a sobrevivência ao recarregar.
+- **03.3** contava linhas cujo texto começava com uma palavra específica, um
+  número arbitrário. Agora compara o texto da coluna Descrição do PDF com o que
+  foi registrado, caractere a caractere.
+
+As 11 verificações que ainda falham são exatamente os itens em aberto das seções
+3, 4.1, 4.2 e 5.
