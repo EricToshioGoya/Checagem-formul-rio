@@ -120,10 +120,44 @@ func ouvir(porta int) (net.Listener, int, error) {
 	return nil, 0, ultimoErro
 }
 
+// hostLocal informa se a requisição diz estar falando com esta máquina.
+//
+// O servidor escuta só em 127.0.0.1, mas isso não basta: um site aberto no
+// mesmo navegador pode fazer o próprio domínio resolver para 127.0.0.1 (DNS
+// rebinding), ganhar a origem http://localhost e ler todo o IndexedDB —
+// projetos, respostas e fotos de todos os clientes do pendrive. Conferir o
+// Host fecha esse caminho, porque o navegador envia sempre o nome que o site
+// pediu, e não o endereço em que a conexão terminou.
+func hostLocal(host string) bool {
+	nome := host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		nome = h
+	}
+	nome = strings.TrimSuffix(strings.ToLower(nome), ".")
+	return nome == "localhost" || nome == "127.0.0.1" || nome == "::1" || nome == "[::1]"
+}
+
 func manipulador(arquivos fs.FS) http.Handler {
 	servidorArquivos := http.FileServer(http.FS(arquivos))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !hostLocal(r.Host) {
+			http.Error(w, "Este servidor só atende em localhost.", http.StatusMisdirectedRequest)
+			return
+		}
+
+		// A aplicação não busca nada fora de si mesma, e não deve ser aberta
+		// dentro de outra página.
+		cabecalhos := w.Header()
+		cabecalhos.Set("X-Content-Type-Options", "nosniff")
+		cabecalhos.Set("X-Frame-Options", "DENY")
+		cabecalhos.Set("Referrer-Policy", "no-referrer")
+		cabecalhos.Set("Content-Security-Policy",
+			"default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; "+
+				"object-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; "+
+				"connect-src 'self' blob:; worker-src 'self'; frame-ancestors 'none'; "+
+				"base-uri 'none'; form-action 'none'")
+
 		caminho := strings.TrimPrefix(r.URL.Path, "/")
 		if caminho == "" {
 			caminho = "index.html"
@@ -131,19 +165,20 @@ func manipulador(arquivos fs.FS) http.Handler {
 
 		// O service worker precisa deste cabeçalho para controlar toda a raiz.
 		if strings.HasSuffix(caminho, "sw.js") {
-			w.Header().Set("Service-Worker-Allowed", "/")
+			cabecalhos.Set("Service-Worker-Allowed", "/")
 		}
 		// index.html e service worker nunca ficam em cache do navegador:
 		// é assim que uma versão nova publicada no pendrive chega ao usuário.
-		if caminho == "index.html" || strings.HasSuffix(caminho, ".js") && strings.Contains(caminho, "sw") {
-			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		// Os demais arquivos têm o hash no nome e podem ficar.
+		if caminho == "index.html" || caminho == "sw.js" || strings.HasSuffix(caminho, "/sw.js") {
+			cabecalhos.Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		}
 
 		if _, err := fs.Stat(arquivos, caminho); err != nil {
 			// Rota desconhecida cai no index.html (navegação da SPA).
 			r = r.Clone(r.Context())
 			r.URL.Path = "/"
-			w.Header().Set("Cache-Control", "no-cache")
+			cabecalhos.Set("Cache-Control", "no-cache")
 		}
 		servidorArquivos.ServeHTTP(w, r)
 	})
