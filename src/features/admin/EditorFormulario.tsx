@@ -9,7 +9,8 @@ import { FormularioRepository } from '../../core/db/repositorios';
 import type { DefinicaoFormulario, Etapa, MidiaApoio } from '../../core/forms/tipos';
 import { baixarBlob } from '../../shared/utils/download';
 import { Botao } from '../../shared/componentes/Botao';
-import { CampoSelecao, CampoTexto } from '../../shared/componentes/Campos';
+import { CampoSelecao } from '../../shared/componentes/Campos';
+import { CampoTextoAdiado } from '../../shared/componentes/CampoTextoAdiado';
 import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
 import { IconeVoltar } from '../../shared/componentes/Icones';
@@ -28,6 +29,11 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
   const [secaoAberta, setSecaoAberta] = useState<string | null>(null);
   const [confirmarRestauro, setConfirmarRestauro] = useState(false);
   const entradaArquivo = useRef<HTMLInputElement>(null);
+  // Cada campo grava por conta própria, depois da pausa na digitação. Partir
+  // sempre da definição mais recente evita que a gravação de um campo desfaça
+  // a do campo ao lado.
+  const definicaoAtual = useRef<DefinicaoFormulario | null>(null);
+  definicaoAtual.current = definicao;
 
   useEffect(() => {
     carregarFormulario(formId, true)
@@ -57,6 +63,7 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
   );
 
   const alterarEtapa = (secaoId: string, etapaId: string, mudanca: Partial<Etapa>) => {
+    const definicao = definicaoAtual.current;
     if (!definicao) return;
     void gravar({
       ...definicao,
@@ -72,6 +79,7 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
   };
 
   const moverEtapa = (secaoId: string, indice: number, direcao: -1 | 1) => {
+    const definicao = definicaoAtual.current;
     if (!definicao) return;
     void gravar({
       ...definicao,
@@ -92,6 +100,7 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
     indice: number,
     mudanca: Partial<MidiaApoio> | null,
   ) => {
+    const definicao = definicaoAtual.current;
     if (!definicao) return;
     const secao = definicao.secoes.find((s) => s.id === secaoId);
     const etapa = secao?.etapas.find((e) => e.id === etapaId);
@@ -231,18 +240,18 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
                       </div>
                     </div>
 
-                    <CampoTexto
+                    <CampoTextoAdiado
                       rotulo="Descrição"
                       multilinha
                       valor={etapa.descricao}
-                      onChange={(v) => alterarEtapa(secao.id, etapa.id, { descricao: v })}
+                      onGravar={(v) => alterarEtapa(secao.id, etapa.id, { descricao: v })}
                     />
 
-                    <CampoTexto
+                    <CampoTextoAdiado
                       rotulo="Detalhes (um por linha)"
                       multilinha
                       valor={(etapa.detalhes ?? []).join('\n')}
-                      onChange={(v) =>
+                      onGravar={(v) =>
                         alterarEtapa(secao.id, etapa.id, {
                           detalhes: v.split('\n').map((l) => l.trim()).filter(Boolean),
                         })
@@ -265,10 +274,10 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
                               })
                             }
                           />
-                          <CampoTexto
+                          <CampoTextoAdiado
                             valor={midia.src}
                             placeholder="/media/sen-plus/arquivo.png"
-                            onChange={(v) => alterarMidia(secao.id, etapa.id, i, { src: v })}
+                            onGravar={(v) => alterarMidia(secao.id, etapa.id, i, { src: v })}
                           />
                           <Botao
                             variante="perigo"
@@ -276,10 +285,10 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
                           >
                             Remover
                           </Botao>
-                          <CampoTexto
+                          <CampoTextoAdiado
                             valor={midia.legenda ?? ''}
                             placeholder="Legenda"
-                            onChange={(v) => alterarMidia(secao.id, etapa.id, i, { legenda: v })}
+                            onGravar={(v) => alterarMidia(secao.id, etapa.id, i, { legenda: v })}
                           />
                         </div>
                       ))}
