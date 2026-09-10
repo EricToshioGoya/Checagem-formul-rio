@@ -7,12 +7,32 @@ console.log('\n=== 02. PERSISTÊNCIA E SALVAMENTO AUTOMÁTICO ===');
 await criarProjeto(p, { nome: 'Autosave', tags: ['T1'] });
 await p.getByRole('button', { name: /Montagem/ }).first().click();
 await p.locator('nav button').filter({ hasText: /^S1\.1/ }).click();
+
+// Quanto tempo a resposta leva para estar no banco depois do toque. Enquanto
+// ela não estiver lá, fechar o aplicativo a perde — então esta janela é o
+// risco real de perda, e ela precisa ser bem menor que uma interação humana.
+const inicio = Date.now();
 await p.getByRole('button', { name: 'Marcar como verificado' }).click();
-await p.reload({ waitUntil: 'domcontentloaded' });   // antes dos 500 ms de espera
+let janela = null;
+for (let i = 0; i < 60 && janela === null; i += 1) {
+  const atual = (await lerStore(p, 'preenchimentos'))[0];
+  if (atual?.respostas?.['S1.1']) janela = Date.now() - inicio;
+  else await p.waitForTimeout(20);
+}
+checa('02.1 a resposta chega ao banco em menos de 250 ms após o toque',
+  janela !== null && janela < 250,
+  janela === null ? 'não chegou em 1,2 s' : `${janela} ms`);
+
+// Marcar e recarregar em seguida: com a espera de 500 ms do salvamento
+// automático, este registro se perdia por completo.
+await p.locator('nav button').filter({ hasText: /^S1\.3/ }).click();
+await p.getByRole('button', { name: 'Marcar como verificado' }).click();
+await p.waitForTimeout(200);
+await p.reload({ waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(2500);
 let pre = (await lerStore(p, 'preenchimentos'))[0];
-checa('02.1 resposta sobrevive a recarregar logo após marcar',
-  pre?.respostas?.['S1.1']?.valor === true, JSON.stringify(pre?.respostas ?? {}));
+checa('02.1b resposta sobrevive a recarregar logo após marcar',
+  pre?.respostas?.['S1.3']?.valor === true, JSON.stringify(pre?.respostas ?? {}));
 
 await p.goto(BASE, { waitUntil: 'networkidle' });
 await p.getByRole('button', { name: 'Abrir' }).first().click();
