@@ -33,6 +33,7 @@ Requer Node 20 ou superior.
 | `npm run typecheck` | Somente a checagem de tipos |
 | `npm run validar-formularios` | Valida `public/forms/*.json` contra o schema Zod |
 | `npm run fumaca` | Teste de fumaça do fluxo completo em navegador real |
+| `npm run testes` | Bateria de verificação de contorno (ver `scripts/testes/README.md`) |
 | `scripts/build-portatil.sh` | Gera o binário portátil (modalidade B) |
 
 O teste de fumaça exige Playwright, que **não** é dependência do projeto:
