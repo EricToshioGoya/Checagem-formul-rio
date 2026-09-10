@@ -9,6 +9,11 @@ const PAGINA = { largura: 595.28, altura: 841.89 };
 const MARGEM = 30;
 const LARGURA_UTIL = PAGINA.largura - MARGEM * 2;
 
+/** Onde o corpo da página termina: abaixo daqui é o rodapé. */
+const LIMITE_INFERIOR = MARGEM + 24;
+/** Menos espaço que isto não vale começar um pedaço de linha da tabela. */
+const ALTURA_MINIMA_PARTE = 34;
+
 const VERMELHO = rgb(1, 0, 0.06);
 const PRETO = rgb(0.12, 0.12, 0.12);
 const CINZA = rgb(0.42, 0.42, 0.42);
@@ -306,112 +311,154 @@ function desenharGrade(folha: Folha, etapa: Etapa, valor: ValorGrade): void {
   folha.y -= 6;
 }
 
+/** Uma linha de texto já quebrada, com o passo vertical que ela ocupa. */
+interface LinhaCelula {
+  texto: string;
+  tamanho: number;
+  passo: number;
+  fonte: PDFFont;
+  cor: typeof PRETO;
+}
+
+/**
+ * Desenha a etapa, continuando na página seguinte quando o conteúdo não cabe.
+ *
+ * A altura da célula era calculada mas nunca limitada à folha: uma observação
+ * longa descia por cima do rodapé e o resto do texto sumia do documento. De 200
+ * linhas registradas, 54 chegavam ao PDF entregue ao inspetor.
+ */
 function desenharEtapa(folha: Folha, etapa: Etapa, formulario: FormularioDoDossie): void {
   const resposta = formulario.respostas[etapa.id];
   const fotos = formulario.midiasPorEtapa[etapa.id]?.length ?? 0;
   const respondida = etapaRespondida(etapa, resposta, fotos);
   const operador = formulario.operador ?? '';
-
   const colDescricao = COLUNAS[1].largura - 6;
-  const linhasDescricao = quebrarLinhas(etapa.descricao, folha.fontes.normal, 8.5, colDescricao);
-  const linhasDetalhe = (etapa.detalhes ?? []).flatMap((d) =>
-    quebrarLinhas(`- ${d}`, folha.fontes.normal, 7, colDescricao),
-  );
-  const linhasObs = resposta?.observacao
-    ? quebrarLinhas(`Obs.: ${resposta.observacao}`, folha.fontes.italico, 7.5, colDescricao)
-    : [];
 
-  const alturaConteudo =
-    linhasDescricao.length * 10 + linhasDetalhe.length * 8 + linhasObs.length * 9 + 8;
-  const altura = Math.max(alturaConteudo, 22);
-  folha.espaco(altura + 6);
+  const linhas: LinhaCelula[] = [
+    ...quebrarLinhas(etapa.descricao, folha.fontes.normal, 8.5, colDescricao).map((texto) => ({
+      texto,
+      tamanho: 8.5,
+      passo: 10,
+      fonte: folha.fontes.normal,
+      cor: PRETO,
+    })),
+    ...(etapa.detalhes ?? []).flatMap((d) =>
+      quebrarLinhas(`- ${d}`, folha.fontes.normal, 7, colDescricao).map((texto) => ({
+        texto,
+        tamanho: 7,
+        passo: 8,
+        fonte: folha.fontes.normal,
+        cor: CINZA,
+      })),
+    ),
+    ...(resposta?.observacao
+      ? quebrarLinhas(
+          `Obs.: ${resposta.observacao}`,
+          folha.fontes.italico,
+          7.5,
+          colDescricao,
+        ).map((texto) => ({
+          texto,
+          tamanho: 7.5,
+          passo: 9,
+          fonte: folha.fontes.italico,
+          cor: PRETO,
+        }))
+      : []),
+  ];
 
-  let x = MARGEM;
-  for (const coluna of COLUNAS) {
-    folha.pagina.drawRectangle({
-      x,
-      y: folha.y - altura,
-      width: coluna.largura,
-      height: altura,
-      borderColor: CINZA_CLARO,
-      borderWidth: 0.7,
+  let indice = 0;
+  let primeiraParte = true;
+
+  do {
+    // Abaixo disto começa o rodapé: o texto nunca passa daqui.
+    if (folha.y - LIMITE_INFERIOR < ALTURA_MINIMA_PARTE) {
+      folha.novaPagina();
+      desenharCabecalhoTabela(folha);
+    }
+    const disponivel = folha.y - LIMITE_INFERIOR;
+
+    let usado = 8;
+    let fim = indice;
+    while (fim < linhas.length && usado + linhas[fim].passo <= disponivel) {
+      usado += linhas[fim].passo;
+      fim += 1;
+    }
+    const parte = linhas.slice(indice, fim);
+    const altura = Math.max(usado, 22);
+
+    let x = MARGEM;
+    for (const coluna of COLUNAS) {
+      folha.pagina.drawRectangle({
+        x,
+        y: folha.y - altura,
+        width: coluna.largura,
+        height: altura,
+        borderColor: CINZA_CLARO,
+        borderWidth: 0.7,
+      });
+      x += coluna.largura;
+    }
+
+    const topo = folha.y - 11;
+    folha.pagina.drawText(primeiraParte ? sanitizar(etapa.id) : '(cont.)', {
+      x: MARGEM + 3,
+      y: topo,
+      size: primeiraParte ? 8.5 : 7,
+      font: primeiraParte ? folha.fontes.negrito : folha.fontes.italico,
+      color: primeiraParte ? PRETO : CINZA,
     });
-    x += coluna.largura;
-  }
 
-  const topo = folha.y - 11;
-  folha.pagina.drawText(sanitizar(etapa.id), {
-    x: MARGEM + 3,
-    y: topo,
-    size: 8.5,
-    font: folha.fontes.negrito,
-    color: PRETO,
-  });
+    let yTexto = topo;
+    const xDescricao = MARGEM + COLUNAS[0].largura + 3;
+    for (const linha of parte) {
+      folha.pagina.drawText(linha.texto, {
+        x: xDescricao,
+        y: yTexto,
+        size: linha.tamanho,
+        font: linha.fonte,
+        color: linha.cor,
+      });
+      yTexto -= linha.passo;
+    }
 
-  let yTexto = topo;
-  const xDescricao = MARGEM + COLUNAS[0].largura + 3;
-  for (const linha of linhasDescricao) {
-    folha.pagina.drawText(linha, {
-      x: xDescricao,
-      y: yTexto,
-      size: 8.5,
-      font: folha.fontes.normal,
-      color: PRETO,
-    });
-    yTexto -= 10;
-  }
-  for (const linha of linhasDetalhe) {
-    folha.pagina.drawText(linha, {
-      x: xDescricao,
-      y: yTexto,
-      size: 7,
-      font: folha.fontes.normal,
-      color: CINZA,
-    });
-    yTexto -= 8;
-  }
-  for (const linha of linhasObs) {
-    folha.pagina.drawText(linha, {
-      x: xDescricao,
-      y: yTexto,
-      size: 7.5,
-      font: folha.fontes.italico,
-      color: PRETO,
-    });
-    yTexto -= 9;
-  }
+    // Aferido, status, data e operador saem uma vez só, na primeira parte.
+    if (primeiraParte) {
+      const xAferido = MARGEM + COLUNAS[0].largura + COLUNAS[1].largura + 3;
+      folha.pagina.drawText(
+        truncar(valorAferido(etapa, formulario), folha.fontes.normal, 8, COLUNAS[2].largura - 6),
+        { x: xAferido, y: topo, size: 8, font: folha.fontes.normal, color: PRETO },
+      );
 
-  const xAferido = MARGEM + COLUNAS[0].largura + COLUNAS[1].largura + 3;
-  folha.pagina.drawText(
-    truncar(valorAferido(etapa, formulario), folha.fontes.normal, 8, COLUNAS[2].largura - 6),
-    { x: xAferido, y: topo, size: 8, font: folha.fontes.normal, color: PRETO },
-  );
+      const xStatus = xAferido + COLUNAS[2].largura;
+      folha.pagina.drawText(respondida ? 'Verificado' : 'Não verificado', {
+        x: xStatus,
+        y: topo,
+        size: 8,
+        font: folha.fontes.negrito,
+        color: respondida ? VERDE : VERMELHO,
+      });
 
-  const xStatus = xAferido + COLUNAS[2].largura;
-  folha.pagina.drawText(respondida ? 'Verificado' : 'Não verificado', {
-    x: xStatus,
-    y: topo,
-    size: 8,
-    font: folha.fontes.negrito,
-    color: respondida ? VERDE : VERMELHO,
-  });
+      const xData = xStatus + COLUNAS[3].largura;
+      folha.pagina.drawText(respondida ? dataBr(formulario.atualizadoEm) : '—', {
+        x: xData,
+        y: topo,
+        size: 8,
+        font: folha.fontes.normal,
+        color: PRETO,
+      });
 
-  const xData = xStatus + COLUNAS[3].largura;
-  folha.pagina.drawText(respondida ? dataBr(formulario.atualizadoEm) : '—', {
-    x: xData,
-    y: topo,
-    size: 8,
-    font: folha.fontes.normal,
-    color: PRETO,
-  });
+      const xOperador = xData + COLUNAS[4].largura;
+      folha.pagina.drawText(
+        truncar(respondida ? operador : '—', folha.fontes.normal, 8, COLUNAS[5].largura - 6),
+        { x: xOperador, y: topo, size: 8, font: folha.fontes.normal, color: PRETO },
+      );
+    }
 
-  const xOperador = xData + COLUNAS[4].largura;
-  folha.pagina.drawText(
-    truncar(respondida ? operador : '—', folha.fontes.normal, 8, COLUNAS[5].largura - 6),
-    { x: xOperador, y: topo, size: 8, font: folha.fontes.normal, color: PRETO },
-  );
-
-  folha.y -= altura;
+    folha.y -= altura;
+    indice = fim;
+    primeiraParte = false;
+  } while (indice < linhas.length);
 
   if (etapa.tipoResposta === 'grade_numerica' && resposta?.valor) {
     desenharGrade(folha, etapa, resposta.valor as ValorGrade);

@@ -8,6 +8,14 @@ const { navegador, pagina: p } = await abrir();
 console.log('\n=== 03. EXPORTAÇÃO, PDF E ZIP ===');
 writeFileSync(join(SAIDA, 'foto.png'), PNG_MINIMO);
 
+// Uma observação de campo bem mais longa que a folha, para saber se o registro
+// do montador chega inteiro ao documento ou é cortado.
+const OBSERVACAO_LONGA = Array.from(
+  { length: 120 },
+  (_, i) => `Ponto ${i + 1}: folga acima do tolerado no perfil lateral, corrigida com calço.`,
+).join(' ');
+writeFileSync(join(SAIDA, 'observacao.txt'), OBSERVACAO_LONGA);
+
 const baixados = [];
 p.on('download', async (d) => {
   const destino = join(SAIDA, d.suggestedFilename());
@@ -24,9 +32,7 @@ for (let i = 0; i < 2; i += 1) {
   await p.locator('input[type=file]').last().setInputFiles(join(SAIDA, 'foto.png'));
   await p.waitForTimeout(1300);
   if (i === 0) {
-    await p.locator('textarea[id^="obs-"]').fill(
-      'Observação longa registrada pelo montador durante a inspeção do painel. '.repeat(120),
-    );
+    await p.locator('textarea[id^="obs-"]').fill(OBSERVACAO_LONGA);
     await p.waitForTimeout(1200);
   }
   await p.getByRole('button', { name: 'Voltar ao projeto' }).click();
@@ -44,12 +50,14 @@ checa('03.1 gera um PDF por tipo de verificação, com fotos embutidas', pdfs.le
 const pdfMontagem = pdfs.find((f) => f.includes('MONTAGEM'));
 if (pdfMontagem) {
   const analise = JSON.parse(
-    execSync(`node scripts/testes/inspecionar-pdf.mjs "${pdfMontagem}"`).toString(),
+    execSync(
+      `node scripts/testes/inspecionar-pdf.mjs "${pdfMontagem}" --contem "${join(SAIDA, 'observacao.txt')}"`,
+    ).toString(),
   );
   checa('03.2 nenhum texto do PDF invade o rodapé nem sai da página', analise.foraDaArea === 0,
     `${analise.foraDaArea} trecho(s) abaixo do rodapé; exemplo: ${JSON.stringify(analise.amostras[0] ?? null)}`);
-  checa('03.3 observação longa sai inteira no PDF', analise.observacaoCompleta,
-    `${analise.linhasObservacao} linha(s) de observação impressas de ${analise.linhasEsperadas} esperadas`);
+  checa('03.3 a observação longa chega inteira ao PDF', analise.contem,
+    `${analise.caracteresPresentes} de ${analise.caracteresEsperados} caracteres registrados chegaram ao documento`);
 }
 
 baixados.length = 0;
