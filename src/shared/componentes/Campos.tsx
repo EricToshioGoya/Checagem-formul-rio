@@ -1,7 +1,12 @@
 import { useId, type ReactNode } from 'react';
+import { useCampoNumerico } from '../hooks/useCampoNumerico';
 
 const entrada =
   'min-h-12 w-full rounded-md border border-abb-line bg-white px-3 text-base text-abb-black placeholder:text-neutral-400 focus:border-abb-red';
+
+/** Mesma entrada, sem a altura mínima do toque — para células de tabela. */
+const entradaCompacta =
+  'min-h-12 w-full rounded border border-abb-line bg-white px-2 text-base text-abb-black focus:border-abb-red';
 
 interface RotuloProps {
   htmlFor?: string;
@@ -91,9 +96,18 @@ interface NumeroProps {
   unidade?: string;
   ajuda?: string;
   obrigatorio?: boolean;
-  minimo?: number;
+  /** Rótulo do leitor de tela quando o campo não tem rótulo visível. */
+  rotuloAcessivel?: string;
+  compacto?: boolean;
 }
 
+/**
+ * Campo numérico que aceita a vírgula decimal.
+ *
+ * É `type="text"` de propósito: o `type="number"` do navegador descarta a
+ * vírgula sem avisar, e `12,5` acabava gravado como `125`. O `inputMode`
+ * continua abrindo o teclado numérico no celular.
+ */
 export function CampoNumero({
   id,
   rotulo,
@@ -102,10 +116,14 @@ export function CampoNumero({
   unidade,
   ajuda,
   obrigatorio,
-  minimo,
+  rotuloAcessivel,
+  compacto,
 }: NumeroProps) {
   const gerado = useId();
   const idCampo = id ?? gerado;
+  const { texto, aoDigitar, invalido } = useCampoNumerico(valor, onChange);
+  const idAviso = `${idCampo}-aviso`;
+
   return (
     <div>
       {rotulo ? (
@@ -116,21 +134,28 @@ export function CampoNumero({
       <div className="flex items-center gap-2">
         <input
           id={idCampo}
-          aria-label={rotulo ? undefined : unidade}
-          type="number"
+          aria-label={rotulo ? undefined : (rotuloAcessivel ?? unidade)}
+          type="text"
           inputMode="decimal"
-          min={minimo}
-          className={entrada}
-          value={valor === null || Number.isNaN(valor) ? '' : valor}
-          onChange={(e) => {
-            const bruto = e.target.value;
-            onChange(bruto === '' ? null : Number(bruto));
-          }}
+          autoComplete="off"
+          aria-invalid={invalido || undefined}
+          aria-describedby={invalido ? idAviso : undefined}
+          className={[
+            compacto ? entradaCompacta : entrada,
+            invalido ? 'border-abb-red' : '',
+          ].join(' ')}
+          value={texto}
+          onChange={(e) => aoDigitar(e.target.value)}
         />
         {unidade ? (
           <span className="shrink-0 text-base font-semibold text-abb-gray">{unidade}</span>
         ) : null}
       </div>
+      {invalido ? (
+        <p id={idAviso} className="mt-1 text-sm font-semibold text-abb-red">
+          Valor não numérico — nada será registrado nesta etapa.
+        </p>
+      ) : null}
     </div>
   );
 }
