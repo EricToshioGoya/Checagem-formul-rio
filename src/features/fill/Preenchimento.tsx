@@ -6,6 +6,8 @@ import { calcularProgresso, etapaRespondida, etapaVisivel } from '../../core/for
 import type {
   Etapa,
   MapaRespostas,
+  Resposta,
+  TipoResposta,
   ValorResposta,
   ValoresCabecalho,
 } from '../../core/forms/tipos';
@@ -26,6 +28,22 @@ import { ModalApoio } from './ModalApoio';
 import { CabecalhoFormulario } from './CabecalhoFormulario';
 
 const ID_CABECALHO = '__cabecalho__';
+
+/** Etapas tocadas desde a última gravação. `null` apaga a resposta. */
+type AlteracoesRespostas = Record<string, Resposta | null>;
+
+/**
+ * Tipos que se respondem com um toque, e não digitando. A resposta vai para o
+ * banco na hora: não há texto em curso para esperar, e o montador pode sair da
+ * tela no instante seguinte.
+ */
+const TIPOS_DISCRETOS = new Set<TipoResposta>([
+  'check',
+  'check_com_foto',
+  'selecao',
+  'foto',
+  'anexo_pdf',
+]);
 type Filtro = 'todas' | 'respondidas' | 'pendentes';
 
 export function Preenchimento() {
@@ -58,10 +76,12 @@ export function Preenchimento() {
     {} as Record<string, number>,
   );
 
-  // Em somente leitura nada é gravado: a solicitação já saiu das mãos do montador.
-  const salvamentoRespostas = useSalvamentoAutomatico<MapaRespostas>(async (valor) => {
+  // Vai para o banco só o que mudou, e não o mapa inteiro que a tela tem em
+  // memória: assim duas telas abertas não apagam o trabalho uma da outra. Em
+  // somente leitura nada é gravado: a solicitação já saiu das mãos do montador.
+  const salvamentoRespostas = useSalvamentoAutomatico<AlteracoesRespostas>(async (valor) => {
     if (!contexto || contexto.somenteLeitura) return;
-    await PreenchimentoRepository.substituirRespostas(contexto.preenchimentoId, valor);
+    await PreenchimentoRepository.salvarRespostas(contexto.preenchimentoId, valor);
     await contexto.marcarAlteracao();
   });
 
@@ -138,13 +158,23 @@ export function Preenchimento() {
     [contexto, respostas, fotos],
   );
 
+  /** Enfileira a etapa alterada, acumulando com o que ainda não foi gravado. */
+  const agendarEtapa = (etapaId: string, resposta: Resposta | null, imediato = false) => {
+    salvamentoRespostas.agendar((pendentes) => ({ ...(pendentes ?? {}), [etapaId]: resposta }));
+    if (imediato) void salvamentoRespostas.descarregar();
+  };
+
   const alterarValor = (etapaId: string, valor: ValorResposta | null) => {
+    const tipo = etapas.find((e) => e.etapa.id === etapaId)?.etapa.tipoResposta;
     setRespostas((atual) => {
       const proximo = { ...atual };
       const anterior = proximo[etapaId];
       if (valor === null && !anterior?.observacao) delete proximo[etapaId];
       else proximo[etapaId] = { ...anterior, valor: valor as ValorResposta };
-      salvamentoRespostas.agendar(proximo);
+      // Um toque no botão de confirmação não é digitação: grava na hora, para
+      // que recarregar ou sair do aplicativo logo em seguida não descarte o
+      // registro. A espera de 500 ms fica para os campos que se digitam.
+      agendarEtapa(etapaId, proximo[etapaId] ?? null, tipo ? TIPOS_DISCRETOS.has(tipo) : false);
       return proximo;
     });
   };
@@ -155,7 +185,7 @@ export function Preenchimento() {
       const anterior = proximo[etapaId];
       if (!texto && (anterior === undefined || anterior.valor === null)) delete proximo[etapaId];
       else proximo[etapaId] = { valor: anterior?.valor ?? null, observacao: texto };
-      salvamentoRespostas.agendar(proximo);
+      agendarEtapa(etapaId, proximo[etapaId] ?? null);
       return proximo;
     });
   };
@@ -163,7 +193,7 @@ export function Preenchimento() {
   const alterarCabecalho = (campoId: string, valor: string) => {
     setCabecalho((atual) => {
       const proximo = { ...atual, [campoId]: valor };
-      salvamentoCabecalho.agendar(proximo);
+      salvamentoCabecalho.agendar((pendentes) => ({ ...(pendentes ?? {}), [campoId]: valor }));
       return proximo;
     });
   };

@@ -110,7 +110,6 @@ export function NovoProjeto() {
           rotulo="Quantidade de TAGs"
           valor={quantidade}
           onChange={ajustarQuantidade}
-          minimo={1}
           obrigatorio
         />
       </div>

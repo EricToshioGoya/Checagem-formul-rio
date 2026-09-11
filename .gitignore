@@ -21,3 +21,6 @@ cmd/servidor/web/*
 !cmd/servidor/web/.gitkeep
 cmd/servidor/servidor
 cmd/servidor/servidor.exe
+
+# Saída da bateria de verificação
+saida-testes/

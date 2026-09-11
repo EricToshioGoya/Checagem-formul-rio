@@ -43,6 +43,7 @@ Requer Node 20 ou superior.
 | `npm run validar-formularios` | Valida formulários, painéis e templates de certificado contra os schemas Zod |
 | `npm run fumaca` | Teste de fumaça dos dois fluxos em navegador real |
 | `npm run build-demo` | Gera a demonstração de página única (`demo/verificacao-paineis.html`) |
+| `npm run testes` | Bateria de verificação de contorno (ver `scripts/testes/README.md`) |
 | `scripts/build-portatil.sh` | Gera o binário portátil (modalidade B) |
 
 A demonstração de página única embute os dados nos próprios arquivos e dispensa

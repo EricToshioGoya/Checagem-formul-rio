@@ -1,5 +1,6 @@
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import { Layout } from './Layout';
+import { LimiteDeErro } from './LimiteDeErro';
 import { AtualizacaoPwa } from './AtualizacaoPwa';
 import { RolarAoTopo } from './RolarAoTopo';
 import { SelecaoPainel } from '../features/paineis/SelecaoPainel';
@@ -69,9 +70,11 @@ export function App() {
   return (
     <PainelProvider>
       <HashRouter>
-        <RolarAoTopo />
-        <AtualizacaoPwa />
-        <Rotas />
+        <LimiteDeErro>
+          <RolarAoTopo />
+          <AtualizacaoPwa />
+          <Rotas />
+        </LimiteDeErro>
       </HashRouter>
     </PainelProvider>
   );

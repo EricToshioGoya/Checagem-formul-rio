@@ -12,7 +12,8 @@
     "lint": "tsc -b --noEmit",
     "validar-formularios": "tsx scripts/validarFormularios.ts",
     "fumaca": "node scripts/fumaca.mjs",
-    "build-demo": "node scripts/build-demo.mjs"
+    "build-demo": "node scripts/build-demo.mjs",
+    "testes": "node scripts/testes/executar.mjs"
   },
   "dependencies": {
     "dexie": "^4.4.5",

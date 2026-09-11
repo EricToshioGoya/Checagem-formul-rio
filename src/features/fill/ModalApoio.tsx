@@ -10,9 +10,14 @@ interface Props {
 
 const base = import.meta.env.BASE_URL;
 
+/**
+ * Resolve o caminho do arquivo de apoio dentro da aplicação.
+ *
+ * Nada aqui sai para a rede externa: o schema já recusa esquema e `//`, e esta
+ * função só monta o caminho relativo à base da publicação.
+ */
 function caminho(src: string): string {
-  if (/^(https?:)?\/\//.test(src)) return src;
-  return `${base}${src.replace(/^\//, '')}`;
+  return `${base}${src.replace(/^\/+/, '')}`;
 }
 
 /**

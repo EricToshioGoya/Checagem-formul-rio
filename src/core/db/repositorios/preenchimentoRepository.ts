@@ -85,21 +85,44 @@ export const PreenchimentoRepository = {
   },
 
   async salvarResposta(id: number, etapaId: string, resposta: Resposta | null): Promise<void> {
+    await this.salvarRespostas(id, { [etapaId]: resposta });
+  },
+
+  /**
+   * Grava só as etapas alteradas, lendo o registro atual dentro da transação.
+   *
+   * Escrever o mapa inteiro a partir do que a tela tem em memória fazia a
+   * última gravação apagar o que outra tela — outra aba, ou o aplicativo
+   * reaberto — havia acabado de registrar.
+   */
+  async salvarRespostas(
+    id: number,
+    alteracoes: Record<string, Resposta | null>,
+  ): Promise<void> {
+    const etapas = Object.keys(alteracoes);
+    if (!etapas.length) return;
     await db.transaction('rw', db.preenchimentos, async () => {
       const atual = await db.preenchimentos.get(id);
       if (!atual) return;
       const respostas: MapaRespostas = { ...atual.respostas };
-      if (resposta === null) delete respostas[etapaId];
-      else respostas[etapaId] = resposta;
+      for (const etapaId of etapas) {
+        const resposta = alteracoes[etapaId];
+        if (resposta === null) delete respostas[etapaId];
+        else respostas[etapaId] = resposta;
+      }
       await db.preenchimentos.update(id, { respostas, atualizadoEm: Date.now() });
     });
   },
 
+  /** Mescla os campos informados no cabeçalho, preservando os demais. */
   async salvarCabecalho(id: number, cabecalho: ValoresCabecalho): Promise<void> {
-    await db.preenchimentos.update(id, { cabecalho, atualizadoEm: Date.now() });
-  },
-
-  async substituirRespostas(id: number, respostas: MapaRespostas): Promise<void> {
-    await db.preenchimentos.update(id, { respostas, atualizadoEm: Date.now() });
+    await db.transaction('rw', db.preenchimentos, async () => {
+      const atual = await db.preenchimentos.get(id);
+      if (!atual) return;
+      await db.preenchimentos.update(id, {
+        cabecalho: { ...atual.cabecalho, ...cabecalho },
+        atualizadoEm: Date.now(),
+      });
+    });
   },
 };

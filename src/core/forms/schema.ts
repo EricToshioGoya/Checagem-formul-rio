@@ -17,9 +17,30 @@ export const tiposResposta = [
   'grade_numerica',
 ] as const;
 
+/**
+ * Caminho de conteúdo de apoio, sempre relativo à própria aplicação.
+ *
+ * Um JSON importado pela administração podia apontar para outro domínio, e a
+ * aplicação buscava o arquivo: a operação deixava de ser offline, o endereço e
+ * o horário de cada consulta vazavam para um terceiro, e a instrução visual da
+ * etapa passava a ser servida por quem controlasse aquele domínio.
+ */
+const caminhoRelativo = z
+  .string()
+  .min(1)
+  .refine((s) => !/^[a-z][a-z0-9+.-]*:/i.test(s), {
+    message: 'informe um caminho dentro da aplicação, sem "https:" nem outro esquema',
+  })
+  .refine((s) => !s.startsWith('//'), {
+    message: 'informe um caminho dentro da aplicação, sem "//" no início',
+  })
+  .refine((s) => !s.split('/').includes('..'), {
+    message: 'o caminho não pode subir de diretório com ".."',
+  });
+
 export const midiaApoioSchema = z.object({
   tipo: z.enum(['imagem', 'video', 'pdf']),
-  src: z.string().min(1),
+  src: caminhoRelativo,
   legenda: z.string().optional(),
 });
 

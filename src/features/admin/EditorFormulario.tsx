@@ -16,7 +16,8 @@ import type {
 } from '../../core/forms/tipos';
 import { baixarBlob } from '../../shared/utils/download';
 import { Botao } from '../../shared/componentes/Botao';
-import { CampoSelecao, CampoTexto } from '../../shared/componentes/Campos';
+import { CampoSelecao } from '../../shared/componentes/Campos';
+import { CampoTextoAdiado } from '../../shared/componentes/CampoTextoAdiado';
 import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
 import { IconeVoltar } from '../../shared/componentes/Icones';
@@ -99,6 +100,11 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
   const [confirmarRestauro, setConfirmarRestauro] = useState(false);
   const [remocao, setRemocao] = useState<Remocao | null>(null);
   const entradaArquivo = useRef<HTMLInputElement>(null);
+  // Cada campo grava por conta própria, depois da pausa na digitação. Partir
+  // sempre da definição mais recente evita que a gravação de um campo desfaça
+  // a do campo ao lado.
+  const definicaoAtual = useRef<DefinicaoFormulario | null>(null);
+  definicaoAtual.current = definicao;
 
   useEffect(() => {
     carregarFormulario(formId, true)
@@ -128,6 +134,7 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
   );
 
   const alterarEtapa = (secaoId: string, etapaId: string, mudanca: Partial<Etapa>) => {
+    const definicao = definicaoAtual.current;
     if (!definicao) return;
     void gravar({
       ...definicao,
@@ -143,6 +150,7 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
   };
 
   const moverEtapa = (secaoId: string, indice: number, direcao: -1 | 1) => {
+    const definicao = definicaoAtual.current;
     if (!definicao) return;
     void gravar({
       ...definicao,
@@ -163,6 +171,7 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
     indice: number,
     mudanca: Partial<MidiaApoio> | null,
   ) => {
+    const definicao = definicaoAtual.current;
     if (!definicao) return;
     const secao = definicao.secoes.find((s) => s.id === secaoId);
     const etapa = secao?.etapas.find((e) => e.id === etapaId);
@@ -175,6 +184,7 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
   };
 
   const alterarSecao = (secaoId: string, mudanca: Partial<Secao>) => {
+    const definicao = definicaoAtual.current;
     if (!definicao) return;
     void gravar({
       ...definicao,
@@ -348,16 +358,16 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
             {aberta ? (
               <div className="space-y-4 border-t border-abb-line p-4">
                 <div className="space-y-3 rounded-md border border-dashed border-abb-line p-3">
-                  <CampoTexto
+                  <CampoTextoAdiado
                     rotulo="Título da seção"
                     valor={secao.titulo}
-                    onChange={(v) => alterarSecao(secao.id, { titulo: v })}
+                    onGravar={(v) => alterarSecao(secao.id, { titulo: v })}
                   />
-                  <CampoTexto
+                  <CampoTextoAdiado
                     rotulo="Descrição da seção"
                     multilinha
                     valor={secao.descricao ?? ''}
-                    onChange={(v) =>
+                    onGravar={(v) =>
                       alterarSecao(secao.id, { descricao: v.trim() || undefined })
                     }
                   />
@@ -420,18 +430,18 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
                       </div>
                     </div>
 
-                    <CampoTexto
+                    <CampoTextoAdiado
                       rotulo="Descrição"
                       multilinha
                       valor={etapa.descricao}
-                      onChange={(v) => alterarEtapa(secao.id, etapa.id, { descricao: v })}
+                      onGravar={(v) => alterarEtapa(secao.id, etapa.id, { descricao: v })}
                     />
 
-                    <CampoTexto
+                    <CampoTextoAdiado
                       rotulo="Detalhes (um por linha)"
                       multilinha
                       valor={(etapa.detalhes ?? []).join('\n')}
-                      onChange={(v) =>
+                      onGravar={(v) =>
                         alterarEtapa(secao.id, etapa.id, {
                           detalhes: v.split('\n').map((l) => l.trim()).filter(Boolean),
                         })
@@ -451,10 +461,10 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
                           )
                         }
                       />
-                      <CampoTexto
+                      <CampoTextoAdiado
                         rotulo="Referência (norma, documento)"
                         valor={etapa.referencia ?? ''}
-                        onChange={(v) =>
+                        onGravar={(v) =>
                           alterarEtapa(secao.id, etapa.id, {
                             referencia: v.trim() || undefined,
                           })
@@ -463,11 +473,11 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
                     </div>
 
                     {etapa.tipoResposta === 'selecao' ? (
-                      <CampoTexto
+                      <CampoTextoAdiado
                         rotulo="Opções (uma por linha)"
                         multilinha
                         valor={(etapa.opcoes ?? []).join('\n')}
-                        onChange={(v) =>
+                        onGravar={(v) =>
                           alterarEtapa(secao.id, etapa.id, {
                             opcoes: v.split('\n').map((o) => o.trim()).filter(Boolean),
                           })
@@ -476,11 +486,11 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
                     ) : null}
 
                     {etapa.tipoResposta === 'numero' ? (
-                      <CampoTexto
+                      <CampoTextoAdiado
                         rotulo="Unidade"
                         valor={etapa.unidade ?? ''}
                         placeholder="A, kA, V, N·m"
-                        onChange={(v) =>
+                        onGravar={(v) =>
                           alterarEtapa(secao.id, etapa.id, { unidade: v.trim() || undefined })
                         }
                       />
@@ -488,11 +498,11 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
 
                     {etapa.tipoResposta === 'grade_numerica' && etapa.grade ? (
                       <div className="grid gap-3 sm:grid-cols-2">
-                        <CampoTexto
+                        <CampoTextoAdiado
                           rotulo="Linhas da grade (uma por linha)"
                           multilinha
                           valor={etapa.grade.linhas.map((l) => l.rotulo).join('\n')}
-                          onChange={(v) => {
+                          onGravar={(v) => {
                             const linhas = lerLinhasGrade(v);
                             if (!linhas.length || !etapa.grade) return;
                             alterarEtapa(secao.id, etapa.id, {
@@ -500,12 +510,12 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
                             });
                           }}
                         />
-                        <CampoTexto
+                        <CampoTextoAdiado
                           rotulo="Colunas da grade"
                           multilinha
                           ajuda="Uma por linha, no formato Rótulo|unidade."
                           valor={escreverColunasGrade(etapa.grade.colunas)}
-                          onChange={(v) => {
+                          onGravar={(v) => {
                             const colunas = lerColunasGrade(v);
                             if (!colunas.length || !etapa.grade) return;
                             alterarEtapa(secao.id, etapa.id, {
@@ -559,10 +569,10 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
                               })
                             }
                           />
-                          <CampoTexto
+                          <CampoTextoAdiado
                             valor={midia.src}
                             placeholder="/media/sen-plus/arquivo.png"
-                            onChange={(v) => alterarMidia(secao.id, etapa.id, i, { src: v })}
+                            onGravar={(v) => alterarMidia(secao.id, etapa.id, i, { src: v })}
                           />
                           <Botao
                             variante="perigo"
@@ -570,10 +580,10 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
                           >
                             Remover
                           </Botao>
-                          <CampoTexto
+                          <CampoTextoAdiado
                             valor={midia.legenda ?? ''}
                             placeholder="Legenda"
-                            onChange={(v) => alterarMidia(secao.id, etapa.id, i, { legenda: v })}
+                            onGravar={(v) => alterarMidia(secao.id, etapa.id, i, { legenda: v })}
                           />
                         </div>
                       ))}

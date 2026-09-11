@@ -2,6 +2,18 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      A aplicação não tem servidor nem depende de nada externo: tudo que ela
+      carrega vem da própria publicação. Declarar isso fecha o carregamento de
+      conteúdo de fora, inclusive o que viesse de um JSON de formulário
+      importado na administração.
+      `blob:` é necessário para as fotos gravadas e os PDFs gerados;
+      `'unsafe-inline'` em style-src, para os estilos que o React injeta.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; object-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' blob:; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+    />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
