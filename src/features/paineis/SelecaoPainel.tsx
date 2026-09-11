@@ -12,7 +12,7 @@ import { usePainelAtivo } from './PainelAtivo';
  */
 export function SelecaoPainel() {
   const navegar = useNavigate();
-  const { paineis, escolherPainel, carregando } = usePainelAtivo();
+  const { paineis, painel: emUso, escolherPainel, carregando } = usePainelAtivo();
   const [erro, setErro] = useState<string | null>(null);
 
   const abrir = async (painel: Painel) => {
@@ -44,12 +44,16 @@ export function SelecaoPainel() {
 
       <ul className="grid gap-3 sm:grid-cols-2">
         {paineis.map((painel) => {
+          const atual = emUso?.id === painel.id;
           return (
             <li key={painel.id}>
               <button
                 type="button"
                 onClick={() => abrir(painel)}
-                className="flex h-full min-h-32 w-full flex-col justify-between rounded-lg border-2 border-abb-line bg-white p-4 text-left hover:border-abb-red focus-visible:border-abb-red"
+                className={[
+                  'flex h-full min-h-32 w-full flex-col justify-between rounded-lg border-2 bg-white p-4 text-left hover:border-abb-red focus-visible:border-abb-red',
+                  atual ? 'border-abb-red' : 'border-abb-line',
+                ].join(' ')}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -58,6 +62,11 @@ export function SelecaoPainel() {
                   </div>
                   <IconeSeta className="h-6 w-6 shrink-0 text-abb-red" />
                 </div>
+                {atual ? (
+                  <p className="mt-3 inline-flex w-fit rounded bg-red-50 px-2 py-1 text-sm font-bold text-abb-red">
+                    Em uso neste aparelho
+                  </p>
+                ) : null}
                 <div className="mt-3">
                   <p className="text-sm font-semibold tracking-wide text-abb-gray uppercase">
                     {painel.fluxo === 'certificacao'

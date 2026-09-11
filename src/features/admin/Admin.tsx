@@ -1,27 +1,38 @@
 import { useEffect, useState } from 'react';
+import { AdminApi, ServidorIndisponivel } from '../../core/acesso/api';
 import { SENHA_ADMIN } from '../../core/config';
 import { formulariosAtivos } from '../../core/forms/catalogo';
 import { usePainelAtivo } from '../paineis/PainelAtivo';
 import type { EntradaCatalogo } from '../../core/forms/tipos';
 import { EditorFormulario } from './EditorFormulario';
+import { Liberacoes } from './Liberacoes';
 import { PermissoesPainel } from './PermissoesPainel';
 import { ValidacaoAbb } from './ValidacaoAbb';
 import { Botao } from '../../shared/componentes/Botao';
 import { CampoTexto } from '../../shared/componentes/Campos';
-import { Erro, Carregando, Vazio } from '../../shared/componentes/Estado';
+import { Aviso, Erro, Carregando, Vazio } from '../../shared/componentes/Estado';
 
 const CHAVE_SESSAO = 'admin-liberado';
+const CHAVE_TOKEN = 'admin-token';
+
+type Aba = 'validacao' | 'liberacoes' | 'formularios' | 'acesso';
 
 export function Admin() {
   const { painel } = usePainelAtivo();
-  const [liberado, setLiberado] = useState(
+  const [token, setToken] = useState<string | null>(() =>
+    sessionStorage.getItem(CHAVE_TOKEN),
+  );
+  const [modoLocal, setModoLocal] = useState(
     () => sessionStorage.getItem(CHAVE_SESSAO) === '1',
   );
   const [senha, setSenha] = useState('');
+  const [entrando, setEntrando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [entradas, setEntradas] = useState<EntradaCatalogo[] | null>(null);
   const [selecionado, setSelecionado] = useState<string | null>(null);
-  const [aba, setAba] = useState<'validacao' | 'formularios' | 'acesso'>('validacao');
+  const [aba, setAba] = useState<Aba>('validacao');
+
+  const liberado = token !== null || modoLocal;
 
   useEffect(() => {
     if (!liberado) return;
@@ -36,29 +47,71 @@ export function Admin() {
       );
   }, [liberado, painel]);
 
+  /**
+   * A senha é conferida no servidor, que é quem guarda a fila de liberação.
+   * Sem servidor — pendrive sem rede, aplicação estática — a senha de build
+   * ainda abre as abas locais, que é o que continua fazendo sentido ali.
+   */
+  const entrar = async () => {
+    setEntrando(true);
+    setErro(null);
+    try {
+      const novoToken = await AdminApi.entrar(senha);
+      sessionStorage.setItem(CHAVE_TOKEN, novoToken);
+      sessionStorage.removeItem(CHAVE_SESSAO);
+      setToken(novoToken);
+      setModoLocal(false);
+      setSenha('');
+    } catch (e) {
+      if (e instanceof ServidorIndisponivel) {
+        if (senha === SENHA_ADMIN) {
+          sessionStorage.setItem(CHAVE_SESSAO, '1');
+          setModoLocal(true);
+          setSenha('');
+        } else {
+          setErro('Senha incorreta.');
+        }
+      } else {
+        setErro(e instanceof Error ? e.message : 'Não foi possível entrar.');
+      }
+    } finally {
+      setEntrando(false);
+    }
+  };
+
+  const sair = () => {
+    if (token) void AdminApi.sair(token).catch(() => undefined);
+    sessionStorage.removeItem(CHAVE_TOKEN);
+    sessionStorage.removeItem(CHAVE_SESSAO);
+    setToken(null);
+    setModoLocal(false);
+    setSelecionado(null);
+    setAba('validacao');
+  };
+
+  const expirou = () => {
+    sessionStorage.removeItem(CHAVE_TOKEN);
+    setToken(null);
+    setErro('Sessão de administração expirada. Entre novamente.');
+  };
+
   if (!liberado) {
     return (
       <div className="mx-auto max-w-md space-y-4">
         <h1 className="text-2xl font-bold">Administração</h1>
         <p className="text-base text-abb-gray">
-          Área de edição do conteúdo dos formulários. Informe a senha para continuar.
+          Liberação de montadores e edição do conteúdo dos formulários. Informe a
+          senha para continuar.
         </p>
         <CampoTexto rotulo="Senha" senha valor={senha} onChange={setSenha} autoFoco />
         {erro ? <Erro detalhe={erro} /> : null}
         <Botao
           variante="primario"
           larguraTotal
-          onClick={() => {
-            if (senha === SENHA_ADMIN) {
-              sessionStorage.setItem(CHAVE_SESSAO, '1');
-              setLiberado(true);
-              setErro(null);
-            } else {
-              setErro('Senha incorreta.');
-            }
-          }}
+          disabled={entrando}
+          onClick={() => void entrar()}
         >
-          Entrar
+          {entrando ? 'Entrando…' : 'Entrar'}
         </Botao>
       </div>
     );
@@ -77,20 +130,21 @@ export function Admin() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Administração</h1>
-        <Botao
-          onClick={() => {
-            sessionStorage.removeItem(CHAVE_SESSAO);
-            setLiberado(false);
-          }}
-        >
-          Bloquear
-        </Botao>
+        <Botao onClick={sair}>Bloquear</Botao>
       </div>
+
+      {modoLocal ? (
+        <Aviso>
+          Sem conexão com o servidor de liberação: a fila de pedidos não abre neste
+          momento. As demais abas valem normalmente.
+        </Aviso>
+      ) : null}
 
       <div className="flex flex-wrap gap-2" role="tablist">
         {(
           [
             ['validacao', 'Validação ABB'],
+            ['liberacoes', 'Liberações'],
             ['formularios', 'Formulários'],
             ['acesso', 'Quem pode usar'],
           ] as const
@@ -100,9 +154,10 @@ export function Admin() {
             type="button"
             role="tab"
             aria-selected={aba === chave}
+            disabled={chave === 'liberacoes' && modoLocal}
             onClick={() => setAba(chave)}
             className={[
-              'min-h-12 rounded-md border px-4 text-base font-semibold',
+              'min-h-12 rounded-md border px-4 text-base font-semibold disabled:opacity-40',
               aba === chave
                 ? 'border-abb-red bg-abb-red text-white'
                 : 'border-abb-line bg-white text-abb-black',
@@ -114,6 +169,10 @@ export function Admin() {
       </div>
 
       {aba === 'validacao' ? <ValidacaoAbb /> : null}
+
+      {aba === 'liberacoes' && token ? (
+        <Liberacoes token={token} aoExpirar={expirou} />
+      ) : null}
 
       {aba === 'acesso' ? (
         painel ? (

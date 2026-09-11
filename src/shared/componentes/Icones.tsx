@@ -136,3 +136,17 @@ export function IconeSeta({ className = base }: Props) {
     </svg>
   );
 }
+
+/** Quatro quadros: a grade dos tipos de painel. */
+export function IconePaineis({ className = base }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

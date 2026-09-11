@@ -9,8 +9,12 @@
  * ensaios de rotina com etapa condicional, envio, validação ABB com
  * numeração sequencial e geração do certificado.
  *
- * Uso:
- *   npm run build && npx vite preview --port 8099
+ * Liberação: painel marcado com `exigirLiberacao` só abre depois que a
+ * administração libera o pedido na fila do servidor.
+ *
+ * Uso (o servidor é quem responde a fila de liberação):
+ *   npm run build
+ *   (cd cmd/servidor && go run . -porta 8099 -sem-navegador -pasta ../../dist)
  *   npm i -D playwright && npx playwright install chromium
  *   BASE_URL=http://localhost:8099 node scripts/fumaca.mjs
  *
@@ -54,49 +58,42 @@ const passo = async (nome, fn) => {
   console.log('ok');
 };
 
-const EMAIL_MONTADOR = 'montador@parceiro.com.br';
-/** Administrador padrão do build — o único que edita formulários. */
-const ADMIN = 'ericg10456@gmail.com';
+const SENHA_ADMIN = process.env.SENHA_ADMIN ?? 'abb-admin';
+// E-mail novo a cada execução: o servidor reaproveita o pedido de quem já foi
+// liberado, e a tela de espera não apareceria na segunda rodada.
+const EMAIL_MONTADOR = process.env.EMAIL_FUMACA ?? `montador+${Date.now()}@parceiro.com.br`;
 
-/**
- * Ciclo completo da permissão: o montador pede, o responsável abre o link do
- * e-mail em outro aparelho (aqui, outra aba) e devolve o código, que o
- * montador digita.
- */
-const liberarPainelComo = async (email, painelId) => {
-  await pagina.getByRole('heading', { name: /Acesso ao painel/ }).waitFor();
-  await pagina.getByRole('button', { name: /Solicitar aprovação por e-mail/ }).click();
-
-  const aprovacao = await contexto.newPage();
-  await aprovacao.goto(
-    `${BASE}/#/aprovar?email=${encodeURIComponent(email)}&painel=${painelId}`,
-    { waitUntil: 'networkidle' },
-  );
-  const codigo = (await aprovacao.locator('p.font-mono').innerText()).trim();
-  await aprovacao.close();
-
-  await pagina.locator('#codigo-aprovacao').fill(codigo);
-  await pagina.getByRole('button', { name: 'Liberar acesso' }).click();
-  // A liberação devolve o montador à escolha de painel; esperar aqui evita
-  // que o passo seguinte navegue antes dessa transição.
-  await pagina.getByRole('heading', { name: 'Escolha o tipo de painel' }).waitFor();
+/** Entra na administração pelo servidor e devolve o token da sessão. */
+const entrarNaAdministracao = async () => {
+  const resposta = await pagina.request.post(`${BASE}/api/admin/sessao`, {
+    data: { senha: SENHA_ADMIN },
+  });
+  if (!resposta.ok()) throw new Error(`login da administração falhou (${resposta.status()})`);
+  return (await resposta.json()).token;
 };
 
-const liberarPainel = (painelId) => liberarPainelComo(EMAIL_MONTADOR, painelId);
-
-await passo('entrar com o e-mail do montador', async () => {
-  await pagina.goto(BASE, { waitUntil: 'networkidle' });
-  await pagina.getByRole('heading', { name: 'Entrar' }).waitFor();
-  await pagina.locator('#email-montador').fill(EMAIL_MONTADOR);
-  await pagina.getByRole('button', { name: 'Entrar' }).click();
-  await pagina.getByRole('heading', { name: 'Escolha o tipo de painel' }).waitFor();
-});
-
-await passo('abrir a aplicação na seleção de painel', async () => {
-  await pagina.getByRole('heading', { name: 'Escolha o tipo de painel' }).waitFor();
-  if ((await pagina.getByText('Requer aprovação').count()) !== 4) {
-    throw new Error('os 4 painéis deveriam começar exigindo aprovação');
+/** Abre a administração na aba informada; a sessão já aberta é reaproveitada. */
+const abrirAdministracao = async (aba, alvo = pagina) => {
+  await alvo.goto(`${BASE}/#/admin`, { waitUntil: 'networkidle' });
+  const senha = alvo.getByLabel('Senha');
+  if (await senha.count()) {
+    await senha.fill(SENHA_ADMIN);
+    await alvo.getByRole('button', { name: 'Entrar' }).click();
   }
+  await alvo.getByRole('tab', { name: aba }).click();
+};
+
+const abrirPainel = async (nome) => {
+  await pagina.goto(`${BASE}/#/`, { waitUntil: 'networkidle' });
+  await pagina.getByRole('heading', { name: nome, exact: true }).click();
+  // A escolha do painel navega depois de reler as regras dele: sem esperar,
+  // o passo seguinte é atropelado por essa navegação.
+  await pagina.waitForURL(/#\/paineis\//);
+};
+
+await passo('abrir a aplicação na escolha dos 4 painéis', async () => {
+  await pagina.goto(BASE, { waitUntil: 'networkidle' });
+  await pagina.getByRole('heading', { name: 'Escolha o tipo de painel' }).waitFor();
   for (const nome of ['SEN Plus', 'System pro E Energy', 'System pro E Power', 'SAFR']) {
     if (!(await pagina.getByRole('heading', { name: nome, exact: true }).count())) {
       throw new Error(`painel ausente na tela inicial: ${nome}`);
@@ -111,20 +108,17 @@ await passo('abrir a aplicação na seleção de painel', async () => {
   if (!resposta.ok()) throw new Error(`PDF de instruções inacessível (${resposta.status()})`);
 });
 
-await passo('SEN Plus bloqueado até a aprovação do responsável', async () => {
+await passo('abrir o SEN Plus e poder voltar aos 4 painéis', async () => {
   await pagina.getByRole('heading', { name: 'SEN Plus', exact: true }).click();
-  await pagina.getByRole('heading', { name: /Acesso ao painel SEN Plus/ }).waitFor();
+  await pagina.getByRole('heading', { name: 'Meus projetos' }).waitFor();
 
-  // Código errado não passa.
-  await pagina.locator('#codigo-aprovacao').fill('AAAA-BBBB');
-  await pagina.getByRole('button', { name: 'Liberar acesso' }).click();
-  await pagina.getByText('Código inválido').waitFor();
-
-  // URL direta de tela interna também não passa sem aprovação.
-  await pagina.goto(`${BASE}/#/paineis/sen-plus/projetos`, { waitUntil: 'networkidle' });
-  await pagina.getByRole('heading', { name: /Acesso ao painel SEN Plus/ }).waitFor();
-
-  await liberarPainel('sen-plus');
+  // A troca de painel continua à mão em qualquer tela do fluxo.
+  const trocar = pagina.getByRole('button', { name: /SEN Plus/ }).first();
+  if (!(await trocar.isVisible())) {
+    throw new Error('o botão de trocar de painel sumiu do cabeçalho');
+  }
+  await trocar.click();
+  await pagina.getByRole('heading', { name: 'Escolha o tipo de painel' }).waitFor();
   await pagina.getByRole('heading', { name: 'SEN Plus', exact: true }).click();
   await pagina.getByRole('heading', { name: 'Meus projetos' }).waitFor();
 });
@@ -241,24 +235,9 @@ await passo('abrir a rotina BT e a grade de ensaios', async () => {
   if (valor !== '150') throw new Error(`grade não persistiu: "${valor}"`);
 });
 
-await passo('montador comum não vê a administração', async () => {
-  await pagina.goto(`${BASE}/#/`, { waitUntil: 'networkidle' });
-  if (await pagina.getByRole('link', { name: 'Administração' }).count()) {
-    throw new Error('o link de administração apareceu para quem não administra o painel');
-  }
-});
-
 await passo('administração: senha e edição', async () => {
-  // A administração é do e-mail administrador do painel, não do montador.
-  await pagina.getByRole('button', { name: 'Sair' }).click();
-  await pagina.getByRole('heading', { name: 'Entrar' }).waitFor();
-  await pagina.locator('#email-montador').fill(ADMIN);
-  await pagina.getByRole('button', { name: 'Entrar' }).click();
-  await pagina.getByRole('heading', { name: 'SEN Plus', exact: true }).click();
-  await liberarPainelComo(ADMIN, 'sen-plus');
-
   await pagina.goto(`${BASE}/#/admin`, { waitUntil: 'networkidle' });
-  await pagina.getByLabel('Senha').fill('abb-admin');
+  await pagina.getByLabel('Senha').fill(SENHA_ADMIN);
   await pagina.getByRole('button', { name: 'Entrar' }).click();
   await pagina.getByRole('tab', { name: 'Formulários' }).click();
   await pagina.getByRole('button', { name: /Verificação de Montagem/ }).click();
@@ -274,9 +253,6 @@ await passo('administração: senha e edição', async () => {
 
 await passo('abrir o System pro E Energy', async () => {
   await pagina.goto(`${BASE}/#/`, { waitUntil: 'networkidle' });
-  await pagina.getByRole('heading', { name: 'System pro E Energy', exact: true }).click();
-  // Aprovação é por painel: liberar o SEN Plus não libera este.
-  await liberarPainelComo(ADMIN, 'spee');
   await pagina.getByRole('heading', { name: 'System pro E Energy', exact: true }).click();
   await pagina.getByRole('heading', { name: 'System pro E Energy' }).waitFor();
   await pagina.getByText('Responsável ABB: Tainá Gioia').waitFor();
@@ -450,12 +426,10 @@ await passo('baixar o certificado emitido', async () => {
 });
 
 await passo('numeração é imutável e sequencial', async () => {
-  // URL direta de um painel ainda não aprovado volta para a escolha.
+  // URL de outro painel não contorna a escolha: volta para a tela inicial.
   await pagina.goto(`${BASE}/#/paineis/safr/solicitacoes`, { waitUntil: 'networkidle' });
   await pagina.getByRole('heading', { name: 'Escolha o tipo de painel' }).waitFor();
 
-  await pagina.getByRole('heading', { name: 'SAFR', exact: true }).click();
-  await liberarPainelComo(ADMIN, 'safr');
   await pagina.getByRole('heading', { name: 'SAFR', exact: true }).click();
   await pagina.getByRole('button', { name: 'Nova solicitação' }).click();
   for (const [campo, valor] of Object.entries({
@@ -478,6 +452,71 @@ await passo('numeração é imutável e sequencial', async () => {
   if (await pagina.getByRole('button', { name: 'Baixar certificado' }).count()) {
     throw new Error('certificado oferecido antes da aprovação');
   }
+});
+
+// ---------------------------------------------------------------------------
+// Liberação de acesso pela administração — SEN Plus
+// ---------------------------------------------------------------------------
+
+await passo('exigir liberação da ABB no SEN Plus', async () => {
+  await abrirPainel('SEN Plus');
+  await abrirAdministracao('Quem pode usar');
+  await pagina
+    .getByRole('checkbox', { name: /Exigir liberação da ABB/ })
+    .check();
+  await pagina.getByText('— salvo').waitFor({ timeout: 15000 });
+});
+
+await passo('painel travado até a administração liberar', async () => {
+  await pagina.goto(`${BASE}/#/paineis/sen-plus/projetos`, { waitUntil: 'networkidle' });
+  await pagina.getByRole('heading', { name: /Pedir acesso ao painel SEN Plus/ }).waitFor();
+
+  await pagina.getByLabel('Nome').fill('Carlos Silva');
+  await pagina.getByLabel('E-mail da empresa').fill(EMAIL_MONTADOR);
+  await pagina.getByRole('button', { name: 'Pedir liberação' }).click();
+  await pagina.getByRole('heading', { name: 'Aguardando liberação' }).waitFor();
+
+  // URL direta de tela interna também não passa por cima da espera.
+  await pagina.goto(`${BASE}/#/paineis/sen-plus/projetos`, { waitUntil: 'networkidle' });
+  await pagina.getByRole('heading', { name: 'Aguardando liberação' }).waitFor();
+
+  // O responsável libera pela fila da administração, em outro aparelho.
+  const administracao = await contexto.newPage();
+  await abrirAdministracao('Liberações', administracao);
+  // A fila mostra só os pendentes por padrão; o decidido continua à vista.
+  await administracao.getByRole('button', { name: 'Mostrar todos' }).click();
+  const pedido = administracao
+    .locator('li')
+    .filter({ hasText: EMAIL_MONTADOR.toLowerCase() })
+    .first();
+  await pedido.getByRole('button', { name: 'Liberar' }).click();
+  await pedido.getByText('Liberado').waitFor({ timeout: 15000 });
+  await administracao.close();
+
+  await pagina.getByRole('button', { name: 'Verificar agora' }).click();
+  await pagina.getByRole('heading', { name: 'Acesso liberado' }).waitFor({ timeout: 20000 });
+  await pagina.getByRole('button', { name: 'Entrar no painel' }).click();
+  await pagina.getByRole('heading', { name: 'Meus projetos' }).waitFor();
+});
+
+await passo('acesso revogado devolve o montador à espera', async () => {
+  const token = await entrarNaAdministracao();
+  const fila = await pagina.request.get(`${BASE}/api/admin/solicitacoes`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const { solicitacoes } = await fila.json();
+  const pedido = solicitacoes.find((s) => s.email === EMAIL_MONTADOR.toLowerCase());
+  if (!pedido) throw new Error('o pedido de acesso sumiu da fila');
+  const revogacao = await pagina.request.post(`${BASE}/api/admin/solicitacoes/${pedido.id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { acao: 'revogar', observacao: 'Acesso suspenso para conferência.' },
+  });
+  if (!revogacao.ok()) throw new Error(`revogação falhou (${revogacao.status()})`);
+
+  // O montador volta ao aplicativo: a liberação é reconferida e o painel fecha.
+  await pagina.reload({ waitUntil: 'networkidle' });
+  await pagina.getByRole('heading', { name: 'Aguardando liberação' }).waitFor({ timeout: 20000 });
+  await pagina.getByText('Acesso suspenso para conferência.').waitFor();
 });
 
 await pagina.screenshot({ path: join(SAIDA, 'tela-final.png'), fullPage: false });

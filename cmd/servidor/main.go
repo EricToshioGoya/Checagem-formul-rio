@@ -32,12 +32,18 @@ var embutido embed.FS
 const (
 	portaPadrao     = 8080
 	tentativasPorta = 20
+	senhaAdminPadr  = "abb-admin"
+	hostPadrao      = "127.0.0.1"
 )
 
 func main() {
 	porta := flag.Int("porta", portaPadrao, "porta HTTP local")
 	semNavegador := flag.Bool("sem-navegador", false, "não abrir o navegador automaticamente")
 	pasta := flag.String("pasta", "", "servir uma pasta do disco em vez do conteúdo embutido")
+	host := flag.String("host", hostPadrao, "endereço de escuta; 0.0.0.0 atende a rede e libera o acesso de fora")
+	arquivoFila := flag.String("dados", "", "arquivo JSON da fila de liberação (padrão: dados/acessos.json ao lado do executável)")
+	senhaAdmin := flag.String("senha-admin", "", "senha da administração (padrão: variável ADMIN_SENHA)")
+	origensCORS := flag.String("origem", "", "origens liberadas para chamar a API, separadas por vírgula (ex.: https://app.exemplo.com)")
 	flag.Parse()
 
 	arquivos, origem, err := resolverConteudo(*pasta)
@@ -45,7 +51,17 @@ func main() {
 		log.Fatalf("Não foi possível localizar os arquivos da aplicação: %v", err)
 	}
 
-	ouvinte, portaUsada, err := ouvir(*porta)
+	senha := primeiroNaoVazio(*senhaAdmin, os.Getenv("ADMIN_SENHA"), senhaAdminPadr)
+	fila, err := AbrirFila(caminhoDados(*arquivoFila), senha)
+	if err != nil {
+		log.Fatalf("Não foi possível abrir a fila de liberação: %v", err)
+	}
+
+	// Escutar fora de 127.0.0.1 é decisão explícita de quem sobe o servidor:
+	// é o que permite o administrador liberar montadores de outro aparelho.
+	naRede := !enderecoLocal(*host)
+
+	ouvinte, portaUsada, err := ouvir(*host, *porta)
 	if err != nil {
 		log.Fatalf("Não foi possível abrir a porta: %v", err)
 	}
@@ -54,6 +70,13 @@ func main() {
 	fmt.Printf("Verificação de Montagem de Painéis\n")
 	fmt.Printf("Conteúdo: %s\n", origem)
 	fmt.Printf("Endereço: %s\n", endereco)
+	fmt.Printf("Fila de liberação: %s\n", fila.caminho)
+	if naRede {
+		fmt.Printf("Escutando em %s: o servidor atende outros aparelhos da rede.\n", *host)
+	}
+	if senha == senhaAdminPadr {
+		fmt.Printf("ATENÇÃO: a senha da administração é a padrão. Defina ADMIN_SENHA antes de publicar.\n")
+	}
 	fmt.Printf("Para encerrar, feche esta janela ou pressione Ctrl+C.\n\n")
 
 	if !*semNavegador {
@@ -66,7 +89,7 @@ func main() {
 	}
 
 	servidor := &http.Server{
-		Handler:           manipulador(arquivos),
+		Handler:           comCORS(listaOrigens(*origensCORS), manipulador(arquivos, fila, naRede)),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	if err := servidor.Serve(ouvinte); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -107,11 +130,45 @@ func resolverConteudo(pastaInformada string) (fs.FS, string, error) {
 	return sub, "embutido no binário", nil
 }
 
-func ouvir(porta int) (net.Listener, int, error) {
+// caminhoDados resolve onde a fila de liberação é gravada.
+func caminhoDados(informado string) string {
+	if informado != "" {
+		return informado
+	}
+	if executavel, err := os.Executable(); err == nil {
+		return filepath.Join(filepath.Dir(executavel), "dados", "acessos.json")
+	}
+	return filepath.Join("dados", "acessos.json")
+}
+
+func primeiroNaoVazio(valores ...string) string {
+	for _, v := range valores {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func listaOrigens(bruto string) []string {
+	var origens []string
+	for _, parte := range strings.Split(bruto, ",") {
+		if limpa := strings.TrimSpace(parte); limpa != "" {
+			origens = append(origens, limpa)
+		}
+	}
+	return origens
+}
+
+func enderecoLocal(host string) bool {
+	return host == "" || host == hostPadrao || strings.EqualFold(host, "localhost") || host == "::1"
+}
+
+func ouvir(host string, porta int) (net.Listener, int, error) {
 	var ultimoErro error
 	for i := 0; i < tentativasPorta; i++ {
 		atual := porta + i
-		ouvinte, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", atual))
+		ouvinte, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, atual))
 		if err == nil {
 			return ouvinte, atual, nil
 		}
@@ -137,11 +194,14 @@ func hostLocal(host string) bool {
 	return nome == "localhost" || nome == "127.0.0.1" || nome == "::1" || nome == "[::1]"
 }
 
-func manipulador(arquivos fs.FS) http.Handler {
+func manipulador(arquivos fs.FS, fila *Fila, naRede bool) http.Handler {
 	servidorArquivos := http.FileServer(http.FS(arquivos))
+	api := fila.API()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !hostLocal(r.Host) {
+		// Na modalidade de pendrive o servidor só atende localhost. Quem sobe
+		// com -host aberto está publicando para a rede e assume a checagem.
+		if !naRede && !hostLocal(r.Host) {
 			http.Error(w, "Este servidor só atende em localhost.", http.StatusMisdirectedRequest)
 			return
 		}
@@ -159,6 +219,13 @@ func manipulador(arquivos fs.FS) http.Handler {
 				"base-uri 'none'; form-action 'none'")
 
 		caminho := strings.TrimPrefix(r.URL.Path, "/")
+
+		// A fila de liberação vive em /api; o resto é a aplicação estática.
+		if caminho == "api" || strings.HasPrefix(caminho, "api/") {
+			api.ServeHTTP(w, r)
+			return
+		}
+
 		if caminho == "" {
 			caminho = "index.html"
 		}

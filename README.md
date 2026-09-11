@@ -3,21 +3,25 @@
 Aplicação para o montador do parceiro de painel certificado registrar, durante a
 montagem, as verificações exigidas pelos protocolos ABB.
 
-Não há login nem aprovação: quem abre o endereço usa — ver
-[Quem pode usar](#quem-pode-usar). A primeira tela é a escolha do painel, e é
-ele que decide o fluxo:
+A primeira tela é sempre a escolha do painel — e o botão do cabeçalho volta a
+ela de qualquer tela do fluxo. O painel decide o que vem depois:
 
 | Painel | Fluxo | Resultado |
 |---|---|---|
 | SEN Plus | Verificação | Dossiê em PDF que o montador envia por e-mail ao inspetor. O julgamento de conformidade é feito **fora do sistema**. |
 | System pro E Energy, System pro E Power, SAFR | Certificação | Solicitação → validação ABB → **certificado de produto numerado**, gerado pelo próprio sistema. |
 
-Implementa a especificação técnica v1.0 (02/09/2026) e a extensão de
-certificação (04/09/2026).
+Cada painel decide, na aba de administração, o que pede antes do fluxo: nada
+(o padrão), **identificação** (nome e e-mail declarados) ou **liberação da
+ABB** — o e-mail vira um pedido na fila do servidor e o painel fica travado até
+alguém liberar. Ver [Quem pode usar](#quem-pode-usar).
 
-- **Sem backend.** A saída do build é um diretório estático.
-- **Sem login e sem contas.** O controle de quem usa é organizacional: quem recebe o endereço, usa.
-- **Offline integral** após o primeiro carregamento (PWA com service worker).
+Implementa a especificação técnica v1.0 (02/09/2026), a extensão de
+certificação (04/09/2026) e a liberação de acesso pela ABB (11/09/2026).
+
+- **Sem contas.** Não há cadastro de usuário nem senha por montador: o e-mail identifica, e a liberação autoriza.
+- **Servidor só para a liberação** (`cmd/servidor`, Go): um binário, um arquivo JSON, sem banco. Os painéis que não exigem liberação continuam abrindo sem servidor nenhum.
+- **Offline integral** no preenchimento após o primeiro carregamento (PWA com service worker); pedir e conferir liberação exige rede.
 - **Dados só no aparelho** (IndexedDB via Dexie). Ver [Limitação conhecida](#limitação-conhecida--sem-sincronização).
 
 ---
@@ -41,7 +45,8 @@ Requer Node 20 ou superior.
 | `npm run build` | Valida os arquivos de dados → `tsc -b` → `vite build` |
 | `npm run typecheck` | Somente a checagem de tipos |
 | `npm run validar-formularios` | Valida formulários, painéis e templates de certificado contra os schemas Zod |
-| `npm run fumaca` | Teste de fumaça dos dois fluxos em navegador real |
+| `npm run fumaca` | Teste de fumaça dos dois fluxos e da liberação, em navegador real |
+| `cd cmd/servidor && go run .` | Sobe o servidor: aplicação + fila de liberação |
 | `npm run build-demo` | Gera a demonstração de página única (`demo/verificacao-paineis.html`) |
 | `npm run testes` | Bateria de verificação de contorno (ver `scripts/testes/README.md`) |
 | `scripts/build-portatil.sh` | Gera o binário portátil (modalidade B) |
@@ -85,6 +90,23 @@ e passa a operar offline. Android e iOS não permitem abrir um HTML local com
 câmera e armazenamento persistente, por isso esta modalidade é obrigatória no
 celular.
 
+Painel que exige liberação precisa do servidor respondendo em `/api` no mesmo
+endereço — o próprio binário serve as duas coisas:
+
+```bash
+ADMIN_SENHA='senha-do-cliente' ./verificacao-montagem-linux-amd64 \
+  -host 0.0.0.0 -porta 8080 -sem-navegador -pasta ./dist
+```
+
+Aplicação e servidor em endereços diferentes exigem três coisas: a URL da API no
+build, a origem liberada no servidor e o `connect-src` da CSP em `index.html`
+aceitando esse endereço.
+
+```bash
+VITE_API_URL=https://liberacao.exemplo.com/api npm run build
+./verificacao-montagem-linux-amd64 -origem https://app.exemplo.com
+```
+
 Para publicar em subdiretório, informe a base no build:
 
 ```bash
@@ -111,7 +133,15 @@ verificacao-montagem-windows-amd64.exe            # porta 8080, abre o navegador
 verificacao-montagem-windows-amd64.exe -porta 9000
 verificacao-montagem-windows-amd64.exe -sem-navegador
 verificacao-montagem-windows-amd64.exe -pasta ./dist   # serve do disco
+verificacao-montagem-windows-amd64.exe -host 0.0.0.0   # atende a rede local
+verificacao-montagem-windows-amd64.exe -dados D:\acessos.json
 ```
+
+De pendrive, o servidor só atende `localhost` — é essa a checagem que `-host`
+abre, de propósito, para quem publica na rede. A fila de liberação fica em
+`dados/acessos.json`, ao lado do executável, e a senha da administração vem de
+`ADMIN_SENHA` (ou de `-senha-admin`); sem nenhuma das duas, o servidor sobe com
+a senha padrão e avisa no terminal.
 
 Se a porta estiver ocupada, o servidor tenta as 20 seguintes. Uma pasta `web/`
 ou `dist/` ao lado do executável tem precedência sobre o conteúdo embutido — é
@@ -142,6 +172,7 @@ public/
 src/
   app/                    rotas, layout, shell da PWA
   core/
+    acesso/               cliente da fila de liberação e pedido do aparelho
     db/                   Dexie: schema e repositórios
     forms/                motor: schema Zod, catálogo, progresso
     paineis/              catálogo dos tipos de painel
@@ -150,14 +181,14 @@ src/
     media/                compressão e normalização de imagem
     export/               ExportTarget, dossiê, PDF, backup .zip
   features/
-    paineis/              tela inicial de seleção de painel
+    paineis/              seleção de painel, identificação e liberação de acesso
     projects/             listagem, criação, TAGs
     solicitacoes/         solicitação de certificação
     fill/                 preenchimento e registro de tipos de campo
     pdf/                  diálogo de geração
     admin/                administração e validação ABB
   shared/                 componentes de UI, ícones, hooks, utilidades
-cmd/servidor/             servidor portátil em Go (modalidade B)
+cmd/servidor/             servidor em Go: arquivos estáticos + fila de liberação
 scripts/                  validação dos arquivos de dados, build portátil, fumaça
 ```
 
@@ -269,15 +300,19 @@ declaradas no JSON e não mudam nada em quem não as usa:
 
 ## Quem pode usar
 
-Não há login. Cada painel decide, na aba de administração, se exige
-**identificação** e de quais empresas ela é aceita — e essa configuração é
-independente painel a painel.
+Não há cadastro de usuários. Cada painel decide, na aba de administração, o que
+exige antes do fluxo — e essa configuração é independente painel a painel.
 
 - **Painel sem exigência** (o padrão): quem abre o endereço usa.
-- **Painel com exigência**: antes do fluxo, o montador informa nome, e-mail da
-  empresa e a empresa. A ferramenta confere o **domínio do e-mail** contra a
+- **Painel com identificação**: antes do fluxo, o montador informa nome, e-mail
+  da empresa e a empresa. A ferramenta confere o **domínio do e-mail** contra a
   lista de empresas liberadas naquele painel. Sem espera e sem código: informou,
   entrou.
+- **Painel com liberação da ABB**: o e-mail informado vira um **pedido na fila
+  do servidor** e o painel fica travado na tela de espera até alguém liberar na
+  aba *Liberações*. A tela se atualiza sozinha a cada 5 segundos; liberado, o
+  preenchimento segue inclusive sem rede. Revogar devolve o montador à espera na
+  entrada seguinte no fluxo.
 
 A lista é de **empresas, não de pessoas** — parceiro entra e sai devagar,
 montador entra e sai toda hora. Ninguém precisa cadastrar montador.
@@ -287,11 +322,16 @@ montador entra e sai toda hora. Ninguém precisa cadastrar montador.
   "paineis": {
     "sen-plus": {
       "exigirIdentificacao": true,
+      "exigirLiberacao": true,
       "dominios": ["parceiro1.com.br", "parceiro2.com.br"]
     }
   }
 }
 ```
+
+`exigirLiberacao` depende do servidor: sem ele, o pedido não sai do lugar e a
+tela de espera diz isso. Os painéis que não o exigem continuam abrindo em
+qualquer hospedagem estática.
 
 Lista vazia com identificação exigida aceita qualquer domínio: pede o e-mail,
 mas não restringe a empresa — vira registro, não restrição.
@@ -311,21 +351,47 @@ mas não restringe a empresa — vira registro, não restrição.
 Precedência: o que a administração gravou no aparelho vence o arquivo
 publicado; sem nenhum dos dois, o painel abre livre.
 
+### Fila de liberação
+
+O montador escolhe o painel, informa quem é e o pedido vai para o servidor. A
+decisão é tomada na aba *Liberações* — que mostra os pendentes primeiro e
+permite liberar, negar, revogar, deixar um recado ao montador e limpar o
+histórico.
+
+| Rota | Para quê |
+|---|---|
+| `POST /api/acesso/solicitar` | Cria o pedido (e-mail + painel) e devolve o token do aparelho |
+| `GET /api/acesso/situacao` | Situação do pedido — o que a tela de espera consulta |
+| `POST /api/admin/sessao` | Entrada da administração; devolve o token da sessão (12 h) |
+| `GET /api/admin/solicitacoes` | Fila, pendentes primeiro |
+| `POST /api/admin/solicitacoes/{id}` | `liberar`, `negar` ou `revogar`, com recado opcional |
+| `DELETE /api/admin/solicitacoes/{id}` | Tira o pedido do histórico |
+
+Pedidos repetidos do mesmo e-mail para o mesmo painel reaproveitam o registro,
+então reabrir o aplicativo não enche a fila de duplicatas. A fila inteira vive
+em um JSON gravado por `rename` atômico — nenhum dado de preenchimento passa
+por ela.
+
 ### O que isto é, e o que não é
 
-É **declaração, não autenticação**. Barra o uso casual por quem não é do
-parceiro e deixa o registro de quem preencheu. Não barra quem edita o pacote
-JavaScript — o portão roda no navegador, e o segredo de qualquer trava local
-viaja junto com ela.
+A identificação sozinha é **declaração, não autenticação**. Barra o uso casual
+por quem não é do parceiro e deixa o registro de quem preencheu. Não barra quem
+edita o pacote JavaScript — o portão roda no navegador, e o segredo de qualquer
+trava local viaja junto com ela.
+
+A liberação é outra coisa: a decisão fica no servidor, fora do alcance do
+aparelho do montador, e é reconferida a cada entrada no fluxo. É a trava que
+funciona de verdade na entrada — e a única que permite **tirar** um acesso já
+concedido.
 
 A trava com consequência é outra, e já existe: **o certificado só é numerado
 depois da validação técnica da ABB**. Mesmo que alguém contorne a entrada, não
 sai documento oficial.
 
-Barreira dura na entrada exige servidor ou login corporativo. Numa conta ABB o
-caminho natural é o Entra ID com acesso por grupo — e é esta mesma
-configuração, por painel, que alimentaria a lista de domínios de lá. Fica
-registrado junto da [limitação de sincronização](#limitação-conhecida--sem-sincronização).
+Falta ainda o login corporativo: numa conta ABB o caminho natural é o Entra ID
+com acesso por grupo, e é esta mesma configuração, por painel, que alimentaria
+a lista de domínios de lá. Fica registrado junto da
+[limitação de sincronização](#limitação-conhecida--sem-sincronização).
 
 ---
 
@@ -389,12 +455,17 @@ Nenhum texto do certificado está no código: o gerador em
 
 ## Aba de administração
 
-Acesso em **Administração**, no cabeçalho. Três abas.
+Acesso em **Administração**, no cabeçalho. Quatro abas.
 
 **Validação ABB** — lista as solicitações enviadas com os dados informados e a
 situação do checklist, e permite aprovar (atribuindo o número do certificado) ou
 devolver com apontamentos. Abaixo, o registro de todas as emissões. Quando o
 preenchimento tiver pendências, elas são exibidas antes da decisão.
+
+**Liberações** — a fila de pedidos de acesso: liberar, negar, revogar, deixar um
+recado ao montador e limpar o histórico. Atualiza sozinha a cada 10 segundos.
+Depende do servidor; sem ele, a aba fica indisponível e as outras três
+continuam valendo.
 
 **Formulários** — permite, sem programação: criar e remover perguntas, criar e
 remover seções, editar título e descrição da seção, editar descrição e detalhes
@@ -408,9 +479,10 @@ Remover uma pergunta, ou trocar o tipo de resposta dela, **não** apaga o que j�
 foi preenchido: a resposta antiga fica órfã nos registros existentes. Em
 formulário já em uso, desativar é mais seguro que remover — a tela avisa isso.
 
-**Quem pode usar** — a exigência de identificação e a lista de domínios do
-painel em uso (veja [Quem pode usar](#quem-pode-usar)), com exportação e
-importação do `permissoes.json`.
+**Quem pode usar** — a exigência de identificação, a exigência de liberação da
+ABB e a lista de domínios do painel em uso (veja
+[Quem pode usar](#quem-pode-usar)), com exportação e importação do
+`permissoes.json`.
 
 As edições ficam no IndexedDB do aparelho e têm precedência sobre o arquivo
 publicado. Para distribuir uma alteração a todos, exporte o JSON e substitua o
@@ -418,18 +490,21 @@ arquivo em `public/forms` (ou `public/paineis/permissoes.json`) na próxima
 publicação. Os botões **Restaurar original** e **Restaurar publicada**
 descartam as edições locais.
 
-A senha fica em `src/core/config.ts` (constante `SENHA_ADMIN`) e pode ser
-trocada no build com a variável `VITE_SENHA_ADMIN`:
+A senha é conferida **no servidor**, que é quem guarda a fila de liberação
+(`ADMIN_SENHA` ou `-senha-admin`). Sem servidor — pendrive sem rede, hospedagem
+estática — vale a senha de build (`src/core/config.ts`, `VITE_SENHA_ADMIN`), e
+só as abas locais abrem:
 
 ```bash
+ADMIN_SENHA='senha-do-cliente' ./verificacao-montagem-linux-amd64
 VITE_SENHA_ADMIN='senha-do-cliente' npm run build
 ```
 
 > **Pendência da especificação (seção 15):** a senha inicial é `abb-admin` e
-> **precisa ser trocada antes de publicar** para os parceiros. Não há
-> autenticação nem controle de usuários: a senha só evita edição acidental.
-> Com a validação ABB atrás da mesma senha, trocá-la passou a ser requisito de
-> publicação, não recomendação.
+> **precisa ser trocada antes de publicar** para os parceiros — nas duas
+> pontas. Não há controle de usuários: a senha distingue administrador de
+> montador. Com a validação ABB e a fila de liberação atrás dela, trocá-la é
+> requisito de publicação, não recomendação.
 
 ---
 
@@ -472,7 +547,7 @@ persistência já está atrás dos repositórios para que a troca não afete as 
 | Descrição da etapa **S2.6** | Ilegível no OCR. Está no JSON com o texto marcado como `TRANSCREVER` e `pendenteTranscricao: true`; a etapa aparece com aviso na tela. |
 | Imagens de referência das 38 etapas | Ainda não recortadas. Os caminhos já estão no JSON; a lista completa está em `public/media/sen-plus/LEIA-ME.md`. Enquanto o arquivo não existir, o modal de ajuda mostra um aviso com o caminho esperado, sem quebrar a tela. |
 | Redação exata das etapas | Conferir contra o documento original. S1.1, S1.3, S2.2 e S2.6 estão marcadas com `pendenteTranscricao`. |
-| Senha da administração | Provisória (`abb-admin`). Trocar antes de publicar — ela é a única tranca da ferramenta, e protege também a aprovação de certificados. |
+| Senha da administração | Provisória (`abb-admin`), nas duas pontas (`ADMIN_SENHA` no servidor e `VITE_SENHA_ADMIN` no build). Trocar antes de publicar — ela protege a aprovação de certificados e a fila de liberação. |
 | Contatos no catálogo | `responsavelMontagem` e `administradores` seguem com `ericg10456@gmail.com` para teste. Hoje não têm efeito na aplicação; substituir ou remover em `public/paineis/index.json`. |
 | E-mails dos responsáveis ABB | `taina.gioia@br.abb.com` e `carlos.e.silva@br.abb.com`, reconstruídos do PDF do Anexo 2 (o OCR do arquivo suprime pontos). Conferir antes de publicar; ficam em `public/paineis/index.json`. |
 | Imagens de apoio dos ensaios de rotina | O checklist da NBR IEC 61439 ainda não tem `midiaApoio`. Os textos de orientação estão em `detalhes`; as imagens entram no JSON quando existirem. |
@@ -484,10 +559,16 @@ persistência já está atrás dos repositórios para que a troca não afete as 
 Sem julgamento de conformidade no sistema (não existem estados “OK” e “Não OK”:
 a etapa é respondida ou fica em branco); sem estado “não aplicável”; PDF sempre
 gerável; ordem de preenchimento livre; operador e data informados uma vez e
-replicados em todas as etapas; dados exclusivamente no aparelho; sem
-autenticação de usuário e sem aprovação de acesso (quem abre o endereço usa; a
-separação por painel é de distribuição); sem marca d'água nas fotos; sem trilha de auditoria além da data
-da última alteração.
+replicados em todas as etapas; dados de preenchimento exclusivamente no
+aparelho; sem marca d'água nas fotos; sem trilha de auditoria além da data da
+última alteração.
+
+Da liberação de acesso: o e-mail identifica e a liberação autoriza — não há
+cadastro de usuário nem senha por montador; a fila vive no servidor porque a
+decisão é tomada em outro aparelho, e essa é a única parte do produto que
+depende dele; painel sem `exigirLiberacao` continua abrindo sem servidor
+nenhum; liberado, o preenchimento funciona offline, e a revogação chega na
+entrada seguinte no fluxo, não no meio do preenchimento.
 
 Da extensão de certificação: o comportamento do SEN Plus não mudou — os novos
 campos obrigatórios e o ciclo de validação valem apenas para SPEE, SPEP e SAFR;

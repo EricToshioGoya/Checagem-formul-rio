@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { PDF_INSTRUCOES, TITULO_PDF_INSTRUCOES } from '../core/config';
-import { IconePdf } from '../shared/componentes/Icones';
+import { IconePaineis, IconePdf } from '../shared/componentes/Icones';
 import { usePainelAtivo } from '../features/paineis/PainelAtivo';
 
 export function Layout() {
@@ -8,6 +8,7 @@ export function Layout() {
   const navegar = useNavigate();
   const { painel, identificacao, trocarPainel } = usePainelAtivo();
   const naAdmin = pathname.startsWith('/admin');
+  const naEscolha = pathname === '/';
 
   return (
     <div className="min-h-dvh">
@@ -20,16 +21,38 @@ export function Layout() {
             </span>
             <span className="text-base font-semibold sm:hidden">Verificação</span>
           </Link>
-          <Link
-            to={naAdmin ? '/' : '/admin'}
-            className="flex min-h-12 items-center rounded-md px-3 text-base font-semibold hover:bg-white/15"
-          >
-            {naAdmin ? 'Sair da administração' : 'Administração'}
-          </Link>
+          <div className="flex items-center gap-2">
+            {painel && !naEscolha ? (
+              // A escolha do painel é a primeira decisão do fluxo e precisa
+              // continuar à mão: aberto o aplicativo numa URL de painel, este
+              // botão é o caminho de volta aos quatro.
+              <button
+                type="button"
+                onClick={() => {
+                  trocarPainel();
+                  navegar('/');
+                }}
+                className="flex min-h-12 max-w-[14rem] items-center gap-2 rounded-md border border-white/70 px-3 text-base font-semibold hover:bg-white/15"
+                title="Escolher outro tipo de painel"
+              >
+                <IconePaineis className="h-5 w-5 shrink-0" />
+                <span className="truncate">{painel.nome}</span>
+                <span className="hidden shrink-0 text-sm font-normal opacity-90 sm:inline">
+                  trocar
+                </span>
+              </button>
+            ) : null}
+            <Link
+              to={naAdmin ? '/' : '/admin'}
+              className="flex min-h-12 items-center rounded-md px-3 text-base font-semibold hover:bg-white/15"
+            >
+              {naAdmin ? 'Sair da administração' : 'Administração'}
+            </Link>
+          </div>
         </div>
       </header>
 
-      {painel ? (
+      {painel && !naEscolha ? (
         <div className="border-b border-abb-line bg-neutral-50">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-1.5">
             <p className="min-w-0 truncate text-sm text-abb-gray">
@@ -41,16 +64,6 @@ export function Layout() {
                 </>
               ) : null}
             </p>
-            <button
-              type="button"
-              onClick={() => {
-                trocarPainel();
-                navegar('/');
-              }}
-              className="text-sm font-semibold text-abb-red underline underline-offset-2"
-            >
-              Trocar painel
-            </button>
           </div>
         </div>
       ) : null}
