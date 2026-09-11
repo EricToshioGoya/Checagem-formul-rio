@@ -71,8 +71,14 @@ export function lerStore(pagina, store) {
 }
 
 /** Cria um projeto pela interface e para na tela do projeto. */
-export async function criarProjeto(pagina, { nome, tags, empresa = 'ACME', operador = 'Operador' }) {
-  await pagina.goto(BASE, { waitUntil: 'networkidle' });
+export async function criarProjeto(
+  pagina,
+  { nome, tags, empresa = 'ACME', operador = 'Operador', painel = 'SEN Plus' },
+) {
+  // A tela inicial é a escolha do painel; os projetos vivem dentro de um deles.
+  await pagina.goto(`${BASE}/#/`, { waitUntil: 'networkidle' });
+  await pagina.getByRole('heading', { name: painel, exact: true }).click();
+  await pagina.waitForURL(/#\/paineis\//);
   await pagina.getByRole('button', { name: 'Novo projeto' }).click();
   await pagina.locator('#empresa').fill(empresa);
   await pagina.locator('#nomeProjeto').fill(nome);
@@ -83,12 +89,24 @@ export async function criarProjeto(pagina, { nome, tags, empresa = 'ACME', opera
   await pagina.getByRole('heading', { name: nome }).waitFor();
 }
 
-export async function entrarNaAdministracao(pagina, senha = 'abb-admin') {
+export async function entrarNaAdministracao(
+  pagina,
+  { senha = process.env.SENHA_ADMIN ?? 'ABB', aba = 'Formulários', painel = 'SEN Plus' } = {},
+) {
+  // A administração mostra os formulários do painel em uso: sem painel
+  // escolhido, a lista vem vazia.
+  if (painel) {
+    await pagina.goto(`${BASE}/#/`, { waitUntil: 'networkidle' });
+    await pagina.getByRole('heading', { name: painel, exact: true }).click();
+    await pagina.waitForURL(/#\/paineis\//);
+  }
   await pagina.goto(`${BASE}/#/admin`, { waitUntil: 'networkidle' });
   if (await pagina.getByLabel('Senha').count()) {
     await pagina.getByLabel('Senha').fill(senha);
     await pagina.getByRole('button', { name: 'Entrar' }).click();
   }
+  // A administração abre na validação ABB; cada teste diz em que aba trabalha.
+  if (aba) await pagina.getByRole('tab', { name: aba }).click();
 }
 
 export function resumo(titulo = '') {
