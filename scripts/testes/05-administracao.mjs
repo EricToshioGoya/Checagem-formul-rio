@@ -1,7 +1,7 @@
 /** Aba de administração: acesso, edição, importação de JSON e restauração. */
 import { writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { BASE, SAIDA, abrir, checa, ok, criarProjeto, entrarNaAdministracao, lerStore, resumo } from './lib.mjs';
+import { BASE, SAIDA, abrir, checa, falha, ok, criarProjeto, entrarNaAdministracao, lerStore, resumo } from './lib.mjs';
 
 const { navegador, pagina: p } = await abrir();
 console.log('\n=== 05. ADMINISTRAÇÃO ===');
@@ -9,6 +9,8 @@ console.log('\n=== 05. ADMINISTRAÇÃO ===');
 await p.goto(`${BASE}/#/admin`, { waitUntil: 'networkidle' });
 await p.getByLabel('Senha').fill('senha-errada');
 await p.getByRole('button', { name: 'Entrar' }).click();
+// A senha é conferida no servidor: a recusa chega depois da ida e volta.
+await p.getByText('Senha incorreta.').waitFor({ timeout: 15000 }).catch(() => undefined);
 checa('05.1 recusa senha incorreta', (await p.getByText('Senha incorreta.').count()) === 1);
 
 await p.evaluate(() => sessionStorage.setItem('admin-liberado', '1'));
@@ -19,14 +21,23 @@ const liberouSemSenha =
 checa('05.2 acesso não é liberado por marcação no sessionStorage', !liberouSemSenha,
   liberouSemSenha ? 'sessionStorage["admin-liberado"]="1" abre a administração sem senha' : '');
 
-const bundle = await p.evaluate(async () => {
-  const html = await (await fetch('/')).text();
-  let js = '';
-  for (const [, src] of html.matchAll(/src="([^"]+\.js)"/g)) js += await (await fetch(src)).text();
-  return js;
+// A senha de build continua legível no pacote (finding 4.1 da auditoria), e
+// com um valor curto como "ABB" ela nem se distingue do resto do texto. O que
+// dá para afirmar — e passou a valer — é que ela não é mais a tranca da fila
+// de liberação: essa vive no servidor.
+const semSessao = await p.evaluate(async () => {
+  const resposta = await fetch('/api/admin/solicitacoes', {
+    headers: { Authorization: 'Bearer token-forjado-no-console' },
+  });
+  return { status: resposta.status, tipo: resposta.headers.get('Content-Type') ?? '' };
 });
-checa('05.3 a senha não aparece no JavaScript publicado', !bundle.includes('abb-admin'),
-  bundle.includes('abb-admin') ? 'a string "abb-admin" está legível no bundle servido a qualquer visitante' : '');
+if (!semSessao.tipo.includes('application/json')) {
+  falha('05.3 a fila de liberação recusa sessão forjada',
+    'servidor de liberação fora do ar: suba cmd/servidor para verificar este item');
+} else {
+  checa('05.3 a fila de liberação recusa sessão forjada', semSessao.status === 401,
+    `esperado 401 | obtido ${semSessao.status}`);
+}
 
 await entrarNaAdministracao(p);
 await p.getByRole('button', { name: /Verificação de Montagem/ }).click();

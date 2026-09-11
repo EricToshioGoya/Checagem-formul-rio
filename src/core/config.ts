@@ -6,7 +6,7 @@
  * quem edita o conteúdo dos formulários de quem apenas preenche. Trocar antes
  * de publicar para os parceiros, com `VITE_SENHA_ADMIN`.
  */
-export const SENHA_ADMIN = import.meta.env.VITE_SENHA_ADMIN ?? 'abb-admin';
+export const SENHA_ADMIN = import.meta.env.VITE_SENHA_ADMIN ?? 'ABB';
 
 /** Nome do produto exibido nas telas e no PDF. */
 export const NOME_APLICACAO = 'Verificação de Montagem de Painéis';

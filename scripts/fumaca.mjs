@@ -58,7 +58,7 @@ const passo = async (nome, fn) => {
   console.log('ok');
 };
 
-const SENHA_ADMIN = process.env.SENHA_ADMIN ?? 'abb-admin';
+const SENHA_ADMIN = process.env.SENHA_ADMIN ?? 'ABB';
 // E-mail novo a cada execução: o servidor reaproveita o pedido de quem já foi
 // liberado, e a tela de espera não apareceria na segunda rodada.
 const EMAIL_MONTADOR = process.env.EMAIL_FUMACA ?? `montador+${Date.now()}@parceiro.com.br`;

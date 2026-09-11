@@ -32,7 +32,7 @@ var embutido embed.FS
 const (
 	portaPadrao     = 8080
 	tentativasPorta = 20
-	senhaAdminPadr  = "abb-admin"
+	senhaAdminPadr  = "ABB"
 	hostPadrao      = "127.0.0.1"
 )
 

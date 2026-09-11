@@ -500,7 +500,7 @@ ADMIN_SENHA='senha-do-cliente' ./verificacao-montagem-linux-amd64
 VITE_SENHA_ADMIN='senha-do-cliente' npm run build
 ```
 
-> **Pendência da especificação (seção 15):** a senha inicial é `abb-admin` e
+> **Pendência da especificação (seção 15):** a senha inicial é `ABB` e
 > **precisa ser trocada antes de publicar** para os parceiros — nas duas
 > pontas. Não há controle de usuários: a senha distingue administrador de
 > montador. Com a validação ABB e a fila de liberação atrás dela, trocá-la é
@@ -547,7 +547,7 @@ persistência já está atrás dos repositórios para que a troca não afete as 
 | Descrição da etapa **S2.6** | Ilegível no OCR. Está no JSON com o texto marcado como `TRANSCREVER` e `pendenteTranscricao: true`; a etapa aparece com aviso na tela. |
 | Imagens de referência das 38 etapas | Ainda não recortadas. Os caminhos já estão no JSON; a lista completa está em `public/media/sen-plus/LEIA-ME.md`. Enquanto o arquivo não existir, o modal de ajuda mostra um aviso com o caminho esperado, sem quebrar a tela. |
 | Redação exata das etapas | Conferir contra o documento original. S1.1, S1.3, S2.2 e S2.6 estão marcadas com `pendenteTranscricao`. |
-| Senha da administração | Provisória (`abb-admin`), nas duas pontas (`ADMIN_SENHA` no servidor e `VITE_SENHA_ADMIN` no build). Trocar antes de publicar — ela protege a aprovação de certificados e a fila de liberação. |
+| Senha da administração | Provisória (`ABB`), nas duas pontas (`ADMIN_SENHA` no servidor e `VITE_SENHA_ADMIN` no build). Trocar antes de publicar — ela protege a aprovação de certificados e a fila de liberação. |
 | Contatos no catálogo | `responsavelMontagem` e `administradores` seguem com `ericg10456@gmail.com` para teste. Hoje não têm efeito na aplicação; substituir ou remover em `public/paineis/index.json`. |
 | E-mails dos responsáveis ABB | `taina.gioia@br.abb.com` e `carlos.e.silva@br.abb.com`, reconstruídos do PDF do Anexo 2 (o OCR do arquivo suprime pontos). Conferir antes de publicar; ficam em `public/paineis/index.json`. |
 | Imagens de apoio dos ensaios de rotina | O checklist da NBR IEC 61439 ainda não tem `midiaApoio`. Os textos de orientação estão em `detalhes`; as imagens entram no JSON quando existirem. |

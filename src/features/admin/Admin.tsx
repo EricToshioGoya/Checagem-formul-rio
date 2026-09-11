@@ -12,19 +12,22 @@ import { Botao } from '../../shared/componentes/Botao';
 import { CampoTexto } from '../../shared/componentes/Campos';
 import { Aviso, Erro, Carregando, Vazio } from '../../shared/componentes/Estado';
 
-const CHAVE_SESSAO = 'admin-liberado';
 const CHAVE_TOKEN = 'admin-token';
 
 type Aba = 'validacao' | 'liberacoes' | 'formularios' | 'acesso';
 
 export function Admin() {
   const { painel } = usePainelAtivo();
-  const [token, setToken] = useState<string | null>(() =>
-    sessionStorage.getItem(CHAVE_TOKEN),
+  const [token, setToken] = useState<string | null>(null);
+  const [conferindoSessao, setConferindoSessao] = useState(
+    () => sessionStorage.getItem(CHAVE_TOKEN) !== null,
   );
-  const [modoLocal, setModoLocal] = useState(
-    () => sessionStorage.getItem(CHAVE_SESSAO) === '1',
-  );
+  /**
+   * Sem servidor, a liberação vale só enquanto a tela estiver aberta: guardá-la
+   * no armazenamento faria da área algo que se abre escrevendo uma chave no
+   * console.
+   */
+  const [modoLocal, setModoLocal] = useState(false);
   const [senha, setSenha] = useState('');
   const [entrando, setEntrando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -33,6 +36,27 @@ export function Admin() {
   const [aba, setAba] = useState<Aba>('validacao');
 
   const liberado = token !== null || modoLocal;
+
+  // Token gravado não é prova de nada: só vale se o servidor ainda o
+  // reconhecer.
+  useEffect(() => {
+    const gravado = sessionStorage.getItem(CHAVE_TOKEN);
+    if (!gravado) return;
+    let vivo = true;
+    AdminApi.listar(gravado)
+      .then(() => {
+        if (vivo) setToken(gravado);
+      })
+      .catch(() => {
+        sessionStorage.removeItem(CHAVE_TOKEN);
+      })
+      .finally(() => {
+        if (vivo) setConferindoSessao(false);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!liberado) return;
@@ -58,14 +82,12 @@ export function Admin() {
     try {
       const novoToken = await AdminApi.entrar(senha);
       sessionStorage.setItem(CHAVE_TOKEN, novoToken);
-      sessionStorage.removeItem(CHAVE_SESSAO);
       setToken(novoToken);
       setModoLocal(false);
       setSenha('');
     } catch (e) {
       if (e instanceof ServidorIndisponivel) {
         if (senha === SENHA_ADMIN) {
-          sessionStorage.setItem(CHAVE_SESSAO, '1');
           setModoLocal(true);
           setSenha('');
         } else {
@@ -82,7 +104,6 @@ export function Admin() {
   const sair = () => {
     if (token) void AdminApi.sair(token).catch(() => undefined);
     sessionStorage.removeItem(CHAVE_TOKEN);
-    sessionStorage.removeItem(CHAVE_SESSAO);
     setToken(null);
     setModoLocal(false);
     setSelecionado(null);
@@ -94,6 +115,10 @@ export function Admin() {
     setToken(null);
     setErro('Sessão de administração expirada. Entre novamente.');
   };
+
+  if (conferindoSessao && !liberado) {
+    return <Carregando mensagem="Conferindo a sessão da administração…" />;
+  }
 
   if (!liberado) {
     return (

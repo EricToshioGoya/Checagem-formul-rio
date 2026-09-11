@@ -280,22 +280,37 @@ sem autenticação por decisão de projeto. Mesmo assim há pontos a corrigir.
 
 `src/core/config.ts:9`
 
-`SENHA_ADMIN` é constante de build. A string `abb-admin` aparece em texto claro
-no bundle servido a qualquer visitante — trocar por `VITE_SENHA_ADMIN` não muda
-isso, só troca qual senha fica exposta.
+`SENHA_ADMIN` é constante de build. A senha aparece em texto claro no bundle
+servido a qualquer visitante — trocar por `VITE_SENHA_ADMIN` não muda isso, só
+troca qual senha fica exposta.
+
+**Situação em 11/09/2026:** com a fila de liberação, a senha passou a ser
+conferida no servidor, que devolve um token de sessão. A constante de build
+continua no pacote, mas agora ela só abre as abas locais (formulários,
+permissões, validação) quando o servidor não responde — a fila de liberação,
+que é o que concede e revoga acesso, não abre com ela. A verificação 05.3
+passou a medir isso.
 
 > Verificação 05.3.
 
-### 4.2 O acesso à administração é contornável em uma linha
+### 4.2 O acesso à administração é contornável em uma linha — **Corrigido**
 
 `src/features/admin/Admin.tsx:14`
 
-O controle é `sessionStorage.getItem('admin-liberado') === '1'`. Executar
-`sessionStorage.setItem('admin-liberado','1')` no console abre a aba sem senha.
+O controle era `sessionStorage.getItem('admin-liberado') === '1'`. Executar
+`sessionStorage.setItem('admin-liberado','1')` no console abria a aba sem senha.
+
+**Correção aplicada (11/09/2026):** a entrada passa pelo servidor, que devolve
+um token de sessão; o token gravado é reconferido contra o servidor a cada
+abertura da aba e descartado se ele não o reconhecer — escrever qualquer valor
+na chave não abre nada. Sem servidor, a liberação vale só em memória, enquanto
+a tela estiver aberta: não há mais chave persistida para forjar.
 
 > Verificação 05.2.
 
-**Sobre 4.1 e 4.2:** o README já registra que "a senha só evita edição
+> Verificação 05.2.
+
+**Sobre 4.1:** o README já registra que "a senha só evita edição
 acidental". A recomendação é assumir isso por completo — trocar a senha por uma
 confirmação explícita ("Entendo que vou alterar o protocolo publicado") e parar
 de chamar o mecanismo de senha, que dá uma impressão de proteção que ele não
@@ -397,10 +412,12 @@ de requisição; nenhuma dependência de produção com vulnerabilidade conhecid
    a caminho relativo + CSP** (4.3, 4.4).~~
 6. ~~**Debounce no editor da administração** (2.6).~~
 
-Sobre a senha da administração (4.1 e 4.2): continua como estava, por ser uma
-decisão de produto e não um defeito de implementação. A recomendação segue de
-pé — assumir que ela não é proteção e trocá-la por uma confirmação explícita, ou
-aceitar que controle real exige servidor.
+Sobre a senha da administração: 4.2 foi corrigida em 11/09/2026, junto com a
+fila de liberação — a sessão agora é conferida no servidor e não há chave
+persistida para forjar. 4.1 continua como estava: a senha de build segue legível
+no pacote, e agora só abre as abas locais quando o servidor não responde. A
+recomendação segue de pé para ela — assumir que não é proteção e trocá-la por
+uma confirmação explícita.
 
 ### Antes da próxima revisão de protocolo
 
