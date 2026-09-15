@@ -13,7 +13,9 @@ import { DetalheSolicitacao } from '../features/solicitacoes/DetalheSolicitacao'
 import { Preenchimento } from '../features/fill/Preenchimento';
 import { Admin } from '../features/admin/Admin';
 import { PainelProvider, usePainelAtivo } from '../features/paineis/PainelAtivo';
+import { LiberacaoProvider } from '../features/paineis/LiberacaoAtiva';
 import { Identificacao } from '../features/paineis/Identificacao';
+import { Liberacao } from '../features/paineis/Liberacao';
 import { PortaoPainel } from '../features/paineis/PortaoPainel';
 import { Carregando } from '../shared/componentes/Estado';
 
@@ -38,6 +40,7 @@ function Rotas() {
       <Route element={<Layout />}>
         <Route path="/" element={<SelecaoPainel />} />
         <Route path="/identificacao" element={<Identificacao />} />
+        <Route path="/liberacao" element={<Liberacao />} />
         <Route path="/admin" element={<Admin />} />
 
         <Route element={<PortaoPainel />}>
@@ -69,13 +72,15 @@ function Rotas() {
 export function App() {
   return (
     <PainelProvider>
-      <HashRouter>
-        <LimiteDeErro>
-          <RolarAoTopo />
-          <AtualizacaoPwa />
-          <Rotas />
-        </LimiteDeErro>
-      </HashRouter>
+      <LiberacaoProvider>
+        <HashRouter>
+          <LimiteDeErro>
+            <RolarAoTopo />
+            <AtualizacaoPwa />
+            <Rotas />
+          </LimiteDeErro>
+        </HashRouter>
+      </LiberacaoProvider>
     </PainelProvider>
   );
 }

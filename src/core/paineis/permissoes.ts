@@ -23,6 +23,12 @@ export const permissaoPainelSchema = z.object({
   /** Sem isto, o painel abre direto — é o padrão. */
   exigirIdentificacao: z.boolean().optional().default(false),
   /**
+   * Com isto, o e-mail informado vira um pedido de acesso no servidor e o
+   * painel só abre depois que a administração liberar. É a única trava que
+   * não depende do aparelho do montador.
+   */
+  exigirLiberacao: z.boolean().optional().default(false),
+  /**
    * Domínios aceitos, sem `@`. Lista vazia com identificação exigida aceita
    * qualquer domínio: pede o e-mail, mas não restringe a empresa.
    */
@@ -39,6 +45,7 @@ export type PermissaoPainel = z.output<typeof permissaoPainelSchema>;
 
 export const PERMISSAO_LIVRE: PermissaoPainel = {
   exigirIdentificacao: false,
+  exigirLiberacao: false,
   dominios: [],
 };
 

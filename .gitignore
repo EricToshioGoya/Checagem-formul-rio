@@ -24,3 +24,7 @@ cmd/servidor/servidor.exe
 
 # Saída da bateria de verificação
 saida-testes/
+
+# Fila de liberação gravada pelo servidor em execução
+dados/
+cmd/servidor/dados/

@@ -155,6 +155,24 @@ export function PermissoesPainel({ painel }: { painel: Painel }) {
           </span>
         </label>
 
+        <label className="flex min-h-12 items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-3 h-6 w-6"
+            checked={permissao.exigirLiberacao}
+            onChange={(e) => alterar({ exigirLiberacao: e.target.checked })}
+          />
+          <span>
+            <span className="block text-base font-semibold">
+              Exigir liberação da ABB antes do primeiro preenchimento
+            </span>
+            <span className="block text-sm text-abb-gray">
+              O e-mail informado vira um pedido na aba “Liberações” e o painel fica
+              travado até alguém liberar. Depende do servidor de liberação.
+            </span>
+          </span>
+        </label>
+
         <CampoTexto
           rotulo="Empresas liberadas (um domínio por linha)"
           multilinha
@@ -177,10 +195,11 @@ export function PermissoesPainel({ painel }: { painel: Painel }) {
       </div>
 
       <Aviso>
-        Isto é declaração, não autenticação: a ferramenta confere o domínio do e-mail
-        informado, e barra o uso casual por quem não é do parceiro. Não barra quem edita
-        o pacote JavaScript. A trava com consequência continua sendo a validação técnica
-        da ABB, que numera o certificado.
+        Sozinha, a identificação é declaração, não autenticação: a ferramenta confere o
+        domínio do e-mail informado e barra o uso casual por quem não é do parceiro —
+        não barra quem edita o pacote JavaScript. Já a liberação é decidida no servidor,
+        fora do alcance do aparelho do montador: é ela que tranca de verdade. A
+        validação técnica da ABB, que numera o certificado, continua sendo a trava final.
       </Aviso>
 
       <Aviso>
