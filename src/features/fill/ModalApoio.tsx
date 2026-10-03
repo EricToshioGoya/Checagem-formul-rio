@@ -76,7 +76,7 @@ export function ModalApoio({ etapa, onFechar }: Props) {
                     href={url}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex min-h-12 items-center rounded-md border border-abb-line bg-white px-4 font-semibold text-abb-red"
+                    className="inline-flex min-h-12 items-center rounded-md border border-abb-line-botao bg-abb-offwhite px-4 font-semibold text-abb-red hover:bg-abb-offwhite-hover"
                   >
                     Abrir manual em PDF
                   </a>

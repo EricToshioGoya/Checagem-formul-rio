@@ -5,11 +5,16 @@ as verificações exigidas pelos protocolos ABB. Ao final, gera um PDF em leiaut
 ABB que o montador baixa e envia por e-mail ao inspetor — o julgamento de
 conformidade é feito **fora do sistema**.
 
-Implementa a especificação técnica v1.0 (02/09/2026).
+Implementa a especificação técnica v1.0 (02/09/2026), acrescida do controle de
+acesso por painel descrito em [Login e aprovação](#login-e-aprovação).
 
-- **Sem backend.** A saída do build é um diretório estático.
-- **Offline integral** após o primeiro carregamento (PWA com service worker).
-- **Dados só no aparelho** (IndexedDB via Dexie). Ver [Limitação conhecida](#limitação-conhecida--sem-sincronização).
+- **Cliente estático + servidor de acesso.** O PWA é um diretório estático; um
+  servidor pequeno cuida de contas, painéis e aprovação.
+- **Offline no preenchimento.** Entrar exige rede uma vez; depois de aprovado,
+  registrar as checagens funciona sem conexão.
+- **As checagens não trafegam.** Respostas e fotos ficam no aparelho (IndexedDB
+  via Dexie); o servidor guarda só quem pode preencher o quê. Ver
+  [Limitação conhecida](#limitação-conhecida--sem-sincronização).
 
 ---
 
@@ -17,21 +22,30 @@ Implementa a especificação técnica v1.0 (02/09/2026).
 
 ```bash
 npm install
-npm run dev          # servidor de desenvolvimento
+npm run servidor     # API de acesso em http://localhost:3001
+npm run dev          # aplicação em http://localhost:5173
 npm run build        # valida os formulários, checa tipos e gera dist/
 npm run preview      # serve o dist/ gerado
 ```
 
-Requer Node 20 ou superior.
+São dois processos: o `dev` faz proxy de `/api` para o `servidor`. Sem o
+servidor no ar, a tela de login avisa que está sem conexão.
+
+Requer Node 22.5 ou superior — o servidor usa `node:sqlite`, embutido a partir
+dessa versão.
 
 ### Scripts
 
 | Comando | O que faz |
 |---|---|
 | `npm run dev` | Vite em modo desenvolvimento |
+| `npm run servidor` | API de acesso (contas, painéis, aprovação) |
 | `npm run build` | Valida JSON dos formulários → `tsc -b` → `vite build` |
 | `npm run typecheck` | Somente a checagem de tipos |
 | `npm run validar-formularios` | Valida `public/forms/*.json` contra o schema Zod |
+| `npm run admin -- listar` | Lista os administradores (socorro, na máquina do servidor) |
+| `npm run admin -- promover <e-mail>` | Dá o papel de administrador a uma conta existente |
+| `npm run icones` | Regera os ícones PNG do aplicativo a partir do vetor do logotipo |
 | `npm run fumaca` | Teste de fumaça do fluxo completo em navegador real |
 | `scripts/build-portatil.sh` | Gera o binário portátil (modalidade B) |
 
@@ -97,9 +111,179 @@ assim que se atualiza a aplicação no pendrive sem recompilar.
 
 ---
 
+## Login e aprovação
+
+Na tela de login o montador informa e-mail e senha **e escolhe o painel que vai
+montar**. Ao entrar, o pedido de acesso àquele painel segue sozinho para o
+responsável, que aprova em **Aprovações** — só então as checagens abrem.
+
+```
+entrar / criar conta + escolher o painel
+        ↓
+pedido enviado ao responsável do painel  →  aguardando
+        ↓                                       ↓
+  acesso aprovado  ←──────────  responsável aprova em /aprovacoes
+        ↓
+ abrir checagens daquele painel (daqui em diante, offline)
+```
+
+**A aprovação vale para um painel só.** Quem foi aprovado em SEN Plus não abre
+MNS: precisa pedir de novo, e o responsável daquela linha decide. O responsável
+preenche os painéis dele sem pedir nada.
+
+A decisão é do servidor — `podePreencher` vem dele, painel por painel, e a API
+não entrega nada sem token de sessão válido. Não existe criação avulsa de
+projeto: um projeto local só nasce ao abrir um painel aprovado.
+
+A tela de login entra como **montador** por padrão. No fim dela, discreto, fica
+**Entrar como administrador** — ver [Quem é administrador](#quem-é-administrador).
+
+### Os painéis e seus responsáveis
+
+Os painéis são cadastrados na **aba de administração** → *Painéis*, e o que
+estiver lá é exatamente o que a tela de login oferece. Cada painel recebe
+**um ou mais e-mails de responsável**, e qualquer um deles aprova os pedidos
+daquele painel.
+
+O vínculo é **por e-mail**, e não por id de usuário, de propósito — o
+responsável pode ainda não ter criado a conta. Quando criar, os pedidos
+acumulados aparecem para ele.
+
+Na primeira subida, com o banco vazio, o servidor cria quatro painéis iniciais a
+partir de [`servidor/src/paineis.ts`](servidor/src/paineis.ts):
+
+| Painel inicial | Checklist |
+|---|---|
+| SEN Plus | montagem (38 etapas) + rotina BT (62) |
+| System Pro E Power | — ainda não cadastrado |
+| System Pro E Energy | — ainda não cadastrado |
+| MNS | — ainda não cadastrado |
+
+Todos nascem com `RESPONSAVEL_PADRAO`, hoje `ericg10456@gmail.com`. **Isso é
+semente, não configuração corrente:** com painéis no banco, o arquivo deixa de
+ser lido, para que uma reinicialização não desfaça o que o administrador
+cadastrou nem devolva responsáveis que ele removeu. Depois da primeira subida,
+mexer em painel é pela aba de administração.
+
+O `slug` é gerado a partir do nome no cadastro e **não muda ao renomear** — é
+ele que amarra o painel aos formulários do catálogo e aos projetos já gravados
+nos aparelhos.
+
+> **As três linhas sem checklist abrem vazias.** O painel abre, mas sem
+> formulário nenhum e com um aviso na tela. Não se reaproveita o checklist do
+> SEN Plus: as etapas de uma linha não valem para outra. Para cadastrar uma
+> delas, acrescente o JSON em `public/forms` e cite o `slug` do painel no campo
+> `paineis` do catálogo — sem alteração de código.
+
+### Controle de acesso
+
+Na aba de administração → **Acessos**, a administração vê todos os acessos de
+todos os painéis e decide sem esperar o responsável:
+
+| Ação | O que faz |
+|---|---|
+| **Liberar acesso** | Escolhe a conta, um ou mais painéis e o prazo — sem pedido do montador |
+| **Aprovar** / **Recusar** | Decide um pedido pendente, já com prazo |
+| **Prazo** | Troca o prazo de um acesso ativo, ou estende a partir do prazo atual (+1, +2, +7 dias) |
+| **Retirar** | Encerra o acesso na hora; o painel deixa de abrir no aparelho |
+| **Reativar** | Devolve um acesso expirado, retirado ou recusado, com prazo novo |
+
+O prazo pode ser 1, 2, 7 ou 30 dias, um número de horas ou dias, uma data e
+hora exatas, ou **sem prazo**. Vencer não depende de tarefa agendada: o
+servidor compara `expiraEm` com o relógio a cada pedido e para de entregar o
+painel na hora. A tela mostra a contagem regressiva, destaca o que vence em 48
+horas e relê a lista a cada 30 segundos.
+
+Só aparecem contas já criadas: o acesso é amarrado à conta, e quem ainda não
+tem uma cria na tela de login. A aprovação feita pelo responsável, em
+**Aprovações**, continua sem prazo.
+
+**No aparelho**, abrir um projeto confere o acesso com o servidor; sem resposta
+em 4 segundos, decide pela última situação guardada. Acesso retirado ou vencido
+mostra uma tela de bloqueio — os dados ficam, e voltam a abrir quando o acesso
+for liberado de novo.
+
+### Sem conexão
+
+O aparelho guarda a última conta confirmada pelo servidor. Ao abrir o
+aplicativo sem rede, com o servidor fora do ar ou lento demais (6 segundos), o
+montador entra com essa conta e a tela de painéis leva aos projetos já abertos
+no aparelho. A sessão só é descartada quando o servidor a recusa (401) — e,
+quando isso acontece no meio do uso, o aplicativo volta sozinho para o login.
+
+A tela **Projetos neste aparelho** (link na tela de painéis) lista os projetos
+locais e é onde se importa um projeto exportado de outro aparelho.
+
+### O que fica em cada lado
+
+| No servidor | No aparelho |
+|---|---|
+| Contas (e-mail, nome, hash da senha) | Respostas das etapas |
+| Painéis e seus donos | Fotos e anexos |
+| Solicitações e decisões | Formulários customizados |
+| Sessões | Token da sessão |
+
+Ao abrir um painel aprovado pela primeira vez, o aparelho cria um projeto local
+amarrado àquele painel **e àquele usuário**. A **empresa** do projeto — que vai
+para a capa e para o nome do PDF — é informada pelo montador na tela do
+projeto; até lá, a tela pede. Reabrir cai no mesmo projeto; outra
+pessoa no mesmo aparelho recebe o seu próprio, porque o IndexedDB é por origem e
+não por pessoa.
+
+### Limites desta versão
+
+- **A senha é o que identifica.** Não há verificação de e-mail: quem digita um
+  e-mail novo cria a conta na hora. Para o responsável, isso significa conferir
+  o e-mail que aparece no pedido antes de aprovar — e o mesmo vale para quem
+  aprova um novo administrador.
+- **Retirar o acesso não apaga o que está no aparelho.** O painel deixa de
+  abrir, mas as respostas e fotos já gravadas continuam lá. Sem rede, o aparelho
+  só sabe de uma retirada que tenha visto na última conexão — o prazo, esse,
+  vence na hora certa mesmo offline. Ver [Controle de acesso](#controle-de-acesso).
+- **Não há redefinição de senha.** Sem servidor de e-mail, não há para onde
+  mandar o link. Se nenhum administrador conseguir entrar, o socorro é
+  `npm run admin -- promover <e-mail>` na máquina do servidor.
+- **Importar projeto ignora a aprovação.** Um `.zip` exportado de outro aparelho
+  é recriado localmente sem passar pelos painéis. É o preço da mitigação manual
+  de sincronização; fechar isso exige amarrar o pacote ao painel de origem.
+- **Todo administrador pode tudo.** Não há níveis dentro da administração:
+  quem tem o papel libera acessos, cadastra painéis, edita checklists e aprova
+  outros administradores. O que fica registrado é quem decidiu cada acesso e
+  cada pedido de administrador — as edições de painel e checklist não.
+- **Sem segundo fator.** O administrador entra só com e-mail e senha; o freio de
+  tentativas torna o chute lento, mas uma senha vazada basta.
+- **A modalidade portátil não serve a API.** O binário Go entrega só os
+  arquivos estáticos; ele precisa alcançar um servidor de acesso pela rede.
+
+### Configuração
+
+| Variável | Onde | Padrão |
+|---|---|---|
+| `PORTA` | servidor | `3001` |
+| `BANCO` | servidor | `servidor/dados/acesso.db` |
+| `ADMIN_INICIAL` | servidor | `ericg10456@gmail.com` (só enquanto não há administrador) |
+| `RESPONSAVEL_PADRAO` | servidor | `ericg10456@gmail.com` (só na semeadura) |
+| `RESPONSAVEL_SEN_PLUS` e as três irmãs | servidor | `RESPONSAVEL_PADRAO` (só na semeadura) |
+| `API_ALVO` | `vite dev` | `http://localhost:3001` |
+
+Em produção, publique a API sob `/api` na mesma origem do PWA — é o que o
+cliente assume, e o que evita CORS e cookie de terceiro.
+
+---
+
 ## Arquitetura
 
 ```
+servidor/src/            API de acesso (Node + node:sqlite, sem framework)
+  banco.ts               esquema, migrações e semeadura inicial
+  auth.ts                hash scrypt da senha, sessões por token e perfil
+  admin.ts               papel de administrador e administrador inicial
+  limite.ts              freio de tentativas de senha
+  cli-admin.ts           socorro: `npm run admin -- listar | promover <e-mail>`
+  paineis.ts             painéis iniciais — lidos só no banco vazio
+  esquemas.ts            validação Zod de tudo que chega
+  rotas.ts               contas, painéis, solicitações, administração
+  index.ts               roteador HTTP
 public/
   forms/                  definições JSON dos formulários — editáveis sem build
     index.json            catálogo dos formulários disponíveis
@@ -108,20 +292,24 @@ public/
   media/                  conteúdo de apoio — editável sem build
     sen-plus/             (ver LEIA-ME.md: lista das imagens esperadas)
 src/
-  app/                    rotas, layout, shell da PWA
+  app/                    rotas, layout, shell da PWA, portão de sessão
   core/
+    api/                  cliente da API e contexto de sessão
     db/                   Dexie: schema e repositórios
     forms/                motor: schema Zod, catálogo, progresso
     media/                compressão e normalização de imagem
     export/               ExportTarget, dossiê, PDF, backup .zip
   features/
+    auth/                 tela de entrar e criar conta
+    paineis/              escolha do painel e caixa de aprovações
     projects/             listagem, criação, TAGs
     fill/                 preenchimento e registro de tipos de campo
     pdf/                  diálogo de geração
     admin/                aba de administração
   shared/                 componentes de UI, ícones, hooks, utilidades
+    marca/logoAbb.ts      vetor do logotipo ABB (tela, PDF e ícones)
 cmd/servidor/             servidor portátil em Go (modalidade B)
-scripts/                  validação de formulários, build portátil, fumaça
+scripts/                  validação de formulários, ícones, build portátil, fumaça
 ```
 
 **Princípio central:** o motor de formulários não conhece nenhum formulário
@@ -138,7 +326,8 @@ diálogo de geração.
 
 | Extensão | O que fazer |
 |---|---|
-| Novo formulário ou linha de produto | Acrescentar o JSON em `public/forms` e registrá-lo em `index.json`. Nenhuma alteração de código. |
+| Novo formulário para uma linha | Acrescentar o JSON em `public/forms`, registrá-lo em `index.json` e citar no campo `paineis` o `slug` das linhas que o usam. Nenhuma alteração de código. |
+| Novo painel, ou trocar quem aprova | Aba de administração → Painéis. Sem programação e sem reiniciar nada. |
 | Novo tipo de campo | Implementar o componente e registrá-lo em `src/features/fill/campos/registro.tsx`. |
 | Novo destino de exportação | Implementar `ExportTarget` (`src/core/export/ExportTarget.ts`). `PdfExport` é a implementação da v1. |
 | Trocar a persistência | Todo acesso ao Dexie passa por `ProjetoRepository`, `PreenchimentoRepository`, `MidiaRepository` e `FormularioRepository`. Nenhuma tela importa Dexie. |
@@ -146,17 +335,45 @@ diálogo de geração.
 
 ### Modelo de dados
 
+No aparelho (Dexie, versão 3 do schema):
+
 ```
-projetos:          ++id, empresa, nomeProjeto, operador, criadoEm, atualizadoEm
+projetos:          ++id, empresa, nomeProjeto, operador, criadoEm, atualizadoEm,
+                   painelId, usuarioId, [usuarioId+painelId]
 tags:              ++id, projetoId, nome, ordem, [projetoId+ordem]
 preenchimentos:    ++id, tagId, formId, atualizadoEm, [tagId+formId]
 midias:            ++id, preenchimentoId, etapaId, [preenchimentoId+etapaId]
 formulariosCustom: id, atualizadoEm
 ```
 
+No servidor (SQLite):
+
+```
+usuarios      id, email (único), nome, senha (scrypt), criadoEm, papel
+paineis             id, slug (único), nome, descricao, ordem, criadoEm
+painel_responsaveis painelId, email                    chave (painelId, email)
+solicitacoes  id, painelId, usuarioId, status, mensagem, criadoEm,
+              decididoEm, decididoPor, expiraEm  único (painelId, usuarioId)
+pedidos_admin id, usuarioId (único), status, criadoEm, decididoEm, decididoPor
+sessoes       token, usuarioId, criadoEm, expiraEm, perfil
+```
+
+`status` é `pendente`, `aprovada`, `recusada` ou `revogada`; uma aprovação com
+`expiraEm` no passado é lida como **expirada**, sem que a linha mude.
+`decididoPor` aponta o administrador que decidiu; nulo numa linha decidida é
+da antiga administração por senha compartilhada. Bancos anteriores são migrados
+na subida, e as aprovações existentes ficam sem prazo.
+
+`usuarios.papel` é `montador` ou `admin`; `sessoes.perfil` diz por qual porta a
+sessão foi aberta. `pedidos_admin.status` é `pendente`, `aprovado`, `recusado`
+ou `removido` (administrador tirado do papel).
+
 Fotos são gravadas como **Blob**, nunca base64. `respostas` é um mapa
 `etapaId → { valor, observacao }`. Excluir um projeto ou uma TAG remove em
 cascata os preenchimentos e as mídias.
+
+Projetos gravados antes de existir login ficam sem `usuarioId` e continuam
+visíveis para quem estiver logado — não há a quem atribuí-los.
 
 ### Tipos de resposta
 
@@ -203,16 +420,49 @@ publicado. Para distribuir uma alteração a todos, exporte o JSON e substitua o
 arquivo em `public/forms` na próxima publicação. O botão **Restaurar original**
 descarta as edições locais.
 
-A senha fica em `src/core/config.ts` (constante `SENHA_ADMIN`) e pode ser
-trocada no build com a variável `VITE_SENHA_ADMIN`:
+A aba tem três seções: **Acessos** (quem pode preencher cada painel, e até
+quando — ver [Controle de acesso](#controle-de-acesso)), **Painéis e
+checklists** (cadastro dos painéis, de quem aprova e do conteúdo das etapas) e
+**Administradores** (quem administra, e quem pediu para administrar).
 
-```bash
-VITE_SENHA_ADMIN='senha-do-cliente' npm run build
+### Quem é administrador
+
+Não há senha de administração. Administrador é um **papel da conta**: a pessoa
+entra com o próprio e-mail e senha, pelo link discreto **Entrar como
+administrador** no fim da tela de login. Só essa sessão chega à administração —
+quem tem o papel mas entrou como montador vê o aplicativo de montador.
+
+```
+criar conta de administrador ──→ pedido em Administração → Administradores
+                                          ↓
+                        outro administrador aprova ou recusa
+                                          ↓
+                       entrar como administrador ──→ /admin
 ```
 
-> **Pendência da especificação (seção 15):** a senha inicial é `abb-admin` e
-> **precisa ser trocada antes de publicar** para os parceiros. Não há
-> autenticação nem controle de usuários: a senha só evita edição acidental.
+- **Primeiro administrador:** `ADMIN_INICIAL` (hoje `ericg10456@gmail.com`).
+  É semente: vale só enquanto não houver administrador nenhum. Se a conta já
+  existe, é promovida na subida; se não, vira administradora ao ser criada —
+  por isso, num banco novo, crie essa conta logo.
+- **Novos administradores** criam a conta em *Criar conta de administrador*, ou
+  pedem o papel com uma conta que já existe, pelo botão que aparece ao tentar
+  entrar como administrador. A conta vale para montagem desde já; a
+  administração só abre depois da aprovação.
+- **Remover** tira o papel e derruba a sessão de administrador na hora.
+  Ninguém remove a si mesmo, então sempre resta ao menos um.
+- **Cada decisão tem nome:** liberações, prazos, retiradas e aprovações de
+  administrador registram quem fez.
+- **Freio de tentativas:** 5 senhas erradas para o mesmo e-mail, do mesmo
+  endereço, bloqueiam novas tentativas por 15 minutos. Vale para todo login.
+- **Sessão de administrador dura 12 horas**; a de montador, 30 dias.
+
+Sem nenhum administrador capaz de entrar — senha esquecida, remoção por engano
+—, o socorro é na máquina do servidor:
+
+```bash
+npm run admin -- listar
+npm run admin -- promover pessoa@empresa.com
+```
 
 ---
 
@@ -235,16 +485,20 @@ O envio por e-mail é feito manualmente pelo montador.
 
 ## Limitação conhecida — sem sincronização
 
-Cada aparelho mantém a sua própria base. Um preenchimento iniciado no celular
-**não aparece** no notebook, e vice-versa.
+O servidor sincroniza **o acesso**, não as checagens. Cada aparelho mantém a sua
+própria base de respostas e fotos: um preenchimento iniciado no celular **não
+aparece** no notebook, mesmo com a mesma conta e o mesmo painel aprovado.
 
 Mitigação da v1: **Exportar projeto** (na tela do projeto) grava um `.zip` com o
-JSON dos dados e as fotos; **Importar projeto** (na tela inicial) lê esse arquivo
-e recria o projeto no outro aparelho, com o sufixo “(importado)” no nome. A
-transferência é manual.
+JSON dos dados e as fotos; **Importar projeto** (na tela de projetos) lê esse
+arquivo e recria o projeto no outro aparelho, com o sufixo “(importado)” no
+nome. A transferência é manual.
 
-Solução definitiva: servidor central, previsto para versão futura. A camada de
-persistência já está atrás dos repositórios para que a troca não afete as telas.
+Solução definitiva: subir também as respostas, em versão futura. A infraestrutura
+para isso já existe — servidor, contas e sessões — e a camada de persistência
+continua atrás dos repositórios, de modo que a troca não afete as telas. O que
+falta decidir é resolução de conflito: duas pessoas aprovadas no mesmo painel
+podem responder a mesma etapa em aparelhos diferentes.
 
 ---
 
@@ -255,7 +509,6 @@ persistência já está atrás dos repositórios para que a troca não afete as 
 | Descrição da etapa **S2.6** | Ilegível no OCR. Está no JSON com o texto marcado como `TRANSCREVER` e `pendenteTranscricao: true`; a etapa aparece com aviso na tela. |
 | Imagens de referência das 38 etapas | Ainda não recortadas. Os caminhos já estão no JSON; a lista completa está em `public/media/sen-plus/LEIA-ME.md`. Enquanto o arquivo não existir, o modal de ajuda mostra um aviso com o caminho esperado, sem quebrar a tela. |
 | Redação exata das etapas | Conferir contra o documento original. S1.1, S1.3, S2.2 e S2.6 estão marcadas com `pendenteTranscricao`. |
-| Senha da administração | Provisória (`abb-admin`). Trocar antes de publicar. |
 
 ---
 
@@ -264,6 +517,11 @@ persistência já está atrás dos repositórios para que a troca não afete as 
 Sem julgamento de conformidade no sistema (não existem estados “OK” e “Não OK”:
 a etapa é respondida ou fica em branco); sem estado “não aplicável”; PDF sempre
 gerável; ordem de preenchimento livre; operador e data informados uma vez e
-replicados em todas as etapas; dados exclusivamente no aparelho; sem
-autenticação; sem marca d'água nas fotos; sem trilha de auditoria além da data
-da última alteração.
+replicados em todas as etapas; respostas e fotos exclusivamente no aparelho; sem
+marca d'água nas fotos; sem trilha de auditoria além da data da última
+alteração.
+
+Revistas ao acrescentar o controle de acesso: **passou a haver autenticação**
+(e-mail e senha) e **passou a haver um servidor**, que guarda contas, painéis e
+decisões de acesso — e nada das checagens. O operador do PDF deixou de ser texto
+digitado e passa a vir do nome da conta.

@@ -6,6 +6,9 @@
   "description": "Sistema de Verificação de Montagem de Painéis — PWA offline para registro de checklists ABB",
   "scripts": {
     "dev": "vite",
+    "servidor": "tsx watch servidor/src/index.ts",
+    "admin": "tsx servidor/src/cli-admin.ts",
+    "icones": "tsx scripts/gerarIcones.ts",
     "build": "npm run validar-formularios && tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",

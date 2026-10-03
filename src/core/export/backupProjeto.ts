@@ -91,7 +91,10 @@ export async function exportarProjeto(projetoId: number): Promise<void> {
 }
 
 /** Lê um `.zip` gerado por `exportarProjeto` e cria uma cópia local do projeto. */
-export async function importarProjeto(arquivo: File | Blob): Promise<number> {
+export async function importarProjeto(
+  arquivo: File | Blob,
+  usuarioId?: number,
+): Promise<number> {
   const { default: JSZip } = await import('jszip');
   const zip = await JSZip.loadAsync(arquivo);
   const dados = zip.file(ARQUIVO_DADOS);
@@ -106,6 +109,11 @@ export async function importarProjeto(arquivo: File | Blob): Promise<number> {
   const projetoId = await db.projetos.add({
     ...pacote.projeto,
     nomeProjeto: `${pacote.projeto.nomeProjeto} (importado)`,
+    // O projeto importado passa a ser de quem importou: o pacote vem de outro
+    // aparelho, e o `usuarioId` de lá não vale nada aqui. O `painelId` também
+    // não viaja — o vínculo com o painel se refaz ao abrir pelo servidor.
+    usuarioId,
+    painelId: undefined,
     atualizadoEm: agora,
   });
 

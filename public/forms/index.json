@@ -6,6 +6,7 @@
       "nome": "Verificação de Montagem — SEN Plus",
       "tipo": "montagem",
       "linhaProduto": "SEN Plus",
+      "paineis": ["sen-plus"],
       "ativo": true
     },
     {
@@ -14,6 +15,7 @@
       "nome": "Verificação de Rotina — Baixa Tensão",
       "tipo": "rotina",
       "linhaProduto": "Baixa tensão",
+      "paineis": ["sen-plus"],
       "ativo": true
     }
   ]

@@ -27,7 +27,7 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         background_color: '#ffffff',
-        theme_color: '#ff000f',
+        theme_color: '#ffffff',
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
@@ -49,6 +49,10 @@ export default defineConfig({
         ],
         maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,
         navigateFallback: `${base}index.html`,
+        // A API nunca cai no index.html nem entra em cache: uma resposta de
+        // sessão ou de aprovação servida do cache mostraria acesso liberado
+        // depois de ele ter sido revogado.
+        navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
       },
       devOptions: { enabled: false },
@@ -56,6 +60,16 @@ export default defineConfig({
   ],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+  },
+  server: {
+    // Em desenvolvimento a aplicação e a API ficam em portas diferentes;
+    // o proxy as coloca na mesma origem, como acontece em produção.
+    proxy: {
+      '/api': {
+        target: process.env.API_ALVO ?? 'http://localhost:3001',
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     target: 'es2020',

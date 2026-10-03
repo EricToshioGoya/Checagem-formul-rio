@@ -1,11 +1,31 @@
 /**
  * Valida os JSON de `public/forms` contra o schema Zod do motor.
- * Roda no terminal (`npm run validar-formularios`) e no build, para que um
- * formulário quebrado nunca chegue ao dispositivo do montador.
+ *
+ * Desde que os checklists passaram a morar no servidor, esta pasta é apenas a
+ * semente: o que o servidor importa para o banco na primeira subida. Continua
+ * valendo validá-la no build — uma semente quebrada é um painel que nasce sem
+ * checklist e ninguém percebe até o montador abrir.
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { catalogoSchema, definicaoFormularioSchema, descreverErro } from '../src/core/forms/schema';
+import { z } from 'zod';
+import {
+  definicaoFormularioSchema,
+  descreverErro,
+} from '../compartilhado/formulario';
+
+/** Formato do índice das sementes; é lido pelo servidor, não pelo cliente. */
+const indiceSchema = z.object({
+  formularios: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        arquivo: z.string().min(1),
+        paineis: z.array(z.string().min(1)).optional().default([]),
+      }),
+    )
+    .min(1),
+});
 
 const pasta = join(process.cwd(), 'public', 'forms');
 let falhas = 0;
@@ -14,15 +34,15 @@ function ler(arquivo: string): unknown {
   return JSON.parse(readFileSync(join(pasta, arquivo), 'utf-8'));
 }
 
-const catalogo = catalogoSchema.safeParse(ler('index.json'));
-if (!catalogo.success) {
-  console.error('index.json inválido:\n' + descreverErro(catalogo.error));
+const indice = indiceSchema.safeParse(ler('index.json'));
+if (!indice.success) {
+  console.error('index.json inválido:\n' + descreverErro(indice.error));
   process.exit(1);
 }
 
 const arquivosNoDisco = readdirSync(pasta).filter((f) => f.endsWith('.json') && f !== 'index.json');
 
-for (const entrada of catalogo.data.formularios) {
+for (const entrada of indice.data.formularios) {
   const analise = definicaoFormularioSchema.safeParse(ler(entrada.arquivo));
   if (!analise.success) {
     console.error(`\n${entrada.arquivo} inválido:\n${descreverErro(analise.error)}`);
@@ -31,9 +51,12 @@ for (const entrada of catalogo.data.formularios) {
   }
   const definicao = analise.data;
   if (definicao.id !== entrada.id) {
-    console.error(`\n${entrada.arquivo}: id "${definicao.id}" difere do catálogo ("${entrada.id}").`);
+    console.error(`\n${entrada.arquivo}: id "${definicao.id}" difere do índice ("${entrada.id}").`);
     falhas += 1;
     continue;
+  }
+  if (entrada.paineis.length === 0) {
+    console.warn(`\n${entrada.arquivo}: sem painel no índice — não será importado.`);
   }
 
   const ids = new Set<string>();
@@ -67,14 +90,14 @@ for (const entrada of catalogo.data.formularios) {
 }
 
 const orfaos = arquivosNoDisco.filter(
-  (f) => !catalogo.data.formularios.some((e) => e.arquivo === f),
+  (f) => !indice.data.formularios.some((e) => e.arquivo === f),
 );
 if (orfaos.length) {
-  console.warn(`\nArquivos fora do catálogo (não serão carregados): ${orfaos.join(', ')}`);
+  console.warn(`\nArquivos fora do índice (não serão importados): ${orfaos.join(', ')}`);
 }
 
 if (falhas > 0) {
   console.error(`\n${falhas} problema(s) encontrado(s).`);
   process.exit(1);
 }
-console.log('\nTodos os formulários são válidos.');
+console.log('\nTodas as sementes são válidas.');
