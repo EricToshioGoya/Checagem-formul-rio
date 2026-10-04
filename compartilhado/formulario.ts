@@ -37,19 +37,53 @@ export const ROTULOS_TIPO_RESPOSTA: Record<TipoResposta, string> = {
 /** Tipos que exigem foto para a etapa contar como respondida. */
 export const TIPOS_COM_FOTO: readonly TipoResposta[] = ['check_com_foto', 'foto'];
 
+/**
+ * Caminho de conteúdo de apoio, sempre relativo à própria aplicação.
+ *
+ * Um JSON importado pela administração podia apontar para outro domínio, e a
+ * aplicação buscava o arquivo: a operação deixava de ser offline, o endereço e
+ * o horário de cada consulta vazavam para um terceiro, e a instrução visual da
+ * etapa passava a ser servida por quem controlasse aquele domínio.
+ */
+const caminhoRelativo = z
+  .string()
+  .min(1)
+  .refine((s) => !/^[a-z][a-z0-9+.-]*:/i.test(s), {
+    message: 'informe um caminho dentro da aplicação, sem "https:" nem outro esquema',
+  })
+  .refine((s) => !s.startsWith('//'), {
+    message: 'informe um caminho dentro da aplicação, sem "//" no início',
+  })
+  .refine((s) => !s.split('/').includes('..'), {
+    message: 'o caminho não pode subir de diretório com ".."',
+  });
+
 export const midiaApoioSchema = z.object({
   tipo: z.enum(['imagem', 'video', 'pdf']),
-  src: z.string().min(1),
+  src: caminhoRelativo,
   legenda: z.string().optional(),
 });
+
+export const tiposCampo = [
+  'texto',
+  'numero',
+  'selecao',
+  'data',
+  'email',
+  'telefone',
+] as const;
+
+export type TipoCampo = (typeof tiposCampo)[number];
 
 export const campoCabecalhoSchema = z.object({
   id: z.string().min(1),
   rotulo: z.string().min(1),
-  tipo: z.enum(['texto', 'numero', 'selecao', 'data']),
+  tipo: z.enum(tiposCampo),
   unidade: z.string().optional(),
   opcoes: z.array(z.string()).optional(),
   ajuda: z.string().optional(),
+  /** Campo sem valor bloqueia o avanço da solicitação de certificação. */
+  obrigatorio: z.boolean().optional().default(false),
 });
 
 export const tabelaReferenciaSchema = z.object({
@@ -72,6 +106,16 @@ export const gradeSchema = z.object({
     .min(1),
 });
 
+/**
+ * Condição de exibição de uma etapa, avaliada contra a resposta de outra.
+ * Etapa sem `exibirSe` é sempre exibida — o comportamento dos formulários
+ * já publicados não muda.
+ */
+export const condicaoSchema = z.object({
+  etapaId: z.string().min(1),
+  igualA: z.array(z.string().min(1)).min(1),
+});
+
 export const etapaSchema = z.object({
   id: z.string().min(1),
   descricao: z.string().min(1),
@@ -82,6 +126,12 @@ export const etapaSchema = z.object({
   unidade: z.string().optional(),
   opcoes: z.array(z.string()).optional(),
   grade: gradeSchema.optional(),
+  exibirSe: condicaoSchema.optional(),
+  /**
+   * Exige pelo menos um arquivo anexado para a etapa contar como respondida.
+   * Ausente, vale o comportamento original: a marcação basta.
+   */
+  fotoObrigatoria: z.boolean().optional().default(false),
   midiaApoio: z.array(midiaApoioSchema).optional().default([]),
   tabelaReferencia: tabelaReferenciaSchema.optional(),
   referencia: z.string().optional(),
@@ -133,6 +183,7 @@ export const entradaCatalogoSchema = z.object({
   atualizadoEm: z.number().optional().default(0),
 });
 
+export type Condicao = z.output<typeof condicaoSchema>;
 export type MidiaApoio = z.output<typeof midiaApoioSchema>;
 export type CampoCabecalho = z.output<typeof campoCabecalhoSchema>;
 export type TabelaReferencia = z.output<typeof tabelaReferenciaSchema>;
@@ -187,6 +238,7 @@ export function novaEtapa(secao: Secao): Etapa {
     tipoResposta: 'check_com_foto',
     observacao: true,
     ativa: true,
+    fotoObrigatoria: false,
     midiaApoio: [],
   };
 }

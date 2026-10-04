@@ -1,5 +1,6 @@
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './Layout';
+import { LimiteDeErro } from './LimiteDeErro';
 import { AtualizacaoPwa } from './AtualizacaoPwa';
 import { RolarAoTopo } from './RolarAoTopo';
 import { ExigirSessao } from './ExigirSessao';
@@ -11,6 +12,9 @@ import { Paineis } from '../features/paineis/Paineis';
 import { Aprovacoes } from '../features/paineis/Aprovacoes';
 import { ListaProjetos } from '../features/projects/ListaProjetos';
 import { DetalheProjeto } from '../features/projects/DetalheProjeto';
+import { ListaSolicitacoes } from '../features/solicitacoes/ListaSolicitacoes';
+import { NovaSolicitacao } from '../features/solicitacoes/NovaSolicitacao';
+import { DetalheSolicitacao } from '../features/solicitacoes/DetalheSolicitacao';
 import { Preenchimento } from '../features/fill/Preenchimento';
 import { Admin } from '../features/admin/Admin';
 
@@ -24,37 +28,48 @@ export function App() {
     <ProvedorSessao>
       <SincronizacaoAutomatica />
       <HashRouter>
-        <RolarAoTopo />
-        <AtualizacaoPwa />
-        <Routes>
-          {/* Única rota aberta: é por onde se entra. */}
-          <Route element={<Layout />}>
-            <Route path="/entrar" element={<Entrar />} />
-          </Route>
-
-          <Route element={<ExigirSessao />}>
+        <LimiteDeErro>
+          <RolarAoTopo />
+          <AtualizacaoPwa />
+          <Routes>
+            {/* Única rota aberta: é por onde se entra. */}
             <Route element={<Layout />}>
-              <Route path="/" element={<Paineis />} />
-              <Route path="/paineis" element={<Paineis />} />
-              <Route path="/aprovacoes" element={<Aprovacoes />} />
-              <Route path="/projetos" element={<ListaProjetos />} />
-              {/* Não há mais criação avulsa de projeto: um projeto só nasce
-                  ao abrir um painel aprovado, e é o que garante que a pessoa
-                  preencha apenas aquilo que pediu e teve aprovado. */}
-              <Route path="/projetos/:projetoId" element={<DetalheProjeto />} />
-              <Route element={<ExigirAdmin />}>
-                <Route path="/admin" element={<Admin />} />
-              </Route>
+              <Route path="/entrar" element={<Entrar />} />
             </Route>
-            <Route
-              path="/projetos/:projetoId/tags/:tagId/formularios/:formId"
-              element={<Preenchimento />}
-            />
-          </Route>
 
-          {/* Rota desconhecida volta à raiz, que já passa pelo portão. */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            <Route element={<ExigirSessao />}>
+              <Route element={<Layout />}>
+                <Route path="/" element={<Paineis />} />
+                <Route path="/paineis" element={<Paineis />} />
+                <Route path="/aprovacoes" element={<Aprovacoes />} />
+                <Route path="/projetos" element={<ListaProjetos />} />
+                {/* Não há mais criação avulsa de projeto: um projeto só nasce
+                    ao abrir um painel aprovado, e é o que garante que a pessoa
+                    preencha apenas aquilo que pediu e teve aprovado. */}
+                <Route path="/projetos/:projetoId" element={<DetalheProjeto />} />
+                {/* Fluxo de certificação (SPEE, SPEP e SAFR): uma solicitação
+                    por painel/quadro, validada pela ABB antes do certificado. */}
+                <Route path="/paineis/:tipoPainel/solicitacoes" element={<ListaSolicitacoes />} />
+                <Route
+                  path="/paineis/:tipoPainel/solicitacoes/nova"
+                  element={<NovaSolicitacao />}
+                />
+                <Route path="/solicitacoes/:solicitacaoId" element={<DetalheSolicitacao />} />
+                <Route element={<ExigirAdmin />}>
+                  <Route path="/admin" element={<Admin />} />
+                </Route>
+              </Route>
+              <Route
+                path="/projetos/:projetoId/tags/:tagId/formularios/:formId"
+                element={<Preenchimento />}
+              />
+              <Route path="/solicitacoes/:solicitacaoId/checklist" element={<Preenchimento />} />
+            </Route>
+
+            {/* Rota desconhecida volta à raiz, que já passa pelo portão. */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </LimiteDeErro>
       </HashRouter>
     </ProvedorSessao>
   );

@@ -53,7 +53,13 @@ export interface Tag {
 
 export interface Preenchimento {
   id?: number;
-  tagId: number;
+  /** Preenchimento do fluxo de verificação (projeto → TAG → formulário). */
+  tagId?: number;
+  /**
+   * Preenchimento do fluxo de certificação: uma solicitação, um checklist.
+   * Fica só no aparelho — a sincronização trata apenas os de TAG.
+   */
+  solicitacaoId?: number;
   formId: string;
   /** Revisão da definição usada — impressa no PDF. */
   formRevisao: string;
@@ -100,4 +106,75 @@ export interface FormularioCache {
   definicao: DefinicaoFormulario;
   /** Quando este aparelho baixou — para mostrar a idade da cópia offline. */
   sincronizadoEm: number;
+}
+
+/**
+ * Ciclo de vida da solicitação de certificação.
+ *
+ * rascunho → enviada → aprovada → emitida
+ *                   ↘ devolvida → enviada (correção e reenvio)
+ */
+export type EstadoSolicitacao =
+  | 'rascunho'
+  | 'enviada'
+  | 'devolvida'
+  | 'aprovada'
+  | 'emitida';
+
+/** `campoId` → valor informado nos dados da solicitação. */
+export type DadosSolicitacao = Record<string, string>;
+
+export interface EventoSolicitacao {
+  estado: EstadoSolicitacao;
+  em: number;
+  por: string;
+  observacao?: string;
+}
+
+export interface Solicitacao {
+  id?: number;
+  /** `slug` do painel (`system-pro-e-energy`, `system-pro-e-power`, `safr`). */
+  tipoPainel: string;
+  /** Id do checklist usado — o primeiro checklist ativo do painel. */
+  formId: string;
+  /** Conta que abriu a solicitação. Separa os dados de quem divide o aparelho. */
+  usuarioId?: number;
+  estado: EstadoSolicitacao;
+  dados: DadosSolicitacao;
+  /** Apontamentos da última devolução, exibidos ao montador. */
+  apontamentos?: string;
+  historico: EventoSolicitacao[];
+  /** Atribuído na aprovação e imutável a partir dali. */
+  numeroCertificado?: string;
+  aprovadoEm?: number;
+  aprovadoPor?: string;
+  criadoEm: number;
+  atualizadoEm: number;
+}
+
+/**
+ * Registro da emissão, exigido para rastreamento. Guarda uma cópia dos dados
+ * no momento da aprovação: alterar a solicitação depois não reescreve o
+ * certificado já emitido.
+ */
+export interface Certificado {
+  id?: number;
+  numero: string;
+  solicitacaoId: number;
+  tipoPainel: string;
+  nomePainel: string;
+  projeto: string;
+  tagPainel: string;
+  clienteFinal: string;
+  montador: string;
+  correnteNominal: string;
+  correnteCurtoCircuito: string;
+  responsavel: string;
+  emitidoEm: number;
+}
+
+/** Contador do número sequencial global dos certificados. */
+export interface Contador {
+  id: string;
+  proximo: number;
 }

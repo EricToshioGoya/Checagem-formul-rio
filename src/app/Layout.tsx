@@ -4,6 +4,8 @@ import { api, type PainelApi, type ResumoAdmin } from '../core/api/cliente';
 import { useSessao } from '../core/api/SessaoContexto';
 import { plural } from '../../compartilhado/plural';
 import { LogoAbb } from '../shared/componentes/LogoAbb';
+import { IconePdf } from '../shared/componentes/Icones';
+import { PDF_INSTRUCOES, TITULO_PDF_INSTRUCOES } from '../core/config';
 
 const aba =
   'flex min-h-10 items-center rounded-lg px-2.5 text-sm font-semibold transition-colors sm:px-3';
@@ -82,7 +84,12 @@ export function Layout() {
 
   // Projeto e preenchimento pertencem a um painel: o menu continua em "Painéis".
   const emPaineis =
-    pathname === '/' || pathname.startsWith('/paineis') || pathname.startsWith('/projetos');
+    pathname === '/' ||
+    pathname.startsWith('/paineis') ||
+    pathname.startsWith('/projetos') ||
+    pathname.startsWith('/solicitacoes');
+  // As instruções de envio valem para a solicitação de certificação.
+  const naCertificacao = /^\/(paineis\/[^/]+\/)?solicitacoes/.test(pathname);
 
   return (
     <div className="min-h-dvh">
@@ -147,6 +154,22 @@ export function Layout() {
           </div>
         ) : null}
       </header>
+
+      {naCertificacao ? (
+        <div className="border-b border-abb-line bg-white">
+          <div className="mx-auto max-w-5xl px-4 py-2">
+            <a
+              href={`${import.meta.env.BASE_URL}${PDF_INSTRUCOES}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-12 items-center gap-2 text-base font-semibold text-abb-red underline underline-offset-2"
+            >
+              <IconePdf className="h-5 w-5 shrink-0" />
+              {TITULO_PDF_INSTRUCOES}
+            </a>
+          </div>
+        </div>
+      ) : null}
 
       <main className="mx-auto max-w-5xl px-4 py-5 pb-16">
         <Outlet />

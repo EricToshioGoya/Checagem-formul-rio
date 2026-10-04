@@ -6,6 +6,7 @@ export {
   calcularProgresso,
   etapaRespondida,
   etapasAtivas,
+  etapaVisivel,
   idsPendentes,
   type Progresso,
 } from '../../../compartilhado/progresso';

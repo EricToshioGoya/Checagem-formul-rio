@@ -9,14 +9,24 @@ import { GestaoContas } from './GestaoContas';
 import { GestaoPaineis } from './GestaoPaineis';
 import { Historico } from './Historico';
 import { Sistema } from './Sistema';
+import { ValidacaoAbb } from './ValidacaoAbb';
 import { plural } from '../../../compartilhado/plural';
 import { sessaoAdminAcabou } from './sessaoAdmin';
 
-type Aba = 'acessos' | 'andamento' | 'paineis' | 'contas' | 'administradores' | 'historico' | 'sistema';
+type Aba =
+  | 'acessos'
+  | 'andamento'
+  | 'validacao'
+  | 'paineis'
+  | 'contas'
+  | 'administradores'
+  | 'historico'
+  | 'sistema';
 
 const ABAS: Array<{ id: Aba; rotulo: string; curto: string }> = [
   { id: 'acessos', rotulo: 'Acessos', curto: 'Acessos' },
   { id: 'andamento', rotulo: 'Andamento', curto: 'Andamento' },
+  { id: 'validacao', rotulo: 'Validação ABB', curto: 'Validação' },
   { id: 'paineis', rotulo: 'Painéis e checklists', curto: 'Painéis' },
   { id: 'contas', rotulo: 'Contas', curto: 'Contas' },
   { id: 'administradores', rotulo: 'Administradores', curto: 'Admins' },
@@ -130,6 +140,17 @@ export function Admin() {
               </p>
             </div>
             <Andamento onSessaoVencida={sessaoVencida} />
+          </div>
+        ) : aba === 'validacao' ? (
+          <div className="space-y-3">
+            <div>
+              <h2 className="text-xl font-bold">Validação ABB</h2>
+              <p className="text-sm text-abb-gray">
+                Solicitações de certificação gravadas neste aparelho: aprovar
+                atribui o número do certificado, devolver reabre para o montador.
+              </p>
+            </div>
+            <ValidacaoAbb />
           </div>
         ) : aba === 'contas' ? (
           <GestaoContas onSessaoVencida={sessaoVencida} onAlterado={lerResumo} />

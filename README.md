@@ -1,12 +1,17 @@
 # Sistema de Verificação de Montagem de Painéis
 
 Aplicação para o montador do parceiro registrar, durante a montagem do painel,
-as verificações exigidas pelos protocolos ABB. Ao final, gera um PDF em leiaute
-ABB que o montador baixa e envia por e-mail ao inspetor — o julgamento de
-conformidade é feito **fora do sistema**.
+as verificações exigidas pelos protocolos ABB. O painel decide o que vem
+depois:
 
-Implementa a especificação técnica v1.0 (02/09/2026), acrescida do controle de
-acesso por painel descrito em [Login e aprovação](#login-e-aprovação).
+| Painel | Fluxo | Resultado |
+|---|---|---|
+| SEN Plus (e todo painel cadastrado na administração) | Verificação | Dossiê em PDF que o montador envia por e-mail ao inspetor. O julgamento de conformidade é feito **fora do sistema**. |
+| System Pro E Energy, System Pro E Power, SAFR | Certificação | Solicitação → validação ABB → **certificado de produto numerado**, gerado pelo próprio sistema. Ver [Fluxo de certificação](#fluxo-de-certificação). |
+
+Implementa a especificação técnica v1.0 (02/09/2026), a extensão de
+certificação (04/09/2026) e o controle de acesso por painel descrito em
+[Login e aprovação](#login-e-aprovação).
 
 - **Cliente estático + servidor de acesso.** O PWA é um diretório estático; um
   servidor pequeno cuida de contas, painéis e aprovação.
@@ -47,19 +52,22 @@ dessa versão.
 | `npm run admin -- promover <e-mail>` | Dá o papel de administrador a uma conta existente |
 | `npm run icones` | Regera os ícones PNG do aplicativo a partir do vetor do logotipo |
 | `npm run fumaca` | Teste de fumaça do fluxo completo em navegador real |
+| `npm run testes` | Bateria de verificação de contorno (ver `scripts/testes/README.md`) |
 | `scripts/build-portatil.sh` | Gera o binário portátil (modalidade B) |
 
 O teste de fumaça exige Playwright, que **não** é dependência do projeto:
 
 ```bash
-npm run build && npx vite preview --port 8099 &
+npm run build
+BANCO=/tmp/fumaca.db npm run servidor &      # banco vazio; serve também o dist/
 npm i -D playwright && npx playwright install chromium
-BASE_URL=http://localhost:8099 npm run fumaca
+BASE_URL=http://localhost:3001 npm run fumaca
 ```
 
-Ele percorre criação de projeto, preenchimento com salvamento automático,
-persistência após recarregar, modal de apoio, geração dos PDFs nas duas opções
-de foto, exportação do projeto, grade de ensaios e aba de administração.
+Ele cria a conta do administrador inicial e percorre os dois fluxos: no SEN
+Plus, abertura do painel, marcação de etapa e persistência após recarregar; na
+certificação, solicitação com campos obrigatórios, envio bloqueado, etapa
+condicional, validação ABB com numeração e geração do certificado.
 
 ---
 
@@ -100,7 +108,15 @@ verificacao-montagem-windows-amd64.exe            # porta 8080, abre o navegador
 verificacao-montagem-windows-amd64.exe -porta 9000
 verificacao-montagem-windows-amd64.exe -sem-navegador
 verificacao-montagem-windows-amd64.exe -pasta ./dist   # serve do disco
+verificacao-montagem-windows-amd64.exe -api http://192.168.0.10:3001  # servidor de acesso
+verificacao-montagem-windows-amd64.exe -host 0.0.0.0   # atende a rede local
 ```
+
+O binário não guarda contas: `/api` é repassado ao servidor de acesso indicado
+em `-api` (ou `API_ALVO`), mantendo a API na mesma origem da aplicação. De
+pendrive, ele só atende `localhost` — requisições com outro `Host` são
+recusadas, o que fecha o caminho de DNS rebinding até o IndexedDB; `-host`
+abre isso de propósito, para quem publica na rede.
 
 Se a porta estiver ocupada, o servidor tenta as 20 seguintes. Uma pasta `web/`
 ou `dist/` ao lado do executável tem precedência sobre o conteúdo embutido — é
@@ -149,15 +165,22 @@ O vínculo é **por e-mail**, e não por id de usuário, de propósito — o
 responsável pode ainda não ter criado a conta. Quando criar, os pedidos
 acumulados aparecem para ele.
 
-Na primeira subida, com o banco vazio, o servidor cria quatro painéis iniciais a
+Na primeira subida, com o banco vazio, o servidor cria cinco painéis iniciais a
 partir de [`servidor/src/paineis.ts`](servidor/src/paineis.ts):
 
-| Painel inicial | Checklist |
-|---|---|
-| SEN Plus | montagem (38 etapas) + rotina BT (62) |
-| System Pro E Power | — ainda não cadastrado |
-| System Pro E Energy | — ainda não cadastrado |
-| MNS | — ainda não cadastrado |
+| Painel inicial | Fluxo | Checklist |
+|---|---|---|
+| SEN Plus | verificação | montagem (38 etapas) + rotina BT (62) |
+| System Pro E Power | certificação | ensaios de rotina NBR IEC 61439 |
+| System Pro E Energy | certificação | ensaios de rotina NBR IEC 61439 |
+| SAFR | certificação | ensaios de rotina NBR IEC 61439 |
+| MNS | verificação | — ainda não cadastrado |
+
+Os checklists também são semente: o servidor importa `public/forms` só com a
+tabela vazia. Um arquivo citado por vários painéis vira uma cópia por painel —
+os ensaios 61439 entram como `ensaios-rotina-61439`,
+`ensaios-rotina-61439-system-pro-e-power` e `ensaios-rotina-61439-safr` —,
+porque no banco cada checklist pertence a um painel e é editado ali.
 
 Todos nascem com `RESPONSAVEL_PADRAO`, hoje `ericg10456@gmail.com`. **Isso é
 semente, não configuração corrente:** com painéis no banco, o arquivo deixa de
@@ -169,7 +192,7 @@ O `slug` é gerado a partir do nome no cadastro e **não muda ao renomear** — 
 ele que amarra o painel aos formulários do catálogo e aos projetos já gravados
 nos aparelhos.
 
-> **As três linhas sem checklist abrem vazias.** O painel abre, mas sem
+> **Linha sem checklist abre vazia.** O painel abre, mas sem
 > formulário nenhum e com um aviso na tela. Não se reaproveita o checklist do
 > SEN Plus: as etapas de uma linha não valem para outra. Para cadastrar uma
 > delas, acrescente o JSON em `public/forms` e cite o `slug` do painel no campo
@@ -252,8 +275,12 @@ não por pessoa.
   cada pedido de administrador — as edições de painel e checklist não.
 - **Sem segundo fator.** O administrador entra só com e-mail e senha; o freio de
   tentativas torna o chute lento, mas uma senha vazada basta.
-- **A modalidade portátil não serve a API.** O binário Go entrega só os
-  arquivos estáticos; ele precisa alcançar um servidor de acesso pela rede.
+- **A modalidade portátil não guarda contas.** O binário Go entrega os
+  arquivos estáticos e repassa `/api` ao servidor de acesso indicado em
+  `-api`; sem alcançar esse servidor pela rede, ninguém entra.
+- **Solicitações de certificação ficam no aparelho.** A validação ABB vê só as
+  do aparelho em que a administração é aberta — ver
+  [Fluxo de certificação](#fluxo-de-certificação).
 
 ### Configuração
 
@@ -285,10 +312,17 @@ servidor/src/            API de acesso (Node + node:sqlite, sem framework)
   rotas.ts               contas, painéis, solicitações, administração
   index.ts               roteador HTTP
 public/
-  forms/                  definições JSON dos formulários — editáveis sem build
-    index.json            catálogo dos formulários disponíveis
+  forms/                  sementes dos checklists — importadas pelo servidor
+    index.json            catálogo das sementes e dos painéis de cada uma
     sen-plus-montagem.json
     rotina-bt.json
+    ensaios-rotina-61439.json
+  paineis/
+    index.json            fluxo por slug de painel: certificação, template
+                          do certificado, responsável ABB e campos
+  certificados/           templates de certificado, um por painel
+    spee.json  spep.json  safr.json
+  docs/                   PDF de instruções exibido nas telas de certificação
   media/                  conteúdo de apoio — editável sem build
     sen-plus/             (ver LEIA-ME.md: lista das imagens esperadas)
 src/
@@ -296,20 +330,27 @@ src/
   core/
     api/                  cliente da API e contexto de sessão
     db/                   Dexie: schema e repositórios
-    forms/                motor: schema Zod, catálogo, progresso
+    forms/                motor: catálogo, progresso, campos obrigatórios
+    paineis/              catálogo de fluxos por painel
+    certificacao/         solicitação, validação ABB e numeração (interfaces)
+    certificado/          template como dado e geração do PDF do certificado
     media/                compressão e normalização de imagem
     export/               ExportTarget, dossiê, PDF, backup .zip
   features/
     auth/                 tela de entrar e criar conta
     paineis/              escolha do painel e caixa de aprovações
     projects/             listagem, criação, TAGs
+    solicitacoes/         solicitação de certificação
     fill/                 preenchimento e registro de tipos de campo
     pdf/                  diálogo de geração
-    admin/                aba de administração
+    admin/                aba de administração e validação ABB
   shared/                 componentes de UI, ícones, hooks, utilidades
     marca/logoAbb.ts      vetor do logotipo ABB (tela, PDF e ícones)
+compartilhado/            contrato do formulário e regra de andamento, iguais
+                          no cliente e no servidor
 cmd/servidor/             servidor portátil em Go (modalidade B)
-scripts/                  validação de formulários, ícones, build portátil, fumaça
+scripts/                  validação dos dados, ícones, build portátil, fumaça,
+                          bateria de testes
 ```
 
 **Princípio central:** o motor de formulários não conhece nenhum formulário
@@ -332,19 +373,31 @@ diálogo de geração.
 | Novo destino de exportação | Implementar `ExportTarget` (`src/core/export/ExportTarget.ts`). `PdfExport` é a implementação da v1. |
 | Trocar a persistência | Todo acesso ao Dexie passa por `ProjetoRepository`, `PreenchimentoRepository`, `MidiaRepository` e `FormularioRepository`. Nenhuma tela importa Dexie. |
 | Conteúdo de apoio | Trocar o arquivo em `public/media`. O caminho fica no JSON. |
+| Painel de certificação | Acrescentar a entrada em `public/paineis/index.json` com o `slug` do painel, `fluxo: "certificacao"`, o template em `public/certificados` e o responsável ABB. Nenhuma alteração de código. |
+| Novos campos da solicitação | Editar `camposPadrao` em `public/paineis/index.json`, ou dar ao painel a sua própria lista `campos`. |
+| Solicitações no servidor | Trocar o que `src/core/certificacao/index.ts` aponta em `solicitacaoStore` e `servicoValidacao`. Nenhuma tela muda. |
 
 ### Modelo de dados
 
-No aparelho (Dexie, versão 3 do schema):
+No aparelho (Dexie, versão 6 do schema):
 
 ```
 projetos:          ++id, empresa, nomeProjeto, operador, criadoEm, atualizadoEm,
                    painelId, usuarioId, [usuarioId+painelId]
-tags:              ++id, projetoId, nome, ordem, [projetoId+ordem]
-preenchimentos:    ++id, tagId, formId, atualizadoEm, [tagId+formId]
-midias:            ++id, preenchimentoId, etapaId, [preenchimentoId+etapaId]
-formulariosCustom: id, atualizadoEm
+tags:              ++id, projetoId, nome, ordem, [projetoId+ordem], uid
+preenchimentos:    ++id, tagId, solicitacaoId, formId, atualizadoEm, [tagId+formId]
+midias:            ++id, preenchimentoId, etapaId, [preenchimentoId+etapaId], uid
+formularios:       id, painelSlug, atualizadoEm
+solicitacoes:      ++id, tipoPainel, usuarioId, estado, numeroCertificado,
+                   criadoEm, atualizadoEm
+certificados:      ++id, &numero, solicitacaoId, tipoPainel, emitidoEm
+contadores:        id
 ```
+
+Um preenchimento pertence a uma TAG (verificação) **ou** a uma solicitação
+(certificação) — nunca aos dois. Assim o motor de preenchimento, as fotos e o
+cálculo de andamento servem aos dois fluxos sem duplicação; a sincronização
+trata só os de TAG.
 
 No servidor (SQLite):
 
@@ -369,8 +422,8 @@ sessão foi aberta. `pedidos_admin.status` é `pendente`, `aprovado`, `recusado`
 ou `removido` (administrador tirado do papel).
 
 Fotos são gravadas como **Blob**, nunca base64. `respostas` é um mapa
-`etapaId → { valor, observacao }`. Excluir um projeto ou uma TAG remove em
-cascata os preenchimentos e as mídias.
+`etapaId → { valor, observacao }`. Excluir um projeto, uma TAG ou uma
+solicitação remove em cascata os preenchimentos e as mídias.
 
 Projetos gravados antes de existir login ficam sem `usuarioId` e continuam
 visíveis para quem estiver logado — não há a quem atribuí-los.
@@ -402,28 +455,119 @@ rotina, **apenas registra o valor** — não há validação de faixa nem alerta
 |---|---|
 | `sen-plus-montagem.json` | 38 etapas em 5 seções (estrutura, barramentos, placas, separações, vedações) |
 | `rotina-bt.json` | 62 etapas em 10 seções (R1 a R10), fusão do *Routine Verification Checklist* com o *Low Voltage Switchboard Checklist* |
+| `ensaios-rotina-61439.json` | Ensaios de rotina 11.2 a 11.10 da NBR IEC 61439, conteúdo idêntico em SPEE, SPEP e SAFR |
 
-Qualquer alteração é validada por `npm run validar-formularios`, que roda
+Qualquer alteração — nas sementes, no catálogo de fluxos ou nos templates de
+certificado — é validada por `npm run validar-formularios`, que roda
 automaticamente antes do build.
+
+### Etapa condicional e evidência obrigatória
+
+Duas capacidades do motor entraram com o fluxo de certificação. Ambas são
+declaradas no JSON e não mudam nada em quem não as usa:
+
+- `exibirSe: { etapaId, igualA: [...] }` — a etapa só aparece (e só entra no
+  progresso) quando a etapa apontada foi respondida com um dos valores listados.
+  É o que faz a justificativa e a autorização de componente de outro fabricante
+  surgirem apenas quando o montador indica substituição (11.5.1 → 11.5.2 e
+  11.5.3). O validador confere que a etapa apontada existe e oferece os valores
+  esperados.
+- `fotoObrigatoria: true` — a etapa só conta como respondida com pelo menos um
+  arquivo anexado. É o que torna as evidências fotográficas exigidas pelo Anexo 2
+  bloqueantes para o envio.
+
+---
+
+## Fluxo de certificação
+
+```
+rascunho ──enviar──> enviada ──aprovar──> aprovada ──gerar──> emitida
+                        │
+                        └──devolver──> devolvida ──corrigir e reenviar──┘
+```
+
+- **Uma solicitação por painel/quadro.** Cada TAG gera uma solicitação dedicada e
+  independente, com preenchimento e evidências próprios.
+- **Envio bloqueado** enquanto houver campo obrigatório vazio ou etapa do
+  checklist sem resposta. A tela lista exatamente o que falta.
+- **Enviada, aprovada ou emitida**, a solicitação fica em somente leitura para o
+  montador; o checklist abre travado, para conferência.
+- **Devolvida**, volta a ser editável com os apontamentos no topo, preservando
+  todo o preenchimento já feito.
+- **O certificado só é gerado após a aprovação explícita** do responsável ABB,
+  na aba **Validação ABB** da administração.
+- **As solicitações ficam no aparelho.** Diferente das checagens de projeto,
+  elas não sincronizam: a validação ABB enxerga as solicitações gravadas no
+  aparelho em que é aberta. Levá-las ao servidor é trocar a implementação em
+  `src/core/certificacao/index.ts` — as telas não mudam.
+
+### Responsáveis e numeração
+
+| Painel (`slug`) | Responsável ABB | Template |
+|---|---|---|
+| System Pro E Energy (`system-pro-e-energy`) | Tainá Gioia | `certificados/spee.json` |
+| System Pro E Power (`system-pro-e-power`) | Carlos Eduardo Silva | `certificados/spep.json` |
+| SAFR (`safr`) | Tainá Gioia | `certificados/safr.json` |
+
+O fluxo de cada painel vem de `public/paineis/index.json`, pelo `slug` do painel
+no servidor. Painel sem entrada ali — todo painel novo da administração — segue
+a verificação. Quem pode abrir as solicitações de um painel é a mesma regra dos
+projetos: acesso aprovado pelo responsável ou liberado pela administração,
+reconferido a cada entrada.
+
+O responsável ABB (quem assina o certificado) e o responsável do painel (quem
+aprova o acesso do montador) são coisas diferentes: o primeiro mora no
+catálogo de fluxos, o segundo no cadastro de painéis do servidor.
+
+Na aprovação, a camada de validação atribui um número **sequencial global, único
+e imutável** (`0001`, `0002`, …) resolvido em transação, com índice único em
+`certificados.numero`. Junto com o número grava-se o registro da emissão — data,
+tipo de painel, projeto, TAG, cliente final e montador —, visível na aba de
+administração. Uma solicitação já numerada não recebe outro número.
+
+O prefixo do número pode ser definido no build:
+
+```bash
+VITE_PREFIXO_CERTIFICADO='ABB-' npm run build
+```
+
+### Certificado
+
+Um template por tipo de painel, em `public/certificados`. O corpo é idêntico nos
+três; variam o título do produto e o bloco de assinatura. O corpo traz a
+conformidade com a NBR IEC 61439-1/2, as verificações do item 10.1 (10.2 a
+10.13), os ensaios de rotina do montador (11.2 a 11.10) e a nota de que as
+medidas devem ser registradas no protocolo do montador e anexadas ao documento.
+
+Os campos vêm da solicitação aprovada por marcadores `{{campo}}`: número do
+certificado, data de emissão, projeto, cliente final, TAG, corrente nominal,
+corrente de curto-circuito e nome do montador. O bloco de assinatura usa
+`{{responsavel.*}}`, resolvido a partir do catálogo de painéis — o responsável
+fica declarado em um só lugar, e é o mesmo que aprova a solicitação.
+
+Nenhum texto do certificado está no código: o gerador em
+`src/core/certificado/documento.ts` só sabe desenhar os tipos de bloco
+(`campos`, `paragrafo`, `lista`, `nota`, `campoLargo`, `assinatura`).
+
+---
 
 ---
 
 ## Aba de administração
 
-Acesso em **Administração**, no cabeçalho. Permite, sem programação: editar
-descrição e detalhes de qualquer etapa, ativar e desativar etapas, reordenar
-etapas dentro de uma seção, trocar o conteúdo de apoio, exportar o JSON e
-importar um JSON com validação e mensagem de erro legível.
+Acesso em **Administração**, no cabeçalho, para quem entrou como
+administrador. As seções principais:
 
-As edições ficam no IndexedDB do aparelho e têm precedência sobre o arquivo
-publicado. Para distribuir uma alteração a todos, exporte o JSON e substitua o
-arquivo em `public/forms` na próxima publicação. O botão **Restaurar original**
-descarta as edições locais.
-
-A aba tem três seções: **Acessos** (quem pode preencher cada painel, e até
-quando — ver [Controle de acesso](#controle-de-acesso)), **Painéis e
-checklists** (cadastro dos painéis, de quem aprova e do conteúdo das etapas) e
-**Administradores** (quem administra, e quem pediu para administrar).
+- **Acessos** — quem pode preencher cada painel, e até quando (ver
+  [Controle de acesso](#controle-de-acesso)).
+- **Validação ABB** — as solicitações de certificação enviadas, com os dados
+  informados e a situação do checklist: aprovar atribui o número do
+  certificado; devolver reabre para o montador com os apontamentos. Abaixo, o
+  registro de todas as emissões.
+- **Painéis e checklists** — cadastro dos painéis, de quem aprova e do
+  conteúdo das etapas. Os checklists são gravados no servidor, e todo montador
+  aprovado naquele painel recebe a mesma versão.
+- **Administradores** — quem administra, e quem pediu para administrar.
 
 ### Quem é administrador
 
@@ -509,6 +653,8 @@ podem responder a mesma etapa em aparelhos diferentes.
 | Descrição da etapa **S2.6** | Ilegível no OCR. Está no JSON com o texto marcado como `TRANSCREVER` e `pendenteTranscricao: true`; a etapa aparece com aviso na tela. |
 | Imagens de referência das 38 etapas | Ainda não recortadas. Os caminhos já estão no JSON; a lista completa está em `public/media/sen-plus/LEIA-ME.md`. Enquanto o arquivo não existir, o modal de ajuda mostra um aviso com o caminho esperado, sem quebrar a tela. |
 | Redação exata das etapas | Conferir contra o documento original. S1.1, S1.3, S2.2 e S2.6 estão marcadas com `pendenteTranscricao`. |
+| E-mails dos responsáveis ABB | `taina.gioia@br.abb.com` e `carlos.e.silva@br.abb.com`, reconstruídos do PDF do Anexo 2 (o OCR do arquivo suprime pontos). Conferir antes de publicar; ficam em `public/paineis/index.json`. |
+| Imagens de apoio dos ensaios de rotina | O checklist da NBR IEC 61439 ainda não tem `midiaApoio`. Os textos de orientação estão em `detalhes`; as imagens entram no JSON quando existirem. |
 
 ---
 
@@ -525,3 +671,10 @@ Revistas ao acrescentar o controle de acesso: **passou a haver autenticação**
 (e-mail e senha) e **passou a haver um servidor**, que guarda contas, painéis e
 decisões de acesso — e nada das checagens. O operador do PDF deixou de ser texto
 digitado e passa a vir do nome da conta.
+
+Da extensão de certificação: o comportamento do SEN Plus não mudou — os campos
+obrigatórios e o ciclo de validação valem apenas para os painéis de
+certificação; o certificado sai em PDF, no mesmo padrão de saída do dossiê; a
+validação ABB mora na administração, atrás do papel de administrador; o backup
+`.zip` cobre apenas o fluxo de projeto/TAG, já que a solicitação tem ciclo
+próprio de envio e aprovação.

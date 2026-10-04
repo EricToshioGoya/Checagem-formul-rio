@@ -20,3 +20,6 @@ cmd/servidor/servidor.exe
 
 # Base do servidor de acesso (contas e aprovações locais)
 servidor/dados/
+
+# Saída da bateria de verificação
+saida-testes/

@@ -18,6 +18,8 @@ const CHAVE = 'acessos-paineis';
 const ESPERA_REDE_MS = 4000;
 
 interface Registro {
+  /** `slug` do painel, para as telas que só conhecem o slug (certificação). */
+  slug?: string;
   meuAcesso: AcessoPainel;
   podePreencher: boolean;
   expiraEm: number | null;
@@ -45,6 +47,7 @@ export function guardarAcessos(usuarioId: number, paineis: readonly PainelApi[])
     const mapa = ler();
     for (const p of paineis) {
       mapa[chaveDe(usuarioId, p.id)] = {
+        slug: p.slug,
         meuAcesso: p.meuAcesso,
         podePreencher: p.podePreencher,
         expiraEm: p.acessoExpiraEm,
@@ -92,6 +95,38 @@ export async function conferirAcessoPainel(
     );
   } catch {
     const registro = ler()[chaveDe(usuarioId, painelId)];
+    return registro ? bloqueioDe(registro, true) : null;
+  }
+}
+
+/**
+ * Como `conferirAcessoPainel`, para quem só conhece o `slug` do painel — as
+ * telas da certificação, cujas solicitações são do tipo de painel e não de um
+ * projeto amarrado ao id do servidor.
+ */
+export async function conferirAcessoPorSlug(
+  usuarioId: number,
+  slug: string,
+): Promise<Bloqueio | null> {
+  try {
+    const { paineis } = await Promise.race([
+      api.get<{ paineis: PainelApi[] }>('/api/paineis'),
+      new Promise<never>((_, rejeitar) =>
+        setTimeout(() => rejeitar(new Error('tempo esgotado')), ESPERA_REDE_MS),
+      ),
+    ]);
+    guardarAcessos(usuarioId, paineis);
+    const painel = paineis.find((p) => p.slug === slug);
+    if (!painel) return { motivo: 'sem-acesso', expiraEm: null };
+    return bloqueioDe(
+      { meuAcesso: painel.meuAcesso, podePreencher: painel.podePreencher, expiraEm: painel.acessoExpiraEm },
+      false,
+    );
+  } catch {
+    const prefixo = `${usuarioId}:`;
+    const registro = Object.entries(ler()).find(
+      ([chave, r]) => chave.startsWith(prefixo) && r.slug === slug,
+    )?.[1];
     return registro ? bloqueioDe(registro, true) : null;
   }
 }

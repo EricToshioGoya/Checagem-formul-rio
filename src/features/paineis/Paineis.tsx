@@ -5,6 +5,8 @@ import { useSessao } from '../../core/api/SessaoContexto';
 import { guardarAcessos } from '../../core/api/acessoLocal';
 import { ProjetoRepository } from '../../core/db/repositorios';
 import { sincronizarPaineis } from '../../core/forms/catalogo';
+import { carregarCatalogoPaineis } from '../../core/paineis/catalogo';
+import type { FluxoPainel } from '../../core/paineis/tipos';
 import { Botao } from '../../shared/componentes/Botao';
 import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
 import { dataHoraBr, duracaoCurta } from '../../shared/utils/texto';
@@ -36,6 +38,20 @@ export function Paineis() {
   const [semConexao, setSemConexao] = useState(false);
   const [ocupado, setOcupado] = useState<number | null>(null);
   const pedidoAutomatico = useRef(false);
+  /**
+   * Fluxo de cada painel, pelo `slug`. Painel sem entrada no catálogo — todo
+   * painel novo da administração — é de verificação.
+   */
+  const [fluxos, setFluxos] = useState<Record<string, FluxoPainel>>({});
+
+  useEffect(() => {
+    carregarCatalogoPaineis()
+      .then((c) => setFluxos(Object.fromEntries(c.paineis.map((p) => [p.id, p.fluxo]))))
+      .catch(() => {
+        // Sem o catálogo, todos abrem como verificação; a certificação volta
+        // a aparecer quando o arquivo puder ser lido.
+      });
+  }, []);
 
   const carregar = useCallback(async () => {
     try {
@@ -97,6 +113,11 @@ export function Paineis() {
    */
   const abrir = async (painel: PainelApi) => {
     if (!usuario) return;
+    // Na certificação não há projeto: cada painel/quadro é uma solicitação.
+    if (fluxos[painel.slug] === 'certificacao') {
+      navegar(`/paineis/${painel.slug}/solicitacoes`);
+      return;
+    }
     setOcupado(painel.id);
     try {
       const id = await ProjetoRepository.obterOuCriarPorPainel(usuario.id, painel.id, {
@@ -166,6 +187,11 @@ export function Paineis() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-lg font-bold">{p.nome}</p>
+                  <p className="text-sm font-semibold tracking-wide text-abb-gray uppercase">
+                    {fluxos[p.slug] === 'certificacao'
+                      ? 'Solicitação de certificação'
+                      : 'Verificação de montagem'}
+                  </p>
                   <p className="mt-1 text-sm text-abb-gray">
                     {p.responsaveis.length === 1 ? 'Responsável' : 'Responsáveis'}:{' '}
                     {p.responsaveis.join(', ') || '—'}
@@ -201,7 +227,11 @@ export function Paineis() {
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {p.podePreencher ? (
                   <Botao variante="primario" disabled={trabalhando} onClick={() => abrir(p)}>
-                    {trabalhando ? 'Abrindo…' : 'Abrir checagens'}
+                    {trabalhando
+                      ? 'Abrindo…'
+                      : fluxos[p.slug] === 'certificacao'
+                        ? 'Abrir solicitações'
+                        : 'Abrir checagens'}
                   </Botao>
                 ) : p.meuAcesso === 'pendente' ? (
                   <p className="text-base text-abb-gray">

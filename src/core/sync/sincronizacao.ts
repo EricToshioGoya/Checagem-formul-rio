@@ -192,7 +192,7 @@ export async function montarDocumento(
     },
     tags: tags.map((t) => ({ uid: t.uid!, nome: t.nome, ordem: t.ordem })),
     preenchimentos: preenchimentos.map((p) => ({
-      tagUid: uidDaTag.get(p.tagId)!,
+      tagUid: uidDaTag.get(p.tagId!)!,
       formId: p.formId,
       formRevisao: p.formRevisao,
       cabecalho: p.cabecalho ?? {},
@@ -205,7 +205,7 @@ export async function montarDocumento(
         const p = preenchimentoPorId.get(m.preenchimentoId)!;
         return {
           uid: m.uid!,
-          tagUid: uidDaTag.get(p.tagId)!,
+          tagUid: uidDaTag.get(p.tagId!)!,
           formId: p.formId,
           etapaId: m.etapaId,
           mime: m.mime,

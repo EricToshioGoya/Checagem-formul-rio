@@ -30,14 +30,20 @@ export const PAINEIS: PainelFixo[] = [
   {
     slug: 'system-pro-e-power',
     nome: 'System Pro E Power',
-    descricao: 'Checklist de montagem ainda não cadastrado.',
+    descricao: 'Solicitação de certificado: ensaios de rotina da NBR IEC 61439.',
     responsavelEmail: process.env.RESPONSAVEL_PRO_E_POWER ?? RESPONSAVEL_PADRAO,
   },
   {
     slug: 'system-pro-e-energy',
     nome: 'System Pro E Energy',
-    descricao: 'Checklist de montagem ainda não cadastrado.',
+    descricao: 'Solicitação de certificado: ensaios de rotina da NBR IEC 61439.',
     responsavelEmail: process.env.RESPONSAVEL_PRO_E_ENERGY ?? RESPONSAVEL_PADRAO,
+  },
+  {
+    slug: 'safr',
+    nome: 'SAFR',
+    descricao: 'Solicitação de certificado: ensaios de rotina da NBR IEC 61439.',
+    responsavelEmail: process.env.RESPONSAVEL_SAFR ?? RESPONSAVEL_PADRAO,
   },
   {
     slug: 'mns',

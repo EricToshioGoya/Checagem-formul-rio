@@ -1,9 +1,12 @@
 import Dexie, { type Table } from 'dexie';
 import type {
+  Certificado,
+  Contador,
   FormularioCache,
   Midia,
   Preenchimento,
   Projeto,
+  Solicitacao,
   Tag,
 } from './tipos';
 
@@ -18,6 +21,9 @@ class BancoVerificacao extends Dexie {
   preenchimentos!: Table<Preenchimento, number>;
   midias!: Table<Midia, number>;
   formularios!: Table<FormularioCache, string>;
+  solicitacoes!: Table<Solicitacao, number>;
+  certificados!: Table<Certificado, number>;
+  contadores!: Table<Contador, string>;
 
   constructor() {
     super('verificacao-montagem');
@@ -73,6 +79,17 @@ class BancoVerificacao extends Dexie {
             if (!m.uid) m.uid = novoUid();
           });
       });
+
+    // v6: fluxo de certificação (SPEE, SPEP e SAFR). O preenchimento passa a
+    // pertencer a uma TAG ou a uma solicitação — nunca aos dois —, e entram as
+    // solicitações, o registro das emissões e o contador da numeração. Nada é
+    // reescrito: os preenchimentos existentes são todos de TAG.
+    this.version(6).stores({
+      preenchimentos: '++id, tagId, solicitacaoId, formId, atualizadoEm, [tagId+formId]',
+      solicitacoes: '++id, tipoPainel, usuarioId, estado, numeroCertificado, criadoEm, atualizadoEm',
+      certificados: '++id, &numero, solicitacaoId, tipoPainel, emitidoEm',
+      contadores: 'id',
+    });
 
     // Toda TAG e mídia nova nasce com `uid`, venha de onde vier: tela,
     // importação de .zip ou a própria sincronização.

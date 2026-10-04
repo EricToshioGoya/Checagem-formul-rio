@@ -203,30 +203,33 @@ export function semearFormularios(): void {
   let importados = 0;
 
   for (const entrada of entradas) {
-    const slug = entrada.paineis?.[0];
-    if (!slug) continue;
-    const painel = banco.prepare('SELECT id FROM paineis WHERE slug = ?').get(slug) as
-      | { id: number }
-      | undefined;
-    if (!painel) continue;
-
     const caminho = join(PASTA_SEMENTE, entrada.arquivo);
     if (!existsSync(caminho)) continue;
+    let original: DefinicaoFormulario;
     try {
-      const definicao = validarDefinicao(JSON.parse(readFileSync(caminho, 'utf8')));
+      original = validarDefinicao(JSON.parse(readFileSync(caminho, 'utf8')));
+    } catch (erro) {
+      console.error(`Semente "${entrada.arquivo}" inválida; ignorada.`, erro);
+      continue;
+    }
+
+    // Um mesmo arquivo pode servir a vários painéis — os ensaios de rotina da
+    // NBR IEC 61439 são idênticos em SPEE, SPEP e SAFR. Cada painel recebe a
+    // sua cópia, porque no banco o checklist pertence a um painel só e é
+    // editado ali: o primeiro fica com o id do arquivo, os demais ganham o
+    // slug do painel no id.
+    for (const [i, slug] of (entrada.paineis ?? []).entries()) {
+      const painel = banco.prepare('SELECT id FROM paineis WHERE slug = ?').get(slug) as
+        | { id: number }
+        | undefined;
+      if (!painel) continue;
+      const id = i === 0 ? original.id : `${original.id}-${slug}`;
+      const definicao = { ...original, id };
       const proxima = banco
         .prepare('SELECT COALESCE(MAX(ordem), -1) + 1 AS n FROM formularios WHERE painelId = ?')
         .get(painel.id) as { n: number };
-      inserir.run(
-        definicao.id,
-        painel.id,
-        Number(proxima.n),
-        JSON.stringify(definicao),
-        agora,
-      );
+      inserir.run(id, painel.id, Number(proxima.n), JSON.stringify(definicao), agora);
       importados++;
-    } catch (erro) {
-      console.error(`Semente "${entrada.arquivo}" inválida; ignorada.`, erro);
     }
   }
 

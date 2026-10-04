@@ -73,6 +73,13 @@ export function EtapaCard({
           </ul>
         ) : null}
 
+        {etapa.fotoObrigatoria ? (
+          <p className="text-sm font-semibold text-abb-red">
+            Evidência obrigatória: anexe pelo menos um arquivo para concluir esta
+            etapa.
+          </p>
+        ) : null}
+
         {etapa.referencia ? (
           <p className="text-sm text-abb-gray">Referência: {etapa.referencia}</p>
         ) : null}

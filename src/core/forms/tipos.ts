@@ -7,6 +7,7 @@
  */
 export type {
   CampoCabecalho,
+  Condicao,
   ConfigGrade,
   DefinicaoFormulario,
   EntradaCatalogo,
@@ -14,6 +15,7 @@ export type {
   MidiaApoio,
   Secao,
   TabelaReferencia,
+  TipoCampo,
   TipoResposta,
 } from '../../../compartilhado/formulario';
 
