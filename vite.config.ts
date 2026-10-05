@@ -8,11 +8,6 @@ import { fileURLToPath, URL } from 'node:url';
 // O padrão "/" atende a raiz do servidor e o binário Go (modalidade B).
 const base = process.env.VITE_BASE ?? '/';
 
-// `VITE_ALVO=demo` gera o pacote de página única usado na demonstração
-// compartilhável (veja scripts/build-demo.mjs): tudo num arquivo só, sem
-// service worker — que não faz sentido dentro de um iframe de terceiro.
-const demo = process.env.VITE_ALVO === 'demo';
-
 export default defineConfig({
   base,
   plugins: [
@@ -32,7 +27,7 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         background_color: '#ffffff',
-        theme_color: '#ff000f',
+        theme_color: '#ffffff',
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
@@ -58,24 +53,30 @@ export default defineConfig({
         ],
         maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,
         navigateFallback: `${base}index.html`,
+        // A API nunca cai no index.html nem entra em cache: uma resposta de
+        // sessão ou de aprovação servida do cache mostraria acesso liberado
+        // depois de ele ter sido revogado.
+        navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
       },
       devOptions: { enabled: false },
-      // Na demonstração o plugin fica só pelos módulos virtuais: service
-      // worker dentro de iframe de terceiro não registra.
-      disable: demo,
     }),
   ],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
+  server: {
+    // Em desenvolvimento a aplicação e a API ficam em portas diferentes;
+    // o proxy as coloca na mesma origem, como acontece em produção.
+    proxy: {
+      '/api': {
+        target: process.env.API_ALVO ?? 'http://localhost:3001',
+        changeOrigin: true,
+      },
+    },
+  },
   build: {
     target: 'es2020',
     chunkSizeWarningLimit: 1200,
-    // A demonstração precisa caber num arquivo: sem divisão de código e com
-    // um único bloco de CSS.
-    ...(demo
-      ? { cssCodeSplit: false, rollupOptions: { output: { codeSplitting: false } } }
-      : {}),
   },
 });

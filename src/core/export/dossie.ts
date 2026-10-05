@@ -3,7 +3,6 @@ import {
   PreenchimentoRepository,
   ProjetoRepository,
 } from '../db/repositorios';
-import { PAINEL_PADRAO } from '../config';
 import { carregarFormulario, formulariosDoPainel } from '../forms/catalogo';
 import { calcularProgresso, idsPendentes } from '../forms/progresso';
 import type { Progresso } from '../forms/progresso';
@@ -46,9 +45,11 @@ export async function montarDossie(
   const projeto = await ProjetoRepository.obter(projetoId);
   if (!projeto) throw new Error('Projeto não encontrado.');
 
-  const entradas = (
-    await formulariosDoPainel(projeto.tipoPainel ?? PAINEL_PADRAO)
-  ).filter((e) => !formIds?.length || formIds.includes(e.id));
+  // Só os checklists do painel do projeto: um dossiê de SEN Plus não pode
+  // sair com as etapas de um MNS por estarem no mesmo aparelho.
+  const entradas = (await formulariosDoPainel(projeto.painelSlug)).filter(
+    (e) => !formIds?.length || formIds.includes(e.id),
+  );
   const tags = await ProjetoRepository.listarTags(projetoId);
 
   const resultado: TagDoDossie[] = [];

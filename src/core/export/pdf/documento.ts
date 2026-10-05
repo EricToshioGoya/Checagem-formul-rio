@@ -4,6 +4,7 @@ import { etapaRespondida, etapaVisivel } from '../../forms/progresso';
 import type { Dossie, FormularioDoDossie } from '../dossie';
 import type { Etapa, ValorGrade } from '../../forms/tipos';
 import { dataBr } from '../../../shared/utils/texto';
+import { LOGO_ABB } from '../../../shared/marca/logoAbb';
 
 const PAGINA = { largura: 595.28, altura: 841.89 };
 const MARGEM = 30;
@@ -68,13 +69,18 @@ class Folha {
       borderColor: CINZA_CLARO,
       borderWidth: 0.7,
     });
-    this.pagina.drawText('ABB', {
-      x: MARGEM + 8,
-      y: this.y - 19,
-      size: 16,
-      font: this.fontes.negrito,
-      color: VERMELHO,
-    });
+    // O logotipo em vetor, e não a palavra "ABB" na fonte do documento.
+    // `drawSvgPath` usa o eixo Y do SVG (para baixo) a partir de (x, y).
+    const alturaLogo = 12;
+    const escala = alturaLogo / LOGO_ABB.altura;
+    for (const caminho of LOGO_ABB.caminhos) {
+      this.pagina.drawSvgPath(caminho, {
+        x: MARGEM + 8,
+        y: this.y - (alturaFaixa - alturaLogo) / 2,
+        scale: escala,
+        color: VERMELHO,
+      });
+    }
     if (this.tituloCorrente) {
       this.pagina.drawText(
         truncar(this.tituloCorrente, this.fontes.normal, 9, LARGURA_UTIL - 70),

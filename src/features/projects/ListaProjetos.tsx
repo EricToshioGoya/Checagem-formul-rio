@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { PAINEL_PADRAO } from '../../core/config';
 import { ProjetoRepository, type ResumoProjeto } from '../../core/db/repositorios';
+import { useSessao } from '../../core/api/SessaoContexto';
 import { progressoDoProjeto } from '../../core/forms/progressoProjeto';
-import { obterPainel } from '../../core/paineis/catalogo';
+import { excluirProjetoEmTodaParte } from '../../core/sync/sincronizacao';
 import { Botao } from '../../shared/componentes/Botao';
 import { BarraProgresso } from '../../shared/componentes/BarraProgresso';
 import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { Carregando, Erro, Vazio, Aviso } from '../../shared/componentes/Estado';
 import { IconeLixeira, IconeMais, IconeSeta } from '../../shared/componentes/Icones';
-import { VoltarAosPaineis } from '../../shared/componentes/VoltarAosPaineis';
 import { dataHoraBr } from '../../shared/utils/texto';
+import { SituacaoSincronizacao } from './SituacaoSincronizacao';
 
 function ehIphone(): boolean {
   const ua = navigator.userAgent;
@@ -22,29 +22,17 @@ function ehIphone(): boolean {
 
 export function ListaProjetos() {
   const navegar = useNavigate();
-  const { tipoPainel = PAINEL_PADRAO } = useParams();
+  const { usuario } = useSessao();
   const projetos = useLiveQuery(
-    () => ProjetoRepository.listar(tipoPainel),
-    [tipoPainel],
+    () => ProjetoRepository.listar(usuario?.id),
+    [usuario?.id],
     undefined,
   );
-  const [nomePainel, setNomePainel] = useState('');
   const [percentuais, setPercentuais] = useState<Record<number, number>>({});
   const [paraExcluir, setParaExcluir] = useState<ResumoProjeto | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [importando, setImportando] = useState(false);
   const entradaArquivo = useRef<HTMLInputElement>(null);
-
-  // O nome do painel dá sentido ao botão de troca: mostra de onde se está saindo.
-  useEffect(() => {
-    let ativo = true;
-    obterPainel(tipoPainel)
-      .then((p) => ativo && setNomePainel(p.nome))
-      .catch(() => ativo && setNomePainel(''));
-    return () => {
-      ativo = false;
-    };
-  }, [tipoPainel]);
 
   useEffect(() => {
     if (!projetos) return;
@@ -53,7 +41,10 @@ export function ListaProjetos() {
       const mapa: Record<number, number> = {};
       for (const p of projetos) {
         try {
-          mapa[p.id] = (await progressoDoProjeto(p.id)).progresso.percentual;
+          // Com o painel, como na tela do projeto: sem ele, a conta usava os
+          // checklists de todos os painéis guardados no aparelho, e o número
+          // da lista não batia com o de dentro do projeto.
+          mapa[p.id] = (await progressoDoProjeto(p.id, p.painelSlug)).progresso.percentual;
         } catch {
           mapa[p.id] = 0;
         }
@@ -70,7 +61,7 @@ export function ListaProjetos() {
     setErro(null);
     try {
       const { importarProjeto } = await import('../../core/export/backupProjeto');
-      await importarProjeto(arquivo);
+      await importarProjeto(arquivo, usuario?.id);
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao importar o arquivo.');
     } finally {
@@ -82,27 +73,15 @@ export function ListaProjetos() {
 
   return (
     <div className="space-y-4">
-      <VoltarAosPaineis />
-
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          {nomePainel ? (
-            <p className="text-sm font-semibold tracking-wide text-abb-gray uppercase">
-              {nomePainel}
-            </p>
-          ) : null}
-          <h1 className="text-2xl font-bold">Meus projetos</h1>
-        </div>
+        <h1 className="text-2xl font-bold">Meus projetos</h1>
         <div className="flex flex-wrap gap-2">
           <Botao onClick={() => entradaArquivo.current?.click()} disabled={importando}>
             {importando ? 'Importando…' : 'Importar projeto'}
           </Botao>
-          <Botao
-            variante="primario"
-            onClick={() => navegar(`/paineis/${tipoPainel}/projetos/novo`)}
-          >
+          <Botao variante="primario" onClick={() => navegar('/paineis')}>
             <IconeMais className="h-5 w-5" />
-            Novo projeto
+            Escolher painel
           </Botao>
         </div>
       </div>
@@ -131,8 +110,8 @@ export function ListaProjetos() {
 
       {projetos.length === 0 ? (
         <Vazio titulo="Nenhum projeto gravado neste aparelho">
-          Toque em <strong>Novo projeto</strong> para começar a registrar as
-          verificações de montagem.
+          Toque em <strong>Escolher painel</strong> e abra um painel aprovado
+          para começar a registrar as verificações de montagem.
         </Vazio>
       ) : (
         <ul className="space-y-3">
@@ -151,6 +130,7 @@ export function ListaProjetos() {
                   <p className="text-sm text-abb-gray">
                     Última alteração: {dataHoraBr(p.atualizadoEm)}
                   </p>
+                  <SituacaoSincronizacao projeto={p} />
                 </div>
                 <div className="flex gap-2">
                   <Botao
@@ -184,12 +164,12 @@ export function ListaProjetos() {
         titulo="Excluir projeto"
         mensagem={
           paraExcluir
-            ? `O projeto “${paraExcluir.nomeProjeto}” será apagado deste aparelho, junto com todas as TAGs, respostas e fotos.\n\nEsta ação não pode ser desfeita.`
+            ? `O projeto “${paraExcluir.nomeProjeto}” será apagado deste aparelho e da cópia no servidor, junto com todas as TAGs, respostas e fotos.\n\nEsta ação não pode ser desfeita aqui. Se foi por engano, a administração tem o backup dos últimos dias.`
             : ''
         }
         onCancelar={() => setParaExcluir(null)}
         onConfirmar={async () => {
-          if (paraExcluir) await ProjetoRepository.excluir(paraExcluir.id);
+          if (paraExcluir) await excluirProjetoEmTodaParte(paraExcluir);
           setParaExcluir(null);
         }}
       />

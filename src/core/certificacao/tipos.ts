@@ -8,11 +8,17 @@ import type {
 export interface NovaSolicitacaoEntrada {
   tipoPainel: string;
   formId: string;
+  usuarioId?: number;
   dados: DadosSolicitacao;
 }
 
 export interface FiltroSolicitacoes {
   tipoPainel?: string;
+  /**
+   * Só as da conta indicada — e as anteriores ao login, que não têm dono.
+   * Omitido, lista todas: é o que a validação ABB enxerga.
+   */
+  usuarioId?: number;
   estados?: EstadoSolicitacao[];
 }
 

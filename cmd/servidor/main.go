@@ -15,6 +15,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,7 +34,6 @@ var embutido embed.FS
 const (
 	portaPadrao     = 8080
 	tentativasPorta = 20
-	senhaAdminPadr  = "ABB"
 	hostPadrao      = "127.0.0.1"
 )
 
@@ -41,9 +42,7 @@ func main() {
 	semNavegador := flag.Bool("sem-navegador", false, "não abrir o navegador automaticamente")
 	pasta := flag.String("pasta", "", "servir uma pasta do disco em vez do conteúdo embutido")
 	host := flag.String("host", hostPadrao, "endereço de escuta; 0.0.0.0 atende a rede e libera o acesso de fora")
-	arquivoFila := flag.String("dados", "", "arquivo JSON da fila de liberação (padrão: dados/acessos.json ao lado do executável)")
-	senhaAdmin := flag.String("senha-admin", "", "senha da administração (padrão: variável ADMIN_SENHA)")
-	origensCORS := flag.String("origem", "", "origens liberadas para chamar a API, separadas por vírgula (ex.: https://app.exemplo.com)")
+	alvoAPI := flag.String("api", "", "endereço do servidor de acesso para onde /api é encaminhado (ex.: http://192.168.0.10:3001; padrão: variável API_ALVO)")
 	flag.Parse()
 
 	arquivos, origem, err := resolverConteudo(*pasta)
@@ -51,14 +50,13 @@ func main() {
 		log.Fatalf("Não foi possível localizar os arquivos da aplicação: %v", err)
 	}
 
-	senha := primeiroNaoVazio(*senhaAdmin, os.Getenv("ADMIN_SENHA"), senhaAdminPadr)
-	fila, err := AbrirFila(caminhoDados(*arquivoFila), senha)
+	api, alvo, err := encaminhadorAPI(primeiroNaoVazio(*alvoAPI, os.Getenv("API_ALVO")))
 	if err != nil {
-		log.Fatalf("Não foi possível abrir a fila de liberação: %v", err)
+		log.Fatalf("Endereço do servidor de acesso inválido: %v", err)
 	}
 
 	// Escutar fora de 127.0.0.1 é decisão explícita de quem sobe o servidor:
-	// é o que permite o administrador liberar montadores de outro aparelho.
+	// é o que permite atender outros aparelhos da rede.
 	naRede := !enderecoLocal(*host)
 
 	ouvinte, portaUsada, err := ouvir(*host, *porta)
@@ -70,12 +68,13 @@ func main() {
 	fmt.Printf("Verificação de Montagem de Painéis\n")
 	fmt.Printf("Conteúdo: %s\n", origem)
 	fmt.Printf("Endereço: %s\n", endereco)
-	fmt.Printf("Fila de liberação: %s\n", fila.caminho)
+	if alvo != "" {
+		fmt.Printf("Servidor de acesso: %s\n", alvo)
+	} else {
+		fmt.Printf("ATENÇÃO: sem -api, o login não funciona. Informe o servidor de acesso (npm run servidor).\n")
+	}
 	if naRede {
 		fmt.Printf("Escutando em %s: o servidor atende outros aparelhos da rede.\n", *host)
-	}
-	if senha == senhaAdminPadr {
-		fmt.Printf("ATENÇÃO: a senha da administração é a padrão. Defina ADMIN_SENHA antes de publicar.\n")
 	}
 	fmt.Printf("Para encerrar, feche esta janela ou pressione Ctrl+C.\n\n")
 
@@ -89,7 +88,7 @@ func main() {
 	}
 
 	servidor := &http.Server{
-		Handler:           comCORS(listaOrigens(*origensCORS), manipulador(arquivos, fila, naRede)),
+		Handler:           manipulador(arquivos, api, naRede),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	if err := servidor.Serve(ouvinte); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -130,15 +129,29 @@ func resolverConteudo(pastaInformada string) (fs.FS, string, error) {
 	return sub, "embutido no binário", nil
 }
 
-// caminhoDados resolve onde a fila de liberação é gravada.
-func caminhoDados(informado string) string {
-	if informado != "" {
-		return informado
+// encaminhadorAPI devolve o proxy de /api para o servidor de acesso (Node,
+// em servidor/). Contas, painéis e aprovações vivem lá; este binário só serve
+// os arquivos estáticos. Encaminhar mantém a API na mesma origem da
+// aplicação — é o que o cliente assume e o que a CSP permite.
+func encaminhadorAPI(bruto string) (http.Handler, string, error) {
+	if bruto == "" {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`{"erro":"Servidor de acesso não configurado neste binário (opção -api)."}`))
+		}), "", nil
 	}
-	if executavel, err := os.Executable(); err == nil {
-		return filepath.Join(filepath.Dir(executavel), "dados", "acessos.json")
+	alvo, err := url.Parse(bruto)
+	if err != nil || alvo.Scheme == "" || alvo.Host == "" {
+		return nil, "", fmt.Errorf("informe o endereço completo, como http://192.168.0.10:3001 (recebido %q)", bruto)
 	}
-	return filepath.Join("dados", "acessos.json")
+	proxy := httputil.NewSingleHostReverseProxy(alvo)
+	padrao := proxy.Director
+	proxy.Director = func(r *http.Request) {
+		padrao(r)
+		r.Host = alvo.Host
+	}
+	return proxy, alvo.String(), nil
 }
 
 func primeiroNaoVazio(valores ...string) string {
@@ -148,16 +161,6 @@ func primeiroNaoVazio(valores ...string) string {
 		}
 	}
 	return ""
-}
-
-func listaOrigens(bruto string) []string {
-	var origens []string
-	for _, parte := range strings.Split(bruto, ",") {
-		if limpa := strings.TrimSpace(parte); limpa != "" {
-			origens = append(origens, limpa)
-		}
-	}
-	return origens
 }
 
 func enderecoLocal(host string) bool {
@@ -194,9 +197,8 @@ func hostLocal(host string) bool {
 	return nome == "localhost" || nome == "127.0.0.1" || nome == "::1" || nome == "[::1]"
 }
 
-func manipulador(arquivos fs.FS, fila *Fila, naRede bool) http.Handler {
+func manipulador(arquivos fs.FS, api http.Handler, naRede bool) http.Handler {
 	servidorArquivos := http.FileServer(http.FS(arquivos))
-	api := fila.API()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Na modalidade de pendrive o servidor só atende localhost. Quem sobe
@@ -220,7 +222,8 @@ func manipulador(arquivos fs.FS, fila *Fila, naRede bool) http.Handler {
 
 		caminho := strings.TrimPrefix(r.URL.Path, "/")
 
-		// A fila de liberação vive em /api; o resto é a aplicação estática.
+		// Contas, painéis e aprovações vivem no servidor de acesso; o resto é
+		// a aplicação estática.
 		if caminho == "api" || strings.HasPrefix(caminho, "api/") {
 			api.ServeHTTP(w, r)
 			return

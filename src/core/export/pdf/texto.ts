@@ -39,7 +39,10 @@ export function sanitizar(valor: string): string {
       const troca = SUBSTITUICOES[c];
       if (troca !== undefined) return troca;
       const cp = c.codePointAt(0)!;
-      if (cp === 10 || cp === 13) return ' ';
+      // Quebras de linha e qualquer outro caractere de controle (que chega
+      // colado de outros programas) viram espaço: o WinAnsi não tem desenho
+      // para eles e abortaria a geração do PDF inteiro.
+      if (cp < 0x20 || cp === 0x7f) return ' ';
       if (cp < 0x80) return c;
       if (cp >= 0xa0 && cp <= 0xff) return c;
       if (WINANSI_EXTRA.has(c)) return c;

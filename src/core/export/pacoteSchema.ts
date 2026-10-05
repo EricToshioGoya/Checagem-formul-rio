@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { descreverErro } from '../forms/schema';
+import { descreverErro } from '../../../compartilhado/formulario';
 
 /**
  * Formato do `.zip` de exportação de projeto.

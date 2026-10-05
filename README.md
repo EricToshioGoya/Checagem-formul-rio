@@ -1,28 +1,25 @@
 # Sistema de Verificação de Montagem de Painéis
 
-Aplicação para o montador do parceiro de painel certificado registrar, durante a
-montagem, as verificações exigidas pelos protocolos ABB.
-
-A primeira tela é sempre a escolha do painel — e o botão do cabeçalho volta a
-ela de qualquer tela do fluxo. O painel decide o que vem depois:
+Aplicação para o montador do parceiro registrar, durante a montagem do painel,
+as verificações exigidas pelos protocolos ABB. O painel decide o que vem
+depois:
 
 | Painel | Fluxo | Resultado |
 |---|---|---|
-| SEN Plus | Verificação | Dossiê em PDF que o montador envia por e-mail ao inspetor. O julgamento de conformidade é feito **fora do sistema**. |
-| System pro E Energy, System pro E Power, SAFR | Certificação | Solicitação → validação ABB → **certificado de produto numerado**, gerado pelo próprio sistema. |
-
-Cada painel decide, na aba de administração, o que pede antes do fluxo: nada
-(o padrão), **identificação** (nome e e-mail declarados) ou **liberação da
-ABB** — o e-mail vira um pedido na fila do servidor e o painel fica travado até
-alguém liberar. Ver [Quem pode usar](#quem-pode-usar).
+| SEN Plus (e todo painel cadastrado na administração) | Verificação | Dossiê em PDF que o montador envia por e-mail ao inspetor. O julgamento de conformidade é feito **fora do sistema**. |
+| System Pro E Energy, System Pro E Power, SAFR | Certificação | Solicitação → validação ABB → **certificado de produto numerado**, gerado pelo próprio sistema. Ver [Fluxo de certificação](#fluxo-de-certificação). |
 
 Implementa a especificação técnica v1.0 (02/09/2026), a extensão de
-certificação (04/09/2026) e a liberação de acesso pela ABB (11/09/2026).
+certificação (04/09/2026) e o controle de acesso por painel descrito em
+[Login e aprovação](#login-e-aprovação).
 
-- **Sem contas.** Não há cadastro de usuário nem senha por montador: o e-mail identifica, e a liberação autoriza.
-- **Servidor só para a liberação** (`cmd/servidor`, Go): um binário, um arquivo JSON, sem banco. Os painéis que não exigem liberação continuam abrindo sem servidor nenhum.
-- **Offline integral** no preenchimento após o primeiro carregamento (PWA com service worker); pedir e conferir liberação exige rede.
-- **Dados só no aparelho** (IndexedDB via Dexie). Ver [Limitação conhecida](#limitação-conhecida--sem-sincronização).
+- **Cliente estático + servidor de acesso.** O PWA é um diretório estático; um
+  servidor pequeno cuida de contas, painéis e aprovação.
+- **Offline no preenchimento.** Entrar exige rede uma vez; depois de aprovado,
+  registrar as checagens funciona sem conexão.
+- **As checagens não trafegam.** Respostas e fotos ficam no aparelho (IndexedDB
+  via Dexie); o servidor guarda só quem pode preencher o quê. Ver
+  [Limitação conhecida](#limitação-conhecida--sem-sincronização).
 
 ---
 
@@ -30,52 +27,47 @@ certificação (04/09/2026) e a liberação de acesso pela ABB (11/09/2026).
 
 ```bash
 npm install
-npm run dev          # servidor de desenvolvimento
+npm run servidor     # API de acesso em http://localhost:3001
+npm run dev          # aplicação em http://localhost:5173
 npm run build        # valida os formulários, checa tipos e gera dist/
 npm run preview      # serve o dist/ gerado
 ```
 
-Requer Node 20 ou superior.
+São dois processos: o `dev` faz proxy de `/api` para o `servidor`. Sem o
+servidor no ar, a tela de login avisa que está sem conexão.
+
+Requer Node 22.5 ou superior — o servidor usa `node:sqlite`, embutido a partir
+dessa versão.
 
 ### Scripts
 
 | Comando | O que faz |
 |---|---|
 | `npm run dev` | Vite em modo desenvolvimento |
-| `npm run build` | Valida os arquivos de dados → `tsc -b` → `vite build` |
+| `npm run servidor` | API de acesso (contas, painéis, aprovação) |
+| `npm run build` | Valida JSON dos formulários → `tsc -b` → `vite build` |
 | `npm run typecheck` | Somente a checagem de tipos |
-| `npm run validar-formularios` | Valida formulários, painéis e templates de certificado contra os schemas Zod |
-| `npm run fumaca` | Teste de fumaça dos dois fluxos e da liberação, em navegador real |
-| `cd cmd/servidor && go run .` | Sobe o servidor: aplicação + fila de liberação |
-| `npm run build-demo` | Gera a demonstração de página única (`demo/verificacao-paineis.html`) |
+| `npm run validar-formularios` | Valida `public/forms/*.json` contra o schema Zod |
+| `npm run admin -- listar` | Lista os administradores (socorro, na máquina do servidor) |
+| `npm run admin -- promover <e-mail>` | Dá o papel de administrador a uma conta existente |
+| `npm run icones` | Regera os ícones PNG do aplicativo a partir do vetor do logotipo |
+| `npm run fumaca` | Teste de fumaça do fluxo completo em navegador real |
 | `npm run testes` | Bateria de verificação de contorno (ver `scripts/testes/README.md`) |
 | `scripts/build-portatil.sh` | Gera o binário portátil (modalidade B) |
-
-A demonstração de página única embute os dados nos próprios arquivos e dispensa
-servidor: serve para mostrar o aplicativo a quem não vai instalar nada. Sem
-backend e dentro de um iframe de terceiro, ela não baixa PDF — o resto do
-fluxo funciona.
 
 O teste de fumaça exige Playwright, que **não** é dependência do projeto:
 
 ```bash
-npm run build && npx vite preview --port 8099 &
+npm run build
+BANCO=/tmp/fumaca.db npm run servidor &      # banco vazio; serve também o dist/
 npm i -D playwright && npx playwright install chromium
-BASE_URL=http://localhost:8099 npm run fumaca
+BASE_URL=http://localhost:3001 npm run fumaca
 ```
 
-Ele percorre os dois fluxos: no SEN Plus, criação de projeto, preenchimento com
-salvamento automático, persistência após recarregar, modal de apoio, geração dos
-PDFs nas duas opções de foto, exportação do projeto, grade de ensaios e aba de
-administração; na certificação, solicitação com campos obrigatórios, checklist
-com etapa condicional e evidência fotográfica, envio, devolução com apontamentos,
-reenvio, aprovação com numeração e geração do certificado.
-
-Em ambientes com o Chromium já instalado, aponte o executável em vez de baixá-lo:
-
-```bash
-CHROMIUM=/caminho/para/chrome npm run fumaca
-```
+Ele cria a conta do administrador inicial e percorre os dois fluxos: no SEN
+Plus, abertura do painel, marcação de etapa e persistência após recarregar; na
+certificação, solicitação com campos obrigatórios, envio bloqueado, etapa
+condicional, validação ABB com numeração e geração do certificado.
 
 ---
 
@@ -89,23 +81,6 @@ Publique `dist/` em um servidor HTTPS. O montador acessa a URL, instala como PWA
 e passa a operar offline. Android e iOS não permitem abrir um HTML local com
 câmera e armazenamento persistente, por isso esta modalidade é obrigatória no
 celular.
-
-Painel que exige liberação precisa do servidor respondendo em `/api` no mesmo
-endereço — o próprio binário serve as duas coisas:
-
-```bash
-ADMIN_SENHA='senha-do-cliente' ./verificacao-montagem-linux-amd64 \
-  -host 0.0.0.0 -porta 8080 -sem-navegador -pasta ./dist
-```
-
-Aplicação e servidor em endereços diferentes exigem três coisas: a URL da API no
-build, a origem liberada no servidor e o `connect-src` da CSP em `index.html`
-aceitando esse endereço.
-
-```bash
-VITE_API_URL=https://liberacao.exemplo.com/api npm run build
-./verificacao-montagem-linux-amd64 -origem https://app.exemplo.com
-```
 
 Para publicar em subdiretório, informe a base no build:
 
@@ -133,15 +108,15 @@ verificacao-montagem-windows-amd64.exe            # porta 8080, abre o navegador
 verificacao-montagem-windows-amd64.exe -porta 9000
 verificacao-montagem-windows-amd64.exe -sem-navegador
 verificacao-montagem-windows-amd64.exe -pasta ./dist   # serve do disco
+verificacao-montagem-windows-amd64.exe -api http://192.168.0.10:3001  # servidor de acesso
 verificacao-montagem-windows-amd64.exe -host 0.0.0.0   # atende a rede local
-verificacao-montagem-windows-amd64.exe -dados D:\acessos.json
 ```
 
-De pendrive, o servidor só atende `localhost` — é essa a checagem que `-host`
-abre, de propósito, para quem publica na rede. A fila de liberação fica em
-`dados/acessos.json`, ao lado do executável, e a senha da administração vem de
-`ADMIN_SENHA` (ou de `-senha-admin`); sem nenhuma das duas, o servidor sobe com
-a senha padrão e avisa no terminal.
+O binário não guarda contas: `/api` é repassado ao servidor de acesso indicado
+em `-api` (ou `API_ALVO`), mantendo a API na mesma origem da aplicação. De
+pendrive, ele só atende `localhost` — requisições com outro `Host` são
+recusadas, o que fecha o caminho de DNS rebinding até o IndexedDB; `-host`
+abre isso de propósito, para quem publica na rede.
 
 Se a porta estiver ocupada, o servidor tenta as 20 seguintes. Uma pasta `web/`
 ou `dist/` ao lado do executável tem precedência sobre o conteúdo embutido — é
@@ -152,50 +127,236 @@ assim que se atualiza a aplicação no pendrive sem recompilar.
 
 ---
 
+## Login e aprovação
+
+Na tela de login o montador informa e-mail e senha **e escolhe o painel que vai
+montar**. Ao entrar, o pedido de acesso àquele painel segue sozinho para o
+responsável, que aprova em **Aprovações** — só então as checagens abrem.
+
+```
+entrar / criar conta + escolher o painel
+        ↓
+pedido enviado ao responsável do painel  →  aguardando
+        ↓                                       ↓
+  acesso aprovado  ←──────────  responsável aprova em /aprovacoes
+        ↓
+ abrir checagens daquele painel (daqui em diante, offline)
+```
+
+**A aprovação vale para um painel só.** Quem foi aprovado em SEN Plus não abre
+MNS: precisa pedir de novo, e o responsável daquela linha decide. O responsável
+preenche os painéis dele sem pedir nada.
+
+A decisão é do servidor — `podePreencher` vem dele, painel por painel, e a API
+não entrega nada sem token de sessão válido. Não existe criação avulsa de
+projeto: um projeto local só nasce ao abrir um painel aprovado.
+
+A tela de login entra como **montador** por padrão. No fim dela, discreto, fica
+**Entrar como administrador** — ver [Quem é administrador](#quem-é-administrador).
+
+### Os painéis e seus responsáveis
+
+Os painéis são cadastrados na **aba de administração** → *Painéis*, e o que
+estiver lá é exatamente o que a tela de login oferece. Cada painel recebe
+**um ou mais e-mails de responsável**, e qualquer um deles aprova os pedidos
+daquele painel.
+
+O vínculo é **por e-mail**, e não por id de usuário, de propósito — o
+responsável pode ainda não ter criado a conta. Quando criar, os pedidos
+acumulados aparecem para ele.
+
+Na primeira subida, com o banco vazio, o servidor cria cinco painéis iniciais a
+partir de [`servidor/src/paineis.ts`](servidor/src/paineis.ts):
+
+| Painel inicial | Fluxo | Checklist |
+|---|---|---|
+| SEN Plus | verificação | montagem (38 etapas) + rotina BT (62) |
+| System Pro E Power | certificação | ensaios de rotina NBR IEC 61439 |
+| System Pro E Energy | certificação | ensaios de rotina NBR IEC 61439 |
+| SAFR | certificação | ensaios de rotina NBR IEC 61439 |
+| MNS | verificação | — ainda não cadastrado |
+
+Os checklists também são semente: o servidor importa `public/forms` só com a
+tabela vazia. Um arquivo citado por vários painéis vira uma cópia por painel —
+os ensaios 61439 entram como `ensaios-rotina-61439`,
+`ensaios-rotina-61439-system-pro-e-power` e `ensaios-rotina-61439-safr` —,
+porque no banco cada checklist pertence a um painel e é editado ali.
+
+Todos nascem com `RESPONSAVEL_PADRAO`, hoje `ericg10456@gmail.com`. **Isso é
+semente, não configuração corrente:** com painéis no banco, o arquivo deixa de
+ser lido, para que uma reinicialização não desfaça o que o administrador
+cadastrou nem devolva responsáveis que ele removeu. Depois da primeira subida,
+mexer em painel é pela aba de administração.
+
+O `slug` é gerado a partir do nome no cadastro e **não muda ao renomear** — é
+ele que amarra o painel aos formulários do catálogo e aos projetos já gravados
+nos aparelhos.
+
+> **Linha sem checklist abre vazia.** O painel abre, mas sem
+> formulário nenhum e com um aviso na tela. Não se reaproveita o checklist do
+> SEN Plus: as etapas de uma linha não valem para outra. Para cadastrar uma
+> delas, acrescente o JSON em `public/forms` e cite o `slug` do painel no campo
+> `paineis` do catálogo — sem alteração de código.
+
+### Controle de acesso
+
+Na aba de administração → **Acessos**, a administração vê todos os acessos de
+todos os painéis e decide sem esperar o responsável:
+
+| Ação | O que faz |
+|---|---|
+| **Liberar acesso** | Escolhe a conta, um ou mais painéis e o prazo — sem pedido do montador |
+| **Aprovar** / **Recusar** | Decide um pedido pendente, já com prazo |
+| **Prazo** | Troca o prazo de um acesso ativo, ou estende a partir do prazo atual (+1, +2, +7 dias) |
+| **Retirar** | Encerra o acesso na hora; o painel deixa de abrir no aparelho |
+| **Reativar** | Devolve um acesso expirado, retirado ou recusado, com prazo novo |
+
+O prazo pode ser 1, 2, 7 ou 30 dias, um número de horas ou dias, uma data e
+hora exatas, ou **sem prazo**. Vencer não depende de tarefa agendada: o
+servidor compara `expiraEm` com o relógio a cada pedido e para de entregar o
+painel na hora. A tela mostra a contagem regressiva, destaca o que vence em 48
+horas e relê a lista a cada 30 segundos.
+
+Só aparecem contas já criadas: o acesso é amarrado à conta, e quem ainda não
+tem uma cria na tela de login. A aprovação feita pelo responsável, em
+**Aprovações**, continua sem prazo.
+
+**No aparelho**, abrir um projeto confere o acesso com o servidor; sem resposta
+em 4 segundos, decide pela última situação guardada. Acesso retirado ou vencido
+mostra uma tela de bloqueio — os dados ficam, e voltam a abrir quando o acesso
+for liberado de novo.
+
+### Sem conexão
+
+O aparelho guarda a última conta confirmada pelo servidor. Ao abrir o
+aplicativo sem rede, com o servidor fora do ar ou lento demais (6 segundos), o
+montador entra com essa conta e a tela de painéis leva aos projetos já abertos
+no aparelho. A sessão só é descartada quando o servidor a recusa (401) — e,
+quando isso acontece no meio do uso, o aplicativo volta sozinho para o login.
+
+A tela **Projetos neste aparelho** (link na tela de painéis) lista os projetos
+locais e é onde se importa um projeto exportado de outro aparelho.
+
+### O que fica em cada lado
+
+| No servidor | No aparelho |
+|---|---|
+| Contas (e-mail, nome, hash da senha) | Respostas das etapas |
+| Painéis e seus donos | Fotos e anexos |
+| Solicitações e decisões | Formulários customizados |
+| Sessões | Token da sessão |
+
+Ao abrir um painel aprovado pela primeira vez, o aparelho cria um projeto local
+amarrado àquele painel **e àquele usuário**. A **empresa** do projeto — que vai
+para a capa e para o nome do PDF — é informada pelo montador na tela do
+projeto; até lá, a tela pede. Reabrir cai no mesmo projeto; outra
+pessoa no mesmo aparelho recebe o seu próprio, porque o IndexedDB é por origem e
+não por pessoa.
+
+### Limites desta versão
+
+- **A senha é o que identifica.** Não há verificação de e-mail: quem digita um
+  e-mail novo cria a conta na hora. Para o responsável, isso significa conferir
+  o e-mail que aparece no pedido antes de aprovar — e o mesmo vale para quem
+  aprova um novo administrador.
+- **Retirar o acesso não apaga o que está no aparelho.** O painel deixa de
+  abrir, mas as respostas e fotos já gravadas continuam lá. Sem rede, o aparelho
+  só sabe de uma retirada que tenha visto na última conexão — o prazo, esse,
+  vence na hora certa mesmo offline. Ver [Controle de acesso](#controle-de-acesso).
+- **Não há redefinição de senha.** Sem servidor de e-mail, não há para onde
+  mandar o link. Se nenhum administrador conseguir entrar, o socorro é
+  `npm run admin -- promover <e-mail>` na máquina do servidor.
+- **Importar projeto ignora a aprovação.** Um `.zip` exportado de outro aparelho
+  é recriado localmente sem passar pelos painéis. É o preço da mitigação manual
+  de sincronização; fechar isso exige amarrar o pacote ao painel de origem.
+- **Todo administrador pode tudo.** Não há níveis dentro da administração:
+  quem tem o papel libera acessos, cadastra painéis, edita checklists e aprova
+  outros administradores. O que fica registrado é quem decidiu cada acesso e
+  cada pedido de administrador — as edições de painel e checklist não.
+- **Sem segundo fator.** O administrador entra só com e-mail e senha; o freio de
+  tentativas torna o chute lento, mas uma senha vazada basta.
+- **A modalidade portátil não guarda contas.** O binário Go entrega os
+  arquivos estáticos e repassa `/api` ao servidor de acesso indicado em
+  `-api`; sem alcançar esse servidor pela rede, ninguém entra.
+- **Solicitações de certificação ficam no aparelho.** A validação ABB vê só as
+  do aparelho em que a administração é aberta — ver
+  [Fluxo de certificação](#fluxo-de-certificação).
+
+### Configuração
+
+| Variável | Onde | Padrão |
+|---|---|---|
+| `PORTA` | servidor | `3001` |
+| `BANCO` | servidor | `servidor/dados/acesso.db` |
+| `ADMIN_INICIAL` | servidor | `ericg10456@gmail.com` (só enquanto não há administrador) |
+| `RESPONSAVEL_PADRAO` | servidor | `ericg10456@gmail.com` (só na semeadura) |
+| `RESPONSAVEL_SEN_PLUS` e as três irmãs | servidor | `RESPONSAVEL_PADRAO` (só na semeadura) |
+| `API_ALVO` | `vite dev` | `http://localhost:3001` |
+
+Em produção, publique a API sob `/api` na mesma origem do PWA — é o que o
+cliente assume, e o que evita CORS e cookie de terceiro.
+
+---
+
 ## Arquitetura
 
 ```
+servidor/src/            API de acesso (Node + node:sqlite, sem framework)
+  banco.ts               esquema, migrações e semeadura inicial
+  auth.ts                hash scrypt da senha, sessões por token e perfil
+  admin.ts               papel de administrador e administrador inicial
+  limite.ts              freio de tentativas de senha
+  cli-admin.ts           socorro: `npm run admin -- listar | promover <e-mail>`
+  paineis.ts             painéis iniciais — lidos só no banco vazio
+  esquemas.ts            validação Zod de tudo que chega
+  rotas.ts               contas, painéis, solicitações, administração
+  index.ts               roteador HTTP
 public/
-  paineis/
-    index.json            catálogo dos tipos de painel: fluxo, checklists,
-                          template de certificado, responsável ABB e campos
-  forms/                  definições JSON dos formulários — editáveis sem build
-    index.json            catálogo dos formulários disponíveis
+  forms/                  sementes dos checklists — importadas pelo servidor
+    index.json            catálogo das sementes e dos painéis de cada uma
     sen-plus-montagem.json
     rotina-bt.json
     ensaios-rotina-61439.json
-  certificados/           templates de certificado, um por tipo de painel
+  paineis/
+    index.json            fluxo por slug de painel: certificação, template
+                          do certificado, responsável ABB e campos
+  certificados/           templates de certificado, um por painel
     spee.json  spep.json  safr.json
-  docs/                   PDF de instruções exibido abaixo do cabeçalho
+  docs/                   PDF de instruções exibido nas telas de certificação
   media/                  conteúdo de apoio — editável sem build
     sen-plus/             (ver LEIA-ME.md: lista das imagens esperadas)
 src/
-  app/                    rotas, layout, shell da PWA
+  app/                    rotas, layout, shell da PWA, portão de sessão
   core/
-    acesso/               cliente da fila de liberação e pedido do aparelho
+    api/                  cliente da API e contexto de sessão
     db/                   Dexie: schema e repositórios
-    forms/                motor: schema Zod, catálogo, progresso
-    paineis/              catálogo dos tipos de painel
+    forms/                motor: catálogo, progresso, campos obrigatórios
+    paineis/              catálogo de fluxos por painel
     certificacao/         solicitação, validação ABB e numeração (interfaces)
     certificado/          template como dado e geração do PDF do certificado
     media/                compressão e normalização de imagem
     export/               ExportTarget, dossiê, PDF, backup .zip
   features/
-    paineis/              seleção de painel, identificação e liberação de acesso
+    auth/                 tela de entrar e criar conta
+    paineis/              escolha do painel e caixa de aprovações
     projects/             listagem, criação, TAGs
     solicitacoes/         solicitação de certificação
     fill/                 preenchimento e registro de tipos de campo
     pdf/                  diálogo de geração
-    admin/                administração e validação ABB
+    admin/                aba de administração e validação ABB
   shared/                 componentes de UI, ícones, hooks, utilidades
-cmd/servidor/             servidor em Go: arquivos estáticos + fila de liberação
-scripts/                  validação dos arquivos de dados, build portátil, fumaça
+    marca/logoAbb.ts      vetor do logotipo ABB (tela, PDF e ícones)
+compartilhado/            contrato do formulário e regra de andamento, iguais
+                          no cliente e no servidor
+cmd/servidor/             servidor portátil em Go (modalidade B)
+scripts/                  validação dos dados, ícones, build portátil, fumaça,
+                          bateria de testes
 ```
 
-**Princípio central:** o núcleo não conhece nenhum painel, formulário ou
-certificado específico. Tipos de painel, checklists e templates de certificado
-são JSON carregados em tempo de execução a partir de `public/`. Acrescentar um
-painel é acrescentar arquivos de dados — sem alteração de código.
+**Princípio central:** o motor de formulários não conhece nenhum formulário
+específico. Todo formulário é um JSON carregado em tempo de execução a partir de
+`public/forms`. Acrescentar a linha System Pro E Energy é acrescentar um arquivo
+JSON e suas mídias — sem alteração de código.
 
 Uma diferença em relação ao desenho da especificação: a montagem do documento
 PDF vive em `core/export/pdf/`, e não em `features/pdf/`. Assim `core` não
@@ -206,46 +367,66 @@ diálogo de geração.
 
 | Extensão | O que fazer |
 |---|---|
-| Novo tipo de painel | Acrescentar a entrada em `public/paineis/index.json` (fluxo, checklists, responsável) e, no fluxo de certificação, o template em `public/certificados`. Nenhuma alteração de código. |
-| Novo formulário ou linha de produto | Acrescentar o JSON em `public/forms`, registrá-lo em `index.json` e citá-lo no painel. Nenhuma alteração de código. |
-| Novos campos da solicitação | Editar `camposPadrao` em `public/paineis/index.json`, ou dar ao painel a sua própria lista `campos`. |
+| Novo formulário para uma linha | Acrescentar o JSON em `public/forms`, registrá-lo em `index.json` e citar no campo `paineis` o `slug` das linhas que o usam. Nenhuma alteração de código. |
+| Novo painel, ou trocar quem aprova | Aba de administração → Painéis. Sem programação e sem reiniciar nada. |
 | Novo tipo de campo | Implementar o componente e registrá-lo em `src/features/fill/campos/registro.tsx`. |
 | Novo destino de exportação | Implementar `ExportTarget` (`src/core/export/ExportTarget.ts`). `PdfExport` é a implementação da v1. |
-| Trocar a persistência | Todo acesso ao Dexie passa pelos repositórios e, na certificação, por `SolicitacaoStore`. Nenhuma tela importa Dexie. |
-| Responsável ou administrador de um painel | Editar `public/paineis/index.json`. Nenhuma alteração de código. |
-| Servidor no lugar do local | Trocar o que `src/core/certificacao/index.ts` aponta em `solicitacaoStore` e `servicoValidacao`. Nenhuma tela muda. |
+| Trocar a persistência | Todo acesso ao Dexie passa por `ProjetoRepository`, `PreenchimentoRepository`, `MidiaRepository` e `FormularioRepository`. Nenhuma tela importa Dexie. |
 | Conteúdo de apoio | Trocar o arquivo em `public/media`. O caminho fica no JSON. |
+| Painel de certificação | Acrescentar a entrada em `public/paineis/index.json` com o `slug` do painel, `fluxo: "certificacao"`, o template em `public/certificados` e o responsável ABB. Nenhuma alteração de código. |
+| Novos campos da solicitação | Editar `camposPadrao` em `public/paineis/index.json`, ou dar ao painel a sua própria lista `campos`. |
+| Solicitações no servidor | Trocar o que `src/core/certificacao/index.ts` aponta em `solicitacaoStore` e `servicoValidacao`. Nenhuma tela muda. |
 
 ### Modelo de dados
 
+No aparelho (Dexie, versão 6 do schema):
+
 ```
-projetos:          ++id, tipoPainel, empresa, nomeProjeto, operador, criadoEm, atualizadoEm
-tags:              ++id, projetoId, nome, ordem, [projetoId+ordem]
+projetos:          ++id, empresa, nomeProjeto, operador, criadoEm, atualizadoEm,
+                   painelId, usuarioId, [usuarioId+painelId]
+tags:              ++id, projetoId, nome, ordem, [projetoId+ordem], uid
 preenchimentos:    ++id, tagId, solicitacaoId, formId, atualizadoEm, [tagId+formId]
-midias:            ++id, preenchimentoId, etapaId, [preenchimentoId+etapaId]
-formulariosCustom: id, atualizadoEm
-permissoes:        painelId, atualizadoEm
-solicitacoes:      ++id, tipoPainel, estado, numeroCertificado, criadoEm, atualizadoEm
+midias:            ++id, preenchimentoId, etapaId, [preenchimentoId+etapaId], uid
+formularios:       id, painelSlug, atualizadoEm
+solicitacoes:      ++id, tipoPainel, usuarioId, estado, numeroCertificado,
+                   criadoEm, atualizadoEm
 certificados:      ++id, &numero, solicitacaoId, tipoPainel, emitidoEm
 contadores:        id
 ```
 
-`permissoes` guarda a configuração de quem pode usar cada painel, editada na
-administração. A v3 do banco derruba a tabela `acessos`, que guardava a permissão de montagem
-enquanto existia login — e, com ela, os e-mails que ficavam gravados no
-aparelho. O painel em uso fica no `localStorage`
-(`core/paineis/preferencia`), não no Dexie: é escolha de tela, não dado de
-trabalho.
+Um preenchimento pertence a uma TAG (verificação) **ou** a uma solicitação
+(certificação) — nunca aos dois. Assim o motor de preenchimento, as fotos e o
+cálculo de andamento servem aos dois fluxos sem duplicação; a sincronização
+trata só os de TAG.
+
+No servidor (SQLite):
+
+```
+usuarios      id, email (único), nome, senha (scrypt), criadoEm, papel
+paineis             id, slug (único), nome, descricao, ordem, criadoEm
+painel_responsaveis painelId, email                    chave (painelId, email)
+solicitacoes  id, painelId, usuarioId, status, mensagem, criadoEm,
+              decididoEm, decididoPor, expiraEm  único (painelId, usuarioId)
+pedidos_admin id, usuarioId (único), status, criadoEm, decididoEm, decididoPor
+sessoes       token, usuarioId, criadoEm, expiraEm, perfil
+```
+
+`status` é `pendente`, `aprovada`, `recusada` ou `revogada`; uma aprovação com
+`expiraEm` no passado é lida como **expirada**, sem que a linha mude.
+`decididoPor` aponta o administrador que decidiu; nulo numa linha decidida é
+da antiga administração por senha compartilhada. Bancos anteriores são migrados
+na subida, e as aprovações existentes ficam sem prazo.
+
+`usuarios.papel` é `montador` ou `admin`; `sessoes.perfil` diz por qual porta a
+sessão foi aberta. `pedidos_admin.status` é `pendente`, `aprovado`, `recusado`
+ou `removido` (administrador tirado do papel).
 
 Fotos são gravadas como **Blob**, nunca base64. `respostas` é um mapa
 `etapaId → { valor, observacao }`. Excluir um projeto, uma TAG ou uma
 solicitação remove em cascata os preenchimentos e as mídias.
 
-Um preenchimento pertence a uma TAG (fluxo de verificação) **ou** a uma
-solicitação (fluxo de certificação) — nunca aos dois. Assim o motor de
-preenchimento, as fotos e o cálculo de progresso servem aos dois fluxos sem
-duplicação. Projetos gravados antes desta versão não têm `tipoPainel` e contam
-como SEN Plus; o esquema do Dexie subiu para a versão 2 sem migração de dados.
+Projetos gravados antes de existir login ficam sem `usuarioId` e continuam
+visíveis para quem estiver logado — não há a quem atribuí-los.
 
 ### Tipos de resposta
 
@@ -270,16 +451,13 @@ rotina, **apenas registra o valor** — não há validação de faixa nem alerta
 
 ## Formulários
 
-| Arquivo | Painel | Conteúdo |
-|---|---|---|
-| `sen-plus-montagem.json` | SEN Plus | 38 etapas em 5 seções (estrutura, barramentos, placas, separações, vedações) |
-| `rotina-bt.json` | SEN Plus | 62 etapas em 10 seções (R1 a R10), fusão do *Routine Verification Checklist* com o *Low Voltage Switchboard Checklist* |
-| `ensaios-rotina-61439.json` | SPEE, SPEP e SAFR | Ensaios de rotina 11.2 a 11.10 da NBR IEC 61439, conteúdo idêntico nos três painéis |
+| Arquivo | Conteúdo |
+|---|---|
+| `sen-plus-montagem.json` | 38 etapas em 5 seções (estrutura, barramentos, placas, separações, vedações) |
+| `rotina-bt.json` | 62 etapas em 10 seções (R1 a R10), fusão do *Routine Verification Checklist* com o *Low Voltage Switchboard Checklist* |
+| `ensaios-rotina-61439.json` | Ensaios de rotina 11.2 a 11.10 da NBR IEC 61439, conteúdo idêntico em SPEE, SPEP e SAFR |
 
-Não há checklist de montagem para SPEE, SPEP e SAFR: o fluxo de certificação
-usa somente o checklist de ensaios de rotina.
-
-Qualquer alteração — em formulários, no catálogo de painéis ou nos templates de
+Qualquer alteração — nas sementes, no catálogo de fluxos ou nos templates de
 certificado — é validada por `npm run validar-formularios`, que roda
 automaticamente antes do build.
 
@@ -297,101 +475,6 @@ declaradas no JSON e não mudam nada em quem não as usa:
 - `fotoObrigatoria: true` — a etapa só conta como respondida com pelo menos um
   arquivo anexado. É o que torna as evidências fotográficas exigidas pelo Anexo 2
   bloqueantes para o envio.
-
-## Quem pode usar
-
-Não há cadastro de usuários. Cada painel decide, na aba de administração, o que
-exige antes do fluxo — e essa configuração é independente painel a painel.
-
-- **Painel sem exigência** (o padrão): quem abre o endereço usa.
-- **Painel com identificação**: antes do fluxo, o montador informa nome, e-mail
-  da empresa e a empresa. A ferramenta confere o **domínio do e-mail** contra a
-  lista de empresas liberadas naquele painel. Sem espera e sem código: informou,
-  entrou.
-- **Painel com liberação da ABB**: o e-mail informado vira um **pedido na fila
-  do servidor** e o painel fica travado na tela de espera até alguém liberar na
-  aba *Liberações*. A tela se atualiza sozinha a cada 5 segundos; liberado, o
-  preenchimento segue inclusive sem rede. Revogar devolve o montador à espera na
-  entrada seguinte no fluxo.
-
-A lista é de **empresas, não de pessoas** — parceiro entra e sai devagar,
-montador entra e sai toda hora. Ninguém precisa cadastrar montador.
-
-```json
-{
-  "paineis": {
-    "sen-plus": {
-      "exigirIdentificacao": true,
-      "exigirLiberacao": true,
-      "dominios": ["parceiro1.com.br", "parceiro2.com.br"]
-    }
-  }
-}
-```
-
-`exigirLiberacao` depende do servidor: sem ele, o pedido não sai do lugar e a
-tela de espera diz isso. Os painéis que não o exigem continuam abrindo em
-qualquer hospedagem estática.
-
-Lista vazia com identificação exigida aceita qualquer domínio: pede o e-mail,
-mas não restringe a empresa — vira registro, não restrição.
-
-### Como liberar e como tirar
-
-1. **Liberar uma empresa**: acrescente o domínio na aba *Quem pode usar*.
-2. **Tirar**: remova o domínio. Quem já estava identificado com aquele domínio
-   é devolvido à tela de identificação **na entrada seguinte no fluxo** — a
-   permissão é reconferida a cada entrada, não só na abertura.
-3. **Montador que saiu da empresa**: a própria empresa desliga o e-mail dele.
-   Nada a fazer aqui.
-4. **Distribuir a mudança**: exporte o JSON pela aba e publique-o como
-   `public/paineis/permissoes.json`. Cada aparelho relê o arquivo ao abrir.
-   Sem publicar, a alteração vale só no aparelho onde foi feita.
-
-Precedência: o que a administração gravou no aparelho vence o arquivo
-publicado; sem nenhum dos dois, o painel abre livre.
-
-### Fila de liberação
-
-O montador escolhe o painel, informa quem é e o pedido vai para o servidor. A
-decisão é tomada na aba *Liberações* — que mostra os pendentes primeiro e
-permite liberar, negar, revogar, deixar um recado ao montador e limpar o
-histórico.
-
-| Rota | Para quê |
-|---|---|
-| `POST /api/acesso/solicitar` | Cria o pedido (e-mail + painel) e devolve o token do aparelho |
-| `GET /api/acesso/situacao` | Situação do pedido — o que a tela de espera consulta |
-| `POST /api/admin/sessao` | Entrada da administração; devolve o token da sessão (12 h) |
-| `GET /api/admin/solicitacoes` | Fila, pendentes primeiro |
-| `POST /api/admin/solicitacoes/{id}` | `liberar`, `negar` ou `revogar`, com recado opcional |
-| `DELETE /api/admin/solicitacoes/{id}` | Tira o pedido do histórico |
-
-Pedidos repetidos do mesmo e-mail para o mesmo painel reaproveitam o registro,
-então reabrir o aplicativo não enche a fila de duplicatas. A fila inteira vive
-em um JSON gravado por `rename` atômico — nenhum dado de preenchimento passa
-por ela.
-
-### O que isto é, e o que não é
-
-A identificação sozinha é **declaração, não autenticação**. Barra o uso casual
-por quem não é do parceiro e deixa o registro de quem preencheu. Não barra quem
-edita o pacote JavaScript — o portão roda no navegador, e o segredo de qualquer
-trava local viaja junto com ela.
-
-A liberação é outra coisa: a decisão fica no servidor, fora do alcance do
-aparelho do montador, e é reconferida a cada entrada no fluxo. É a trava que
-funciona de verdade na entrada — e a única que permite **tirar** um acesso já
-concedido.
-
-A trava com consequência é outra, e já existe: **o certificado só é numerado
-depois da validação técnica da ABB**. Mesmo que alguém contorne a entrada, não
-sai documento oficial.
-
-Falta ainda o login corporativo: numa conta ABB o caminho natural é o Entra ID
-com acesso por grupo, e é esta mesma configuração, por painel, que alimentaria
-a lista de domínios de lá. Fica registrado junto da
-[limitação de sincronização](#limitação-conhecida--sem-sincronização).
 
 ---
 
@@ -411,15 +494,30 @@ rascunho ──enviar──> enviada ──aprovar──> aprovada ──gerar�
   montador; o checklist abre travado, para conferência.
 - **Devolvida**, volta a ser editável com os apontamentos no topo, preservando
   todo o preenchimento já feito.
-- **O certificado só é gerado após a aprovação explícita** do responsável ABB.
+- **O certificado só é gerado após a aprovação explícita** do responsável ABB,
+  na aba **Validação ABB** da administração.
+- **As solicitações ficam no aparelho.** Diferente das checagens de projeto,
+  elas não sincronizam: a validação ABB enxerga as solicitações gravadas no
+  aparelho em que é aberta. Levá-las ao servidor é trocar a implementação em
+  `src/core/certificacao/index.ts` — as telas não mudam.
 
 ### Responsáveis e numeração
 
-| Painel | Responsável ABB | Template |
+| Painel (`slug`) | Responsável ABB | Template |
 |---|---|---|
-| System pro E Energy | Tainá Gioia | `certificados/spee.json` |
-| System pro E Power | Carlos Eduardo Silva | `certificados/spep.json` |
-| SAFR | Tainá Gioia | `certificados/safr.json` |
+| System Pro E Energy (`system-pro-e-energy`) | Tainá Gioia | `certificados/spee.json` |
+| System Pro E Power (`system-pro-e-power`) | Carlos Eduardo Silva | `certificados/spep.json` |
+| SAFR (`safr`) | Tainá Gioia | `certificados/safr.json` |
+
+O fluxo de cada painel vem de `public/paineis/index.json`, pelo `slug` do painel
+no servidor. Painel sem entrada ali — todo painel novo da administração — segue
+a verificação. Quem pode abrir as solicitações de um painel é a mesma regra dos
+projetos: acesso aprovado pelo responsável ou liberado pela administração,
+reconferido a cada entrada.
+
+O responsável ABB (quem assina o certificado) e o responsável do painel (quem
+aprova o acesso do montador) são coisas diferentes: o primeiro mora no
+catálogo de fluxos, o segundo no cadastro de painéis do servidor.
 
 Na aprovação, a camada de validação atribui um número **sequencial global, único
 e imutável** (`0001`, `0002`, …) resolvido em transação, com índice único em
@@ -453,58 +551,62 @@ Nenhum texto do certificado está no código: o gerador em
 
 ---
 
+---
+
 ## Aba de administração
 
-Acesso em **Administração**, no cabeçalho. Quatro abas.
+Acesso em **Administração**, no cabeçalho, para quem entrou como
+administrador. As seções principais:
 
-**Validação ABB** — lista as solicitações enviadas com os dados informados e a
-situação do checklist, e permite aprovar (atribuindo o número do certificado) ou
-devolver com apontamentos. Abaixo, o registro de todas as emissões. Quando o
-preenchimento tiver pendências, elas são exibidas antes da decisão.
+- **Acessos** — quem pode preencher cada painel, e até quando (ver
+  [Controle de acesso](#controle-de-acesso)).
+- **Validação ABB** — as solicitações de certificação enviadas, com os dados
+  informados e a situação do checklist: aprovar atribui o número do
+  certificado; devolver reabre para o montador com os apontamentos. Abaixo, o
+  registro de todas as emissões.
+- **Painéis e checklists** — cadastro dos painéis, de quem aprova e do
+  conteúdo das etapas. Os checklists são gravados no servidor, e todo montador
+  aprovado naquele painel recebe a mesma versão.
+- **Administradores** — quem administra, e quem pediu para administrar.
 
-**Liberações** — a fila de pedidos de acesso: liberar, negar, revogar, deixar um
-recado ao montador e limpar o histórico. Atualiza sozinha a cada 10 segundos.
-Depende do servidor; sem ele, a aba fica indisponível e as outras três
-continuam valendo.
+### Quem é administrador
 
-**Formulários** — permite, sem programação: criar e remover perguntas, criar e
-remover seções, editar título e descrição da seção, editar descrição e detalhes
-de qualquer pergunta, trocar o **tipo de resposta** (com as opções da seleção e
-as linhas e colunas da grade numérica editáveis ali mesmo), definir a
-referência normativa, exigir anexo, aceitar observação, ativar e desativar,
-reordenar dentro da seção, trocar o conteúdo de apoio, exportar o JSON e
-importar um JSON com validação e mensagem de erro legível.
+Não há senha de administração. Administrador é um **papel da conta**: a pessoa
+entra com o próprio e-mail e senha, pelo link discreto **Entrar como
+administrador** no fim da tela de login. Só essa sessão chega à administração —
+quem tem o papel mas entrou como montador vê o aplicativo de montador.
 
-Remover uma pergunta, ou trocar o tipo de resposta dela, **não** apaga o que já
-foi preenchido: a resposta antiga fica órfã nos registros existentes. Em
-formulário já em uso, desativar é mais seguro que remover — a tela avisa isso.
-
-**Quem pode usar** — a exigência de identificação, a exigência de liberação da
-ABB e a lista de domínios do painel em uso (veja
-[Quem pode usar](#quem-pode-usar)), com exportação e importação do
-`permissoes.json`.
-
-As edições ficam no IndexedDB do aparelho e têm precedência sobre o arquivo
-publicado. Para distribuir uma alteração a todos, exporte o JSON e substitua o
-arquivo em `public/forms` (ou `public/paineis/permissoes.json`) na próxima
-publicação. Os botões **Restaurar original** e **Restaurar publicada**
-descartam as edições locais.
-
-A senha é conferida **no servidor**, que é quem guarda a fila de liberação
-(`ADMIN_SENHA` ou `-senha-admin`). Sem servidor — pendrive sem rede, hospedagem
-estática — vale a senha de build (`src/core/config.ts`, `VITE_SENHA_ADMIN`), e
-só as abas locais abrem:
-
-```bash
-ADMIN_SENHA='senha-do-cliente' ./verificacao-montagem-linux-amd64
-VITE_SENHA_ADMIN='senha-do-cliente' npm run build
+```
+criar conta de administrador ──→ pedido em Administração → Administradores
+                                          ↓
+                        outro administrador aprova ou recusa
+                                          ↓
+                       entrar como administrador ──→ /admin
 ```
 
-> **Pendência da especificação (seção 15):** a senha inicial é `ABB` e
-> **precisa ser trocada antes de publicar** para os parceiros — nas duas
-> pontas. Não há controle de usuários: a senha distingue administrador de
-> montador. Com a validação ABB e a fila de liberação atrás dela, trocá-la é
-> requisito de publicação, não recomendação.
+- **Primeiro administrador:** `ADMIN_INICIAL` (hoje `ericg10456@gmail.com`).
+  É semente: vale só enquanto não houver administrador nenhum. Se a conta já
+  existe, é promovida na subida; se não, vira administradora ao ser criada —
+  por isso, num banco novo, crie essa conta logo.
+- **Novos administradores** criam a conta em *Criar conta de administrador*, ou
+  pedem o papel com uma conta que já existe, pelo botão que aparece ao tentar
+  entrar como administrador. A conta vale para montagem desde já; a
+  administração só abre depois da aprovação.
+- **Remover** tira o papel e derruba a sessão de administrador na hora.
+  Ninguém remove a si mesmo, então sempre resta ao menos um.
+- **Cada decisão tem nome:** liberações, prazos, retiradas e aprovações de
+  administrador registram quem fez.
+- **Freio de tentativas:** 5 senhas erradas para o mesmo e-mail, do mesmo
+  endereço, bloqueiam novas tentativas por 15 minutos. Vale para todo login.
+- **Sessão de administrador dura 12 horas**; a de montador, 30 dias.
+
+Sem nenhum administrador capaz de entrar — senha esquecida, remoção por engano
+—, o socorro é na máquina do servidor:
+
+```bash
+npm run admin -- listar
+npm run admin -- promover pessoa@empresa.com
+```
 
 ---
 
@@ -527,16 +629,20 @@ O envio por e-mail é feito manualmente pelo montador.
 
 ## Limitação conhecida — sem sincronização
 
-Cada aparelho mantém a sua própria base. Um preenchimento iniciado no celular
-**não aparece** no notebook, e vice-versa.
+O servidor sincroniza **o acesso**, não as checagens. Cada aparelho mantém a sua
+própria base de respostas e fotos: um preenchimento iniciado no celular **não
+aparece** no notebook, mesmo com a mesma conta e o mesmo painel aprovado.
 
 Mitigação da v1: **Exportar projeto** (na tela do projeto) grava um `.zip` com o
-JSON dos dados e as fotos; **Importar projeto** (na tela inicial) lê esse arquivo
-e recria o projeto no outro aparelho, com o sufixo “(importado)” no nome. A
-transferência é manual.
+JSON dos dados e as fotos; **Importar projeto** (na tela de projetos) lê esse
+arquivo e recria o projeto no outro aparelho, com o sufixo “(importado)” no
+nome. A transferência é manual.
 
-Solução definitiva: servidor central, previsto para versão futura. A camada de
-persistência já está atrás dos repositórios para que a troca não afete as telas.
+Solução definitiva: subir também as respostas, em versão futura. A infraestrutura
+para isso já existe — servidor, contas e sessões — e a camada de persistência
+continua atrás dos repositórios, de modo que a troca não afete as telas. O que
+falta decidir é resolução de conflito: duas pessoas aprovadas no mesmo painel
+podem responder a mesma etapa em aparelhos diferentes.
 
 ---
 
@@ -547,8 +653,6 @@ persistência já está atrás dos repositórios para que a troca não afete as 
 | Descrição da etapa **S2.6** | Ilegível no OCR. Está no JSON com o texto marcado como `TRANSCREVER` e `pendenteTranscricao: true`; a etapa aparece com aviso na tela. |
 | Imagens de referência das 38 etapas | Ainda não recortadas. Os caminhos já estão no JSON; a lista completa está em `public/media/sen-plus/LEIA-ME.md`. Enquanto o arquivo não existir, o modal de ajuda mostra um aviso com o caminho esperado, sem quebrar a tela. |
 | Redação exata das etapas | Conferir contra o documento original. S1.1, S1.3, S2.2 e S2.6 estão marcadas com `pendenteTranscricao`. |
-| Senha da administração | Provisória (`ABB`), nas duas pontas (`ADMIN_SENHA` no servidor e `VITE_SENHA_ADMIN` no build). Trocar antes de publicar — ela protege a aprovação de certificados e a fila de liberação. |
-| Contatos no catálogo | `responsavelMontagem` e `administradores` seguem com `ericg10456@gmail.com` para teste. Hoje não têm efeito na aplicação; substituir ou remover em `public/paineis/index.json`. |
 | E-mails dos responsáveis ABB | `taina.gioia@br.abb.com` e `carlos.e.silva@br.abb.com`, reconstruídos do PDF do Anexo 2 (o OCR do arquivo suprime pontos). Conferir antes de publicar; ficam em `public/paineis/index.json`. |
 | Imagens de apoio dos ensaios de rotina | O checklist da NBR IEC 61439 ainda não tem `midiaApoio`. Os textos de orientação estão em `detalhes`; as imagens entram no JSON quando existirem. |
 
@@ -559,22 +663,18 @@ persistência já está atrás dos repositórios para que a troca não afete as 
 Sem julgamento de conformidade no sistema (não existem estados “OK” e “Não OK”:
 a etapa é respondida ou fica em branco); sem estado “não aplicável”; PDF sempre
 gerável; ordem de preenchimento livre; operador e data informados uma vez e
-replicados em todas as etapas; dados de preenchimento exclusivamente no
-aparelho; sem marca d'água nas fotos; sem trilha de auditoria além da data da
-última alteração.
+replicados em todas as etapas; respostas e fotos exclusivamente no aparelho; sem
+marca d'água nas fotos; sem trilha de auditoria além da data da última
+alteração.
 
-Da liberação de acesso: o e-mail identifica e a liberação autoriza — não há
-cadastro de usuário nem senha por montador; a fila vive no servidor porque a
-decisão é tomada em outro aparelho, e essa é a única parte do produto que
-depende dele; painel sem `exigirLiberacao` continua abrindo sem servidor
-nenhum; liberado, o preenchimento funciona offline, e a revogação chega na
-entrada seguinte no fluxo, não no meio do preenchimento.
+Revistas ao acrescentar o controle de acesso: **passou a haver autenticação**
+(e-mail e senha) e **passou a haver um servidor**, que guarda contas, painéis e
+decisões de acesso — e nada das checagens. O operador do PDF deixou de ser texto
+digitado e passa a vir do nome da conta.
 
-Da extensão de certificação: o comportamento do SEN Plus não mudou — os novos
-campos obrigatórios e o ciclo de validação valem apenas para SPEE, SPEP e SAFR;
-o certificado sai em PDF, no mesmo padrão de saída do dossiê; a validação ABB
-mora na área já protegida por senha, e não em uma rota com senha própria; o
-mesmo checklist de ensaios de rotina atende os três painéis, com o catálogo de
-painéis apontando para ele — se um painel divergir, basta apontar para outro
-arquivo; o backup `.zip` cobre apenas o fluxo de projeto/TAG, já que a
-solicitação tem ciclo próprio de envio e aprovação.
+Da extensão de certificação: o comportamento do SEN Plus não mudou — os campos
+obrigatórios e o ciclo de validação valem apenas para os painéis de
+certificação; o certificado sai em PDF, no mesmo padrão de saída do dossiê; a
+validação ABB mora na administração, atrás do papel de administrador; o backup
+`.zip` cobre apenas o fluxo de projeto/TAG, já que a solicitação tem ciclo
+próprio de envio e aprovação.

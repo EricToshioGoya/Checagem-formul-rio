@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react';
-import { PAINEL_PADRAO } from '../../core/config';
-import { ProjetoRepository } from '../../core/db/repositorios';
 import { formulariosDoPainel } from '../../core/forms/catalogo';
 import { progressoDoProjeto } from '../../core/forms/progressoProjeto';
 import type { EntradaCatalogo } from '../../core/forms/tipos';
@@ -12,10 +10,12 @@ import { Aviso, Erro } from '../../shared/componentes/Estado';
 interface Props {
   aberto: boolean;
   projetoId: number;
+  /** Painel do projeto: limita o PDF aos checklists daquela linha. */
+  painelSlug?: string;
   onFechar: () => void;
 }
 
-export function DialogoGerarPdf({ aberto, projetoId, onFechar }: Props) {
+export function DialogoGerarPdf({ aberto, projetoId, painelSlug, onFechar }: Props) {
   const [entradas, setEntradas] = useState<EntradaCatalogo[]>([]);
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [incluirFotos, setIncluirFotos] = useState(true);
@@ -30,16 +30,17 @@ export function DialogoGerarPdf({ aberto, projetoId, onFechar }: Props) {
     setConcluido(null);
     (async () => {
       try {
-        const projeto = await ProjetoRepository.obter(projetoId);
-        const lista = await formulariosDoPainel(projeto?.tipoPainel ?? PAINEL_PADRAO);
+        const lista = await formulariosDoPainel(painelSlug);
         setEntradas(lista);
         setSelecionados(lista.map((e) => e.id));
-        setPendentes((await progressoDoProjeto(projetoId)).progresso.pendentes);
+        setPendentes(
+          (await progressoDoProjeto(projetoId, painelSlug)).progresso.pendentes,
+        );
       } catch (e) {
         setErro(e instanceof Error ? e.message : 'Falha ao preparar a geração.');
       }
     })();
-  }, [aberto, projetoId]);
+  }, [aberto, projetoId, painelSlug]);
 
   const gerar = async () => {
     setGerando(true);
@@ -92,7 +93,7 @@ export function DialogoGerarPdf({ aberto, projetoId, onFechar }: Props) {
             {entradas.map((e) => (
               <label
                 key={e.id}
-                className="flex min-h-12 items-center gap-3 rounded-md border border-abb-line bg-white px-3"
+                className="flex min-h-12 items-center gap-3 rounded-md border border-abb-line-botao bg-abb-offwhite px-3 hover:bg-abb-offwhite-hover"
               >
                 <input
                   type="checkbox"
@@ -115,7 +116,7 @@ export function DialogoGerarPdf({ aberto, projetoId, onFechar }: Props) {
         <fieldset>
           <legend className="mb-2 text-base font-bold">Fotos</legend>
           <div className="space-y-2">
-            <label className="flex min-h-12 items-center gap-3 rounded-md border border-abb-line bg-white px-3">
+            <label className="flex min-h-12 items-center gap-3 rounded-md border border-abb-line-botao bg-abb-offwhite px-3 hover:bg-abb-offwhite-hover">
               <input
                 type="radio"
                 name="fotos"
@@ -125,7 +126,7 @@ export function DialogoGerarPdf({ aberto, projetoId, onFechar }: Props) {
               />
               <span className="text-base">Fotos incorporadas ao PDF</span>
             </label>
-            <label className="flex min-h-12 items-center gap-3 rounded-md border border-abb-line bg-white px-3">
+            <label className="flex min-h-12 items-center gap-3 rounded-md border border-abb-line-botao bg-abb-offwhite px-3 hover:bg-abb-offwhite-hover">
               <input
                 type="radio"
                 name="fotos"

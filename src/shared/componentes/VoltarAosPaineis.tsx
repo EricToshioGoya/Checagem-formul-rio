@@ -2,12 +2,12 @@ import { Link } from 'react-router-dom';
 import { IconeVoltar } from './Icones';
 
 /**
- * Volta à escolha do tipo de painel, a partir do topo de qualquer fluxo.
+ * Volta à escolha do painel, a partir do topo de qualquer fluxo.
  *
  * Fica acima do título, com rótulo visível: uma seta solta passava
  * despercebida no desktop, e trocar de painel é a única saída dali.
  */
-export function VoltarAosPaineis({ rotulo = 'Trocar tipo de painel' }: { rotulo?: string }) {
+export function VoltarAosPaineis({ rotulo = 'Voltar aos painéis' }: { rotulo?: string }) {
   return (
     <Link
       to="/"

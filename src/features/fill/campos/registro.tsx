@@ -24,7 +24,7 @@ function Confirmacao({ valor, onChange }: PropsCampo) {
         'flex min-h-14 w-full items-center gap-3 rounded-md border-2 px-4 text-left text-base font-bold',
         marcado
           ? 'border-green-700 bg-green-50 text-green-800'
-          : 'border-abb-line bg-white text-abb-black',
+          : 'border-abb-line-botao bg-abb-offwhite text-abb-black hover:bg-abb-offwhite-hover',
       ].join(' ')}
     >
       <span

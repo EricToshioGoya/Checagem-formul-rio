@@ -5,6 +5,13 @@ resultado **na tela e no IndexedDB**. Complementa `scripts/fumaca.mjs`: a fumaç
 responde “o caminho feliz funciona?”; esta bateria responde “o que acontece
 quando algo sai do previsto?”.
 
+> **Situação atual.** Os blocos 01–07 e 09 foram escritos para o fluxo sem
+> contas (escolha de painel sem login, senha única na administração, editor de
+> formulários local) e ainda não foram adaptados ao login e aos checklists no
+> servidor: rodam, mas falham já na entrada. O bloco 08 (servidor portátil)
+> vale como está. O caminho principal com login é coberto por
+> `scripts/fumaca.mjs`.
+
 ## Como rodar
 
 ```bash

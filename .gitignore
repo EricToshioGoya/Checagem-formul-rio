@@ -1,14 +1,10 @@
 node_modules/
 dist/
-dist-demo/
 dist-ssr/
 *.local
 .DS_Store
 .vite/
 *.tsbuildinfo
-
-# Demonstração de página única (npm run build-demo)
-demo/
 
 # Saída do teste de fumaça
 saida-fumaca/
@@ -22,9 +18,8 @@ cmd/servidor/web/*
 cmd/servidor/servidor
 cmd/servidor/servidor.exe
 
+# Base do servidor de acesso (contas e aprovações locais)
+servidor/dados/
+
 # Saída da bateria de verificação
 saida-testes/
-
-# Fila de liberação gravada pelo servidor em execução
-dados/
-cmd/servidor/dados/

@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <!--
-      A aplicação não tem servidor nem depende de nada externo: tudo que ela
-      carrega vem da própria publicação. Declarar isso fecha o carregamento de
-      conteúdo de fora, inclusive o que viesse de um JSON de formulário
-      importado na administração.
+      Tudo que a aplicação carrega vem da própria publicação, e a API de
+      acesso responde em /api na mesma origem. Declarar isso fecha o
+      carregamento de conteúdo de fora, inclusive o que viesse de um
+      checklist importado na administração.
       `blob:` é necessário para as fotos gravadas e os PDFs gerados;
       `'unsafe-inline'` em style-src, para os estilos que o React injeta.
     -->
@@ -18,9 +18,10 @@
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#ff000f" />
+    <meta name="theme-color" content="#ffffff" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- Cabeçalho branco: a barra de status precisa de texto escuro. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Verificação" />
     <meta
       name="description"

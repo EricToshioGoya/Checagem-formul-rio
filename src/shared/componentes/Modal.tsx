@@ -19,21 +19,31 @@ export function Modal({
   largura = 'normal',
 }: Props) {
   const caixaRef = useRef<HTMLDivElement>(null);
+  // `onFechar` costuma chegar como função nova a cada desenho da tela de fora.
+  // Com ele nas dependências do efeito abaixo, cada tecla digitada num campo
+  // do modal redesenhava a tela, o efeito rodava de novo e devolvia o foco à
+  // caixa: só o primeiro caractere entrava. A referência mantém o efeito
+  // preso só à abertura.
+  const fecharRef = useRef(onFechar);
+  useEffect(() => {
+    fecharRef.current = onFechar;
+  });
 
   useEffect(() => {
     if (!aberto) return;
     const aoTeclar = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onFechar();
+      if (e.key === 'Escape') fecharRef.current();
     };
     document.addEventListener('keydown', aoTeclar);
     const anterior = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    caixaRef.current?.focus();
+    // Um campo com foco automático dentro do modal fica com o foco.
+    if (!caixaRef.current?.contains(document.activeElement)) caixaRef.current?.focus();
     return () => {
       document.removeEventListener('keydown', aoTeclar);
       document.body.style.overflow = anterior;
     };
-  }, [aberto, onFechar]);
+  }, [aberto]);
 
   if (!aberto) return null;
 

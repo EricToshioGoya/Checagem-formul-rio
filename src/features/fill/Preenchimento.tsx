@@ -1,21 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { MidiaRepository, PreenchimentoRepository } from '../../core/db/repositorios';
+import { useSessao } from '../../core/api/SessaoContexto';
+import type { Bloqueio } from '../../core/api/acessoLocal';
+import { AcessoBloqueado } from '../paineis/AcessoBloqueado';
 import { calcularProgresso, etapaRespondida, etapaVisivel } from '../../core/forms/progresso';
 import type {
   Etapa,
   MapaRespostas,
-  Resposta,
   TipoResposta,
   ValorResposta,
   ValoresCabecalho,
 } from '../../core/forms/tipos';
-import {
-  contextoDaSolicitacao,
-  contextoDoProjeto,
-  type ContextoPreenchimento,
-} from './contexto';
 import { useSalvamentoAutomatico } from '../../shared/hooks/useSalvamentoAutomatico';
 import { useDesktop } from '../../shared/hooks/useMediaQuery';
 import { Botao } from '../../shared/componentes/Botao';
@@ -26,11 +23,15 @@ import { IconeCheck, IconeVoltar } from '../../shared/componentes/Icones';
 import { EtapaCard } from './EtapaCard';
 import { ModalApoio } from './ModalApoio';
 import { CabecalhoFormulario } from './CabecalhoFormulario';
+import { adotarExterno, aplicarMudancas, mudancasDeCabecalho, mudancasDeRespostas } from './mudancas';
+import {
+  contextoDaSolicitacao,
+  contextoDoProjeto,
+  type ContextoPreenchimento,
+} from './contexto';
 
 const ID_CABECALHO = '__cabecalho__';
-
-/** Etapas tocadas desde a última gravação. `null` apaga a resposta. */
-type AlteracoesRespostas = Record<string, Resposta | null>;
+type Filtro = 'todas' | 'respondidas' | 'pendentes';
 
 /**
  * Tipos que se respondem com um toque, e não digitando. A resposta vai para o
@@ -44,15 +45,16 @@ const TIPOS_DISCRETOS = new Set<TipoResposta>([
   'foto',
   'anexo_pdf',
 ]);
-type Filtro = 'todas' | 'respondidas' | 'pendentes';
 
 export function Preenchimento() {
   const { projetoId, tagId, formId, solicitacaoId } = useParams();
   const navegar = useNavigate();
   const desktop = useDesktop();
+  const { usuario } = useSessao();
 
   const [contexto, setContexto] = useState<ContextoPreenchimento | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [bloqueio, setBloqueio] = useState<Bloqueio | null>(null);
   const [respostas, setRespostas] = useState<MapaRespostas>({});
   const [cabecalho, setCabecalho] = useState<ValoresCabecalho>({});
   const [filtro, setFiltro] = useState<Filtro>('todas');
@@ -67,7 +69,7 @@ export function Preenchimento() {
     window.scrollTo({ top: 0 });
   }, []);
 
-  const preenchimentoId = contexto?.preenchimentoId ?? 0;
+  const preenchimentoId = contexto?.preenchimento.id ?? 0;
 
   const fotos = useLiveQuery(
     async (): Promise<Record<string, number>> =>
@@ -76,34 +78,73 @@ export function Preenchimento() {
     {} as Record<string, number>,
   );
 
-  // Vai para o banco só o que mudou, e não o mapa inteiro que a tela tem em
-  // memória: assim duas telas abertas não apagam o trabalho uma da outra. Em
-  // somente leitura nada é gravado: a solicitação já saiu das mãos do montador.
-  const salvamentoRespostas = useSalvamentoAutomatico<AlteracoesRespostas>(async (valor) => {
+  // O que está gravado no aparelho, como a tela o conhece. Serve para gravar
+  // só o que a pessoa mudou — ver ./mudancas.ts.
+  const baseRespostas = useRef<MapaRespostas>({});
+  const baseCabecalho = useRef<ValoresCabecalho>({});
+
+  // Em somente leitura nada é gravado: a solicitação já saiu das mãos do
+  // montador.
+  const salvamentoRespostas = useSalvamentoAutomatico<MapaRespostas>(async (valor) => {
     if (!contexto || contexto.somenteLeitura) return;
-    await PreenchimentoRepository.salvarRespostas(contexto.preenchimentoId, valor);
+    const mudancas = mudancasDeRespostas(baseRespostas.current, valor);
+    if (Object.keys(mudancas).length === 0) return;
+    await PreenchimentoRepository.aplicarMudancasRespostas(contexto.preenchimento.id, mudancas);
+    baseRespostas.current = aplicarMudancas(baseRespostas.current, mudancas);
     await contexto.marcarAlteracao();
   });
 
   const salvamentoCabecalho = useSalvamentoAutomatico<ValoresCabecalho>(async (valor) => {
     if (!contexto || contexto.somenteLeitura) return;
-    await PreenchimentoRepository.salvarCabecalho(contexto.preenchimentoId, valor);
+    const mudancas = mudancasDeCabecalho(baseCabecalho.current, valor);
+    if (Object.keys(mudancas).length === 0) return;
+    await PreenchimentoRepository.aplicarMudancasCabecalho(contexto.preenchimento.id, mudancas);
+    baseCabecalho.current = aplicarMudancas(baseCabecalho.current, mudancas);
     await contexto.marcarAlteracao();
   });
+
+  // O que a sincronização trouxe de outro aparelho com a tela aberta entra
+  // nela; o que a pessoa está mexendo aqui fica como está.
+  const gravado = useLiveQuery(
+    () => (preenchimentoId ? PreenchimentoRepository.obterPorId(preenchimentoId) : undefined),
+    [preenchimentoId],
+  );
+  useEffect(() => {
+    if (!gravado || gravado.id !== preenchimentoId) return;
+    const respostasGravadas = gravado.respostas ?? {};
+    const respostasAntes = baseRespostas.current;
+    baseRespostas.current = respostasGravadas;
+    setRespostas((tela) => adotarExterno(respostasAntes, tela, respostasGravadas));
+    const cabecalhoGravado = gravado.cabecalho ?? {};
+    const cabecalhoAntes = baseCabecalho.current;
+    baseCabecalho.current = cabecalhoGravado;
+    setCabecalho((tela) => adotarExterno(cabecalhoAntes, tela, cabecalhoGravado));
+  }, [gravado, preenchimentoId]);
 
   useEffect(() => {
     let ativo = true;
     (async () => {
       try {
-        const resolvido = solicitacaoId
-          ? await contextoDaSolicitacao(Number(solicitacaoId))
-          : await contextoDoProjeto(Number(projetoId), Number(tagId), String(formId));
-        const preenchimento = await PreenchimentoRepository.obterPorId(
-          resolvido.preenchimentoId,
-        );
+        if (!usuario) return;
+        const resultado = solicitacaoId
+          ? await contextoDaSolicitacao(usuario.id, Number(solicitacaoId))
+          : await contextoDoProjeto(
+              usuario.id,
+              Number(projetoId),
+              Number(tagId),
+              String(formId),
+            );
         if (!ativo) return;
+        if (resultado.bloqueio) {
+          setBloqueio(resultado.bloqueio);
+          return;
+        }
+        const resolvido = resultado.contexto;
+        const { preenchimento } = resolvido;
         setContexto(resolvido);
-        setRespostas(preenchimento?.respostas ?? {});
+        baseRespostas.current = preenchimento.respostas ?? {};
+        baseCabecalho.current = preenchimento.cabecalho ?? {};
+        setRespostas(preenchimento.respostas ?? {});
         setCabecalho(resolvido.cabecalhoInicial);
         // Sem campos de cabeçalho (checklist de solicitação), a tela abre
         // direto na primeira etapa em vez de uma aba vazia.
@@ -120,7 +161,7 @@ export function Preenchimento() {
     return () => {
       ativo = false;
     };
-  }, [projetoId, tagId, formId, solicitacaoId]);
+  }, [projetoId, tagId, formId, solicitacaoId, usuario]);
 
   // As etapas condicionais entram e saem conforme a resposta que as governa.
   const etapas = useMemo(
@@ -140,14 +181,17 @@ export function Preenchimento() {
     [respostas, fotos],
   );
 
+  // A etapa aberta fica na lista mesmo fora do filtro: ao responder uma etapa
+  // no filtro "pendentes" ou trocar de filtro, a tela não esvazia por baixo da
+  // pessoa — a etapa só sai da lista quando ela vai para outra.
   const visiveis = useMemo(
     () =>
       etapas.filter(({ etapa }) => {
-        if (filtro === 'todas') return true;
+        if (filtro === 'todas' || etapa.id === selecionada) return true;
         const ok = estaRespondida(etapa);
         return filtro === 'respondidas' ? ok : !ok;
       }),
-    [etapas, filtro, estaRespondida],
+    [etapas, filtro, estaRespondida, selecionada],
   );
 
   const progresso = useMemo(
@@ -158,12 +202,6 @@ export function Preenchimento() {
     [contexto, respostas, fotos],
   );
 
-  /** Enfileira a etapa alterada, acumulando com o que ainda não foi gravado. */
-  const agendarEtapa = (etapaId: string, resposta: Resposta | null, imediato = false) => {
-    salvamentoRespostas.agendar((pendentes) => ({ ...(pendentes ?? {}), [etapaId]: resposta }));
-    if (imediato) void salvamentoRespostas.descarregar();
-  };
-
   const alterarValor = (etapaId: string, valor: ValorResposta | null) => {
     const tipo = etapas.find((e) => e.etapa.id === etapaId)?.etapa.tipoResposta;
     setRespostas((atual) => {
@@ -171,10 +209,11 @@ export function Preenchimento() {
       const anterior = proximo[etapaId];
       if (valor === null && !anterior?.observacao) delete proximo[etapaId];
       else proximo[etapaId] = { ...anterior, valor: valor as ValorResposta };
+      salvamentoRespostas.agendar(proximo);
       // Um toque no botão de confirmação não é digitação: grava na hora, para
       // que recarregar ou sair do aplicativo logo em seguida não descarte o
       // registro. A espera de 500 ms fica para os campos que se digitam.
-      agendarEtapa(etapaId, proximo[etapaId] ?? null, tipo ? TIPOS_DISCRETOS.has(tipo) : false);
+      if (tipo && TIPOS_DISCRETOS.has(tipo)) void salvamentoRespostas.descarregar();
       return proximo;
     });
   };
@@ -185,7 +224,7 @@ export function Preenchimento() {
       const anterior = proximo[etapaId];
       if (!texto && (anterior === undefined || anterior.valor === null)) delete proximo[etapaId];
       else proximo[etapaId] = { valor: anterior?.valor ?? null, observacao: texto };
-      agendarEtapa(etapaId, proximo[etapaId] ?? null);
+      salvamentoRespostas.agendar(proximo);
       return proximo;
     });
   };
@@ -193,7 +232,7 @@ export function Preenchimento() {
   const alterarCabecalho = (campoId: string, valor: string) => {
     setCabecalho((atual) => {
       const proximo = { ...atual, [campoId]: valor };
-      salvamentoCabecalho.agendar((pendentes) => ({ ...(pendentes ?? {}), [campoId]: valor }));
+      salvamentoCabecalho.agendar(proximo);
       return proximo;
     });
   };
@@ -204,6 +243,7 @@ export function Preenchimento() {
   };
 
   if (erro) return <div className="p-4"><Erro detalhe={erro} /></div>;
+  if (bloqueio) return <div className="p-4"><AcessoBloqueado bloqueio={bloqueio} /></div>;
   if (!contexto) return <Carregando mensagem="Abrindo o formulário…" />;
 
   const indiceAtual = visiveis.findIndex((v) => v.etapa.id === selecionada);
@@ -231,7 +271,7 @@ export function Preenchimento() {
             'flex min-h-12 w-full items-center rounded-md border-2 px-3 text-left text-base font-semibold',
             selecionada === ID_CABECALHO
               ? 'border-abb-red bg-red-50'
-              : 'border-abb-line bg-white',
+              : 'border-abb-line-botao bg-abb-offwhite hover:bg-abb-offwhite-hover',
           ].join(' ')}
         >
           Dados do painel
@@ -261,7 +301,7 @@ export function Preenchimento() {
                         'flex min-h-12 w-full items-start gap-2 rounded-md border px-3 py-2 text-left',
                         selecionada === etapa.id
                           ? 'border-abb-red bg-red-50'
-                          : 'border-abb-line bg-white',
+                          : 'border-abb-line-botao bg-abb-offwhite hover:bg-abb-offwhite-hover',
                       ].join(' ')}
                     >
                       <span
@@ -304,7 +344,7 @@ export function Preenchimento() {
         etapa={etapaAtual.etapa}
         resposta={respostas[etapaAtual.etapa.id]}
         respondida={estaRespondida(etapaAtual.etapa)}
-        preenchimentoId={contexto.preenchimentoId}
+        preenchimentoId={contexto.preenchimento.id}
         onAlterarValor={(v) => alterarValor(etapaAtual.etapa.id, v)}
         onAlterarObservacao={(t) => alterarObservacao(etapaAtual.etapa.id, t)}
         onAbrirAjuda={() => setAjuda(etapaAtual.etapa)}
@@ -329,7 +369,7 @@ export function Preenchimento() {
       <header className="sticky top-0 z-30 border-b border-abb-line bg-white shadow-sm">
         <div className="mx-auto max-w-6xl space-y-2 px-3 py-2">
           <div className="flex items-center gap-2">
-            <Botao variante="texto" onClick={sair} aria-label="Voltar ao projeto">
+            <Botao variante="texto" onClick={sair} aria-label={contexto.rotuloVoltar}>
               <IconeVoltar />
             </Botao>
             <div className="min-w-0 flex-1">
@@ -381,7 +421,7 @@ export function Preenchimento() {
                     'min-h-10 shrink-0 rounded-full border px-3 text-sm font-semibold capitalize sm:px-4',
                     filtro === f
                       ? 'border-abb-red bg-abb-red text-white'
-                      : 'border-abb-line bg-white text-abb-black',
+                      : 'border-abb-line-botao bg-abb-offwhite text-abb-black hover:bg-abb-offwhite-hover',
                   ].join(' ')}
                 >
                   {f}

@@ -10,12 +10,17 @@ import { Carregando, Erro, Vazio } from '../../shared/componentes/Estado';
 import { IconeLixeira, IconeMais, IconeSeta } from '../../shared/componentes/Icones';
 import { VoltarAosPaineis } from '../../shared/componentes/VoltarAosPaineis';
 import { dataHoraBr } from '../../shared/utils/texto';
+import { useSessao } from '../../core/api/SessaoContexto';
+import { AcessoBloqueado } from '../paineis/AcessoBloqueado';
 import { EtiquetaEstado } from './estado';
+import { useAcessoCertificacao } from './acesso';
 
 /** Solicitações de certificação de um tipo de painel, uma por painel/quadro. */
 export function ListaSolicitacoes() {
   const { tipoPainel = '' } = useParams();
   const navegar = useNavigate();
+  const { usuario } = useSessao();
+  const acesso = useAcessoCertificacao(tipoPainel);
 
   const [painel, setPainel] = useState<Painel | null>(null);
   const [solicitacoes, setSolicitacoes] = useState<Solicitacao[] | null>(null);
@@ -26,7 +31,7 @@ export function ListaSolicitacoes() {
     try {
       const [p, lista] = await Promise.all([
         obterPainel(tipoPainel),
-        solicitacaoStore.listar({ tipoPainel }),
+        solicitacaoStore.listar({ tipoPainel, usuarioId: usuario?.id }),
       ]);
       setPainel(p);
       setSolicitacoes(lista);
@@ -34,14 +39,15 @@ export function ListaSolicitacoes() {
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao carregar as solicitações.');
     }
-  }, [tipoPainel]);
+  }, [tipoPainel, usuario]);
 
   useEffect(() => {
     void recarregar();
   }, [recarregar]);
 
+  if (acesso.bloqueio) return <AcessoBloqueado bloqueio={acesso.bloqueio} />;
   if (erro) return <Erro detalhe={erro} />;
-  if (!painel || !solicitacoes) return <Carregando mensagem="Carregando as solicitações…" />;
+  if (acesso.conferindo || !painel || !solicitacoes) return <Carregando mensagem="Carregando as solicitações…" />;
 
   return (
     <div className="space-y-4">

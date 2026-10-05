@@ -1,86 +1,76 @@
-import { HashRouter, Route, Routes } from 'react-router-dom';
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './Layout';
 import { LimiteDeErro } from './LimiteDeErro';
 import { AtualizacaoPwa } from './AtualizacaoPwa';
 import { RolarAoTopo } from './RolarAoTopo';
-import { SelecaoPainel } from '../features/paineis/SelecaoPainel';
+import { ExigirSessao } from './ExigirSessao';
+import { ExigirAdmin } from './ExigirAdmin';
+import { SincronizacaoAutomatica } from './SincronizacaoAutomatica';
+import { ProvedorSessao } from '../core/api/SessaoContexto';
+import { Entrar } from '../features/auth/Entrar';
+import { Paineis } from '../features/paineis/Paineis';
+import { Aprovacoes } from '../features/paineis/Aprovacoes';
 import { ListaProjetos } from '../features/projects/ListaProjetos';
-import { NovoProjeto } from '../features/projects/NovoProjeto';
 import { DetalheProjeto } from '../features/projects/DetalheProjeto';
 import { ListaSolicitacoes } from '../features/solicitacoes/ListaSolicitacoes';
 import { NovaSolicitacao } from '../features/solicitacoes/NovaSolicitacao';
 import { DetalheSolicitacao } from '../features/solicitacoes/DetalheSolicitacao';
 import { Preenchimento } from '../features/fill/Preenchimento';
 import { Admin } from '../features/admin/Admin';
-import { PainelProvider, usePainelAtivo } from '../features/paineis/PainelAtivo';
-import { LiberacaoProvider } from '../features/paineis/LiberacaoAtiva';
-import { Identificacao } from '../features/paineis/Identificacao';
-import { Liberacao } from '../features/paineis/Liberacao';
-import { PortaoPainel } from '../features/paineis/PortaoPainel';
-import { Carregando } from '../shared/componentes/Estado';
 
 /**
- * A ferramenta não tem login: quem abre o endereço usa. Painéis que pedem
- * identificação (configurado por painel na aba de administração) exigem nome e
- * e-mail de uma empresa liberada antes do fluxo — declaração, não
- * autenticação; a validação técnica da ABB continua sendo a trava do
- * certificado.
- *
- * A escolha do painel decide o fluxo (verificação ou certificação) e o
- * conjunto de formulários; ela fica gravada no aparelho, então a abertura
- * seguinte já cai no painel de sempre.
+ * HashRouter: a saída é estática e roda tanto em servidor HTTPS (modalidade A)
+ * quanto no binário Go em localhost (modalidade B), sem exigir regra de
+ * reescrita de URL em nenhum dos dois.
  */
-function Rotas() {
-  const { carregando } = usePainelAtivo();
-
-  if (carregando) return <Carregando mensagem="Carregando os painéis…" />;
-
-  return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<SelecaoPainel />} />
-        <Route path="/identificacao" element={<Identificacao />} />
-        <Route path="/liberacao" element={<Liberacao />} />
-        <Route path="/admin" element={<Admin />} />
-
-        <Route element={<PortaoPainel />}>
-          <Route path="/paineis/:tipoPainel/projetos" element={<ListaProjetos />} />
-          <Route path="/projetos" element={<ListaProjetos />} />
-          <Route path="/projetos/novo" element={<NovoProjeto />} />
-          <Route path="/paineis/:tipoPainel/projetos/novo" element={<NovoProjeto />} />
-          <Route path="/projetos/:projetoId" element={<DetalheProjeto />} />
-
-          <Route path="/paineis/:tipoPainel/solicitacoes" element={<ListaSolicitacoes />} />
-          <Route path="/paineis/:tipoPainel/solicitacoes/nova" element={<NovaSolicitacao />} />
-          <Route path="/solicitacoes/:solicitacaoId" element={<DetalheSolicitacao />} />
-        </Route>
-      </Route>
-
-      <Route element={<PortaoPainel />}>
-        <Route
-          path="/projetos/:projetoId/tags/:tagId/formularios/:formId"
-          element={<Preenchimento />}
-        />
-        <Route path="/solicitacoes/:solicitacaoId/checklist" element={<Preenchimento />} />
-      </Route>
-
-      <Route path="*" element={<SelecaoPainel />} />
-    </Routes>
-  );
-}
-
 export function App() {
   return (
-    <PainelProvider>
-      <LiberacaoProvider>
-        <HashRouter>
-          <LimiteDeErro>
-            <RolarAoTopo />
-            <AtualizacaoPwa />
-            <Rotas />
-          </LimiteDeErro>
-        </HashRouter>
-      </LiberacaoProvider>
-    </PainelProvider>
+    <ProvedorSessao>
+      <SincronizacaoAutomatica />
+      <HashRouter>
+        <LimiteDeErro>
+          <RolarAoTopo />
+          <AtualizacaoPwa />
+          <Routes>
+            {/* Única rota aberta: é por onde se entra. */}
+            <Route element={<Layout />}>
+              <Route path="/entrar" element={<Entrar />} />
+            </Route>
+
+            <Route element={<ExigirSessao />}>
+              <Route element={<Layout />}>
+                <Route path="/" element={<Paineis />} />
+                <Route path="/paineis" element={<Paineis />} />
+                <Route path="/aprovacoes" element={<Aprovacoes />} />
+                <Route path="/projetos" element={<ListaProjetos />} />
+                {/* Não há mais criação avulsa de projeto: um projeto só nasce
+                    ao abrir um painel aprovado, e é o que garante que a pessoa
+                    preencha apenas aquilo que pediu e teve aprovado. */}
+                <Route path="/projetos/:projetoId" element={<DetalheProjeto />} />
+                {/* Fluxo de certificação (SPEE, SPEP e SAFR): uma solicitação
+                    por painel/quadro, validada pela ABB antes do certificado. */}
+                <Route path="/paineis/:tipoPainel/solicitacoes" element={<ListaSolicitacoes />} />
+                <Route
+                  path="/paineis/:tipoPainel/solicitacoes/nova"
+                  element={<NovaSolicitacao />}
+                />
+                <Route path="/solicitacoes/:solicitacaoId" element={<DetalheSolicitacao />} />
+                <Route element={<ExigirAdmin />}>
+                  <Route path="/admin" element={<Admin />} />
+                </Route>
+              </Route>
+              <Route
+                path="/projetos/:projetoId/tags/:tagId/formularios/:formId"
+                element={<Preenchimento />}
+              />
+              <Route path="/solicitacoes/:solicitacaoId/checklist" element={<Preenchimento />} />
+            </Route>
+
+            {/* Rota desconhecida volta à raiz, que já passa pelo portão. */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </LimiteDeErro>
+      </HashRouter>
+    </ProvedorSessao>
   );
 }

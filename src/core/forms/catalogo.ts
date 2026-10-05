@@ -1,101 +1,137 @@
+import { validarDefinicao } from '../../../compartilhado/formulario';
+import { api } from '../api/cliente';
 import { FormularioRepository } from '../db/repositorios';
-import { obterPainel } from '../paineis/catalogo';
-import { catalogoSchema, definicaoFormularioSchema, descreverErro } from './schema';
-import type { Catalogo, DefinicaoFormulario, EntradaCatalogo } from './tipos';
+import type { FormularioCache } from '../db/tipos';
+import type { DefinicaoFormulario, EntradaCatalogo } from './tipos';
 
-const base = import.meta.env.BASE_URL;
+export { validarDefinicao };
 
-let catalogoCache: Catalogo | null = null;
-const formularioCache = new Map<string, DefinicaoFormulario>();
+/**
+ * Acesso aos checklists no aparelho do montador.
+ *
+ * A fonte da verdade é o servidor, onde a administração monta o checklist de
+ * cada painel. Aqui a leitura é sempre da cópia local: dentro do galpão não
+ * há rede, e um preenchimento que dependesse de rede para abrir o formulário
+ * simplesmente não abriria. A cópia é renovada por `sincronizarPainel`, nos
+ * momentos em que há conexão.
+ */
 
-async function lerJson(caminho: string): Promise<unknown> {
-  const resposta = await fetch(`${base}${caminho}`, { cache: 'no-cache' });
-  if (!resposta.ok) {
-    throw new Error(`Não foi possível ler ${caminho} (HTTP ${resposta.status}).`);
-  }
-  return resposta.json();
+/** Como o servidor entrega o checklist: a entrada de lista mais a definição. */
+interface FormularioDoServidor extends EntradaCatalogo {
+  definicao: unknown;
 }
 
-export async function carregarCatalogo(forcar = false): Promise<Catalogo> {
-  if (catalogoCache && !forcar) return catalogoCache;
-  const bruto = await lerJson('forms/index.json');
-  const analise = catalogoSchema.safeParse(bruto);
-  if (!analise.success) {
-    throw new Error(`Catálogo de formulários inválido:\n${descreverErro(analise.error)}`);
-  }
-  catalogoCache = analise.data;
-  return catalogoCache;
-}
+/** Memória de processo, para não reler o IndexedDB a cada etapa do PDF. */
+const memoria = new Map<string, DefinicaoFormulario>();
 
-export function validarDefinicao(bruto: unknown): DefinicaoFormulario {
-  const analise = definicaoFormularioSchema.safeParse(bruto);
-  if (!analise.success) {
-    throw new Error(descreverErro(analise.error));
-  }
-  return analise.data;
+function paraEntrada(f: FormularioCache): EntradaCatalogo {
+  return {
+    id: f.id,
+    nome: f.nome,
+    tipo: f.tipo,
+    linhaProduto: f.linhaProduto,
+    painelSlug: f.painelSlug,
+    ativo: f.ativo,
+    etapas: f.etapas,
+    atualizadoEm: f.atualizadoEm,
+  };
 }
 
 /**
- * Carrega uma definição. A versão editada na aba de administração, quando
- * existe, tem precedência sobre o arquivo em `/public/forms`.
+ * Baixa os checklists de um painel e substitui a cópia local.
+ *
+ * Exige acesso aprovado ao painel — é o servidor quem decide. Um 403 aqui não
+ * é falha: significa que o montador ainda não foi aprovado, e a tela já trata
+ * esse caso mostrando o pedido pendente.
  */
+export async function sincronizarPainel(
+  painelId: number,
+  painelSlug: string,
+): Promise<EntradaCatalogo[]> {
+  const { formularios } = await api.get<{ formularios: FormularioDoServidor[] }>(
+    `/api/paineis/${painelId}/formularios`,
+  );
+
+  const agora = Date.now();
+  const cache: FormularioCache[] = formularios.map((f) => ({
+    id: f.id,
+    painelSlug,
+    nome: f.nome,
+    tipo: f.tipo,
+    linhaProduto: f.linhaProduto,
+    ativo: f.ativo !== false,
+    etapas: f.etapas ?? 0,
+    atualizadoEm: f.atualizadoEm ?? agora,
+    // Revalida o que veio da rede: um checklist corrompido tem de falhar aqui,
+    // e não na tela de preenchimento com o montador na frente do painel.
+    definicao: validarDefinicao(f.definicao),
+    sincronizadoEm: agora,
+  }));
+
+  await FormularioRepository.substituirPainel(painelSlug, cache);
+  for (const f of cache) memoria.set(f.id, f.definicao);
+  return cache.map(paraEntrada);
+}
+
+/**
+ * Sincroniza os painéis que o montador pode preencher, sem deixar que a falha
+ * de um derrube os outros: sem rede, a tela segue com o que já está guardado.
+ */
+export async function sincronizarPaineis(
+  paineis: readonly { id: number; slug: string; podePreencher: boolean }[],
+): Promise<void> {
+  await Promise.all(
+    paineis
+      .filter((p) => p.podePreencher)
+      .map((p) =>
+        sincronizarPainel(p.id, p.slug).catch(() => {
+          // Offline ou acesso revogado: a cópia local continua valendo.
+        }),
+      ),
+  );
+}
+
+/**
+ * Checklists do painel indicado. Um painel sem checklist cadastrado devolve
+ * lista vazia, e a tela mostra o aviso em vez de oferecer o formulário de
+ * outra linha — as etapas de um SEN Plus não valem para um MNS.
+ */
+export async function formulariosDoPainel(
+  painelSlug: string | undefined,
+): Promise<EntradaCatalogo[]> {
+  // Projeto anterior aos painéis: não há a que restringir.
+  const lista = painelSlug
+    ? await FormularioRepository.listarPorPainel(painelSlug)
+    : await FormularioRepository.listar();
+
+  return lista
+    .filter((f) => f.ativo)
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map(paraEntrada);
+}
+
 export async function carregarFormulario(
   id: string,
   forcar = false,
 ): Promise<DefinicaoFormulario> {
-  if (!forcar && formularioCache.has(id)) return formularioCache.get(id)!;
-
-  const customizado = await FormularioRepository.obter(id);
-  if (customizado) {
-    try {
-      const definicao = validarDefinicao(customizado.definicao);
-      formularioCache.set(id, definicao);
-      return definicao;
-    } catch (erro) {
-      // Customização corrompida não pode derrubar o preenchimento:
-      // registra e volta ao arquivo original.
-      console.error(`Formulário customizado "${id}" inválido; usando o original.`, erro);
-    }
+  if (!forcar) {
+    const emMemoria = memoria.get(id);
+    if (emMemoria) return emMemoria;
   }
 
-  const catalogo = await carregarCatalogo();
-  const entrada = catalogo.formularios.find((f) => f.id === id);
-  if (!entrada) throw new Error(`Formulário "${id}" não consta no catálogo.`);
-  const definicao = validarDefinicao(await lerJson(`forms/${entrada.arquivo}`));
-  formularioCache.set(id, definicao);
-  return definicao;
-}
+  const cache = await FormularioRepository.obter(id);
+  if (!cache) {
+    throw new Error(
+      `O checklist "${id}" ainda não foi baixado para este aparelho. ` +
+        'Conecte-se à rede uma vez para recebê-lo.',
+    );
+  }
 
-/** Lê o arquivo original ignorando a customização (usado para restaurar). */
-export async function carregarFormularioOriginal(
-  id: string,
-): Promise<DefinicaoFormulario> {
-  const catalogo = await carregarCatalogo();
-  const entrada = catalogo.formularios.find((f) => f.id === id);
-  if (!entrada) throw new Error(`Formulário "${id}" não consta no catálogo.`);
-  return validarDefinicao(await lerJson(`forms/${entrada.arquivo}`));
+  memoria.set(id, cache.definicao);
+  return cache.definicao;
 }
 
 export function limparCacheFormulario(id?: string): void {
-  if (id) formularioCache.delete(id);
-  else formularioCache.clear();
-}
-
-export async function formulariosAtivos(): Promise<EntradaCatalogo[]> {
-  const catalogo = await carregarCatalogo();
-  return catalogo.formularios.filter((f) => f.ativo !== false);
-}
-
-/**
- * Formulários de um tipo de painel, na ordem declarada no catálogo de painéis.
- * É por aqui que o SEN Plus continua vendo só os seus dois checklists depois da
- * entrada dos demais painéis.
- */
-export async function formulariosDoPainel(
-  painelId: string,
-): Promise<EntradaCatalogo[]> {
-  const [catalogo, painel] = await Promise.all([carregarCatalogo(), obterPainel(painelId)]);
-  return painel.formularios
-    .map((id) => catalogo.formularios.find((f) => f.id === id))
-    .filter((f): f is EntradaCatalogo => !!f && f.ativo !== false);
+  if (id) memoria.delete(id);
+  else memoria.clear();
 }

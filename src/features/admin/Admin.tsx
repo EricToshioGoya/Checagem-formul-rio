@@ -1,248 +1,169 @@
-import { useEffect, useState } from 'react';
-import { AdminApi, ServidorIndisponivel } from '../../core/acesso/api';
-import { SENHA_ADMIN } from '../../core/config';
-import { formulariosAtivos } from '../../core/forms/catalogo';
-import { usePainelAtivo } from '../paineis/PainelAtivo';
-import type { EntradaCatalogo } from '../../core/forms/tipos';
-import { EditorFormulario } from './EditorFormulario';
-import { Liberacoes } from './Liberacoes';
-import { PermissoesPainel } from './PermissoesPainel';
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { api, type ResumoAdmin } from '../../core/api/cliente';
+import { useSessao } from '../../core/api/SessaoContexto';
+import { Andamento } from '../paineis/Andamento';
+import { GestaoAcessos } from './GestaoAcessos';
+import { GestaoAdministradores } from './GestaoAdministradores';
+import { GestaoContas } from './GestaoContas';
+import { GestaoPaineis } from './GestaoPaineis';
+import { Historico } from './Historico';
+import { Sistema } from './Sistema';
 import { ValidacaoAbb } from './ValidacaoAbb';
-import { Botao } from '../../shared/componentes/Botao';
-import { CampoTexto } from '../../shared/componentes/Campos';
-import { Aviso, Erro, Carregando, Vazio } from '../../shared/componentes/Estado';
+import { plural } from '../../../compartilhado/plural';
+import { sessaoAdminAcabou } from './sessaoAdmin';
 
-const CHAVE_TOKEN = 'admin-token';
+type Aba =
+  | 'acessos'
+  | 'andamento'
+  | 'validacao'
+  | 'paineis'
+  | 'contas'
+  | 'administradores'
+  | 'historico'
+  | 'sistema';
 
-type Aba = 'validacao' | 'liberacoes' | 'formularios' | 'acesso';
+const ABAS: Array<{ id: Aba; rotulo: string; curto: string }> = [
+  { id: 'acessos', rotulo: 'Acessos', curto: 'Acessos' },
+  { id: 'andamento', rotulo: 'Andamento', curto: 'Andamento' },
+  { id: 'validacao', rotulo: 'Validação ABB', curto: 'Validação' },
+  { id: 'paineis', rotulo: 'Painéis e checklists', curto: 'Painéis' },
+  { id: 'contas', rotulo: 'Contas', curto: 'Contas' },
+  { id: 'administradores', rotulo: 'Administradores', curto: 'Admins' },
+  { id: 'historico', rotulo: 'Histórico', curto: 'Histórico' },
+  { id: 'sistema', rotulo: 'Sistema', curto: 'Sistema' },
+];
 
+/** Selos de pendência de cada aba; relidos de tempos em tempos. */
+const RELEITURA_MS = 30_000;
+
+/**
+ * Área de administração.
+ *
+ * Não há senha própria: chega aqui quem entrou como administrador, com a
+ * própria conta — o portão é `ExigirAdmin`, e quem decide de fato é o
+ * servidor, que confere o papel da conta em toda rota de administração.
+ */
 export function Admin() {
-  const { painel } = usePainelAtivo();
-  const [token, setToken] = useState<string | null>(null);
-  const [conferindoSessao, setConferindoSessao] = useState(
-    () => sessionStorage.getItem(CHAVE_TOKEN) !== null,
-  );
-  /**
-   * Sem servidor, a liberação vale só enquanto a tela estiver aberta: guardá-la
-   * no armazenamento faria da área algo que se abre escrevendo uma chave no
-   * console.
-   */
-  const [modoLocal, setModoLocal] = useState(false);
-  const [senha, setSenha] = useState('');
-  const [entrando, setEntrando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const [entradas, setEntradas] = useState<EntradaCatalogo[] | null>(null);
-  const [selecionado, setSelecionado] = useState<string | null>(null);
-  const [aba, setAba] = useState<Aba>('validacao');
+  const { sair } = useSessao();
+  const navegar = useNavigate();
+  // A aba fica na URL: recarregar a página volta para onde se estava.
+  const [parametros, setParametros] = useSearchParams();
+  const aba: Aba = ABAS.some((a) => a.id === parametros.get('aba'))
+    ? (parametros.get('aba') as Aba)
+    : 'acessos';
+  const [resumo, setResumo] = useState<ResumoAdmin | null>(null);
 
-  const liberado = token !== null || modoLocal;
+  const sessaoVencida = useCallback(async () => {
+    await sair();
+    navegar('/entrar?perfil=admin', { replace: true });
+  }, [navegar, sair]);
 
-  // Token gravado não é prova de nada: só vale se o servidor ainda o
-  // reconhecer.
-  useEffect(() => {
-    const gravado = sessionStorage.getItem(CHAVE_TOKEN);
-    if (!gravado) return;
-    let vivo = true;
-    AdminApi.listar(gravado)
-      .then(() => {
-        if (vivo) setToken(gravado);
-      })
-      .catch(() => {
-        sessionStorage.removeItem(CHAVE_TOKEN);
-      })
-      .finally(() => {
-        if (vivo) setConferindoSessao(false);
-      });
-    return () => {
-      vivo = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!liberado) return;
-    // Só os formulários do painel em uso: a senha libera a área, o painel
-    // escolhido decide o que ela mostra.
-    formulariosAtivos()
-      .then((todas) =>
-        setEntradas(painel ? todas.filter((e) => painel.formularios.includes(e.id)) : []),
-      )
-      .catch((e: unknown) =>
-        setErro(e instanceof Error ? e.message : 'Falha ao ler o catálogo.'),
-      );
-  }, [liberado, painel]);
-
-  /**
-   * A senha é conferida no servidor, que é quem guarda a fila de liberação.
-   * Sem servidor — pendrive sem rede, aplicação estática — a senha de build
-   * ainda abre as abas locais, que é o que continua fazendo sentido ali.
-   */
-  const entrar = async () => {
-    setEntrando(true);
-    setErro(null);
+  const lerResumo = useCallback(async () => {
     try {
-      const novoToken = await AdminApi.entrar(senha);
-      sessionStorage.setItem(CHAVE_TOKEN, novoToken);
-      setToken(novoToken);
-      setModoLocal(false);
-      setSenha('');
+      setResumo(await api.get<ResumoAdmin>('/api/admin/resumo'));
     } catch (e) {
-      if (e instanceof ServidorIndisponivel) {
-        if (senha === SENHA_ADMIN) {
-          setModoLocal(true);
-          setSenha('');
-        } else {
-          setErro('Senha incorreta.');
-        }
-      } else {
-        setErro(e instanceof Error ? e.message : 'Não foi possível entrar.');
-      }
-    } finally {
-      setEntrando(false);
+      if (sessaoAdminAcabou(e)) void sessaoVencida();
     }
+  }, [sessaoVencida]);
+
+  useEffect(() => {
+    void lerResumo();
+    const releitura = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void lerResumo();
+    }, RELEITURA_MS);
+    return () => window.clearInterval(releitura);
+  }, [lerResumo]);
+
+  const selo: Partial<Record<Aba, number>> = {
+    acessos: resumo?.acessosPendentes,
+    administradores: resumo?.pedidosAdmin,
   };
-
-  const sair = () => {
-    if (token) void AdminApi.sair(token).catch(() => undefined);
-    sessionStorage.removeItem(CHAVE_TOKEN);
-    setToken(null);
-    setModoLocal(false);
-    setSelecionado(null);
-    setAba('validacao');
-  };
-
-  const expirou = () => {
-    sessionStorage.removeItem(CHAVE_TOKEN);
-    setToken(null);
-    setErro('Sessão de administração expirada. Entre novamente.');
-  };
-
-  if (conferindoSessao && !liberado) {
-    return <Carregando mensagem="Conferindo a sessão da administração…" />;
-  }
-
-  if (!liberado) {
-    return (
-      <div className="mx-auto max-w-md space-y-4">
-        <h1 className="text-2xl font-bold">Administração</h1>
-        <p className="text-base text-abb-gray">
-          Liberação de montadores e edição do conteúdo dos formulários. Informe a
-          senha para continuar.
-        </p>
-        <CampoTexto rotulo="Senha" senha valor={senha} onChange={setSenha} autoFoco />
-        {erro ? <Erro detalhe={erro} /> : null}
-        <Botao
-          variante="primario"
-          larguraTotal
-          disabled={entrando}
-          onClick={() => void entrar()}
-        >
-          {entrando ? 'Entrando…' : 'Entrar'}
-        </Botao>
-      </div>
-    );
-  }
-
-  if (erro) return <Erro detalhe={erro} />;
-  if (!entradas) return <Carregando mensagem="Lendo o catálogo de formulários…" />;
-
-  if (selecionado) {
-    return (
-      <EditorFormulario formId={selecionado} onVoltar={() => setSelecionado(null)} />
-    );
-  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Administração</h1>
-        <Botao onClick={sair}>Bloquear</Botao>
-      </div>
+    <div className="space-y-5">
+      <h1 className="text-2xl font-bold">Administração</h1>
 
-      {modoLocal ? (
-        <Aviso>
-          Sem conexão com o servidor de liberação: a fila de pedidos não abre neste
-          momento. As demais abas valem normalmente.
-        </Aviso>
-      ) : null}
-
-      <div className="flex flex-wrap gap-2" role="tablist">
-        {(
-          [
-            ['validacao', 'Validação ABB'],
-            ['liberacoes', 'Liberações'],
-            ['formularios', 'Formulários'],
-            ['acesso', 'Quem pode usar'],
-          ] as const
-        ).map(([chave, rotulo]) => (
-          <button
-            key={chave}
-            type="button"
-            role="tab"
-            aria-selected={aba === chave}
-            disabled={chave === 'liberacoes' && modoLocal}
-            onClick={() => setAba(chave)}
-            className={[
-              'min-h-12 rounded-md border px-4 text-base font-semibold disabled:opacity-40',
-              aba === chave
-                ? 'border-abb-red bg-abb-red text-white'
-                : 'border-abb-line bg-white text-abb-black',
-            ].join(' ')}
-          >
-            {rotulo}
-          </button>
-        ))}
-      </div>
-
-      {aba === 'validacao' ? <ValidacaoAbb /> : null}
-
-      {aba === 'liberacoes' && token ? (
-        <Liberacoes token={token} aoExpirar={expirou} />
-      ) : null}
-
-      {aba === 'acesso' ? (
-        painel ? (
-          <PermissoesPainel painel={painel} />
-        ) : (
-          <Vazio titulo="Nenhum painel em uso">
-            Escolha um painel na tela inicial para configurar quem pode usá-lo.
-          </Vazio>
-        )
-      ) : null}
-
-      {aba === 'formularios' ? (
-        <>
-      <p className="text-base text-abb-gray">
-        Formulários do painel{' '}
-        <span className="font-semibold text-abb-black">{painel?.nome}</span>. Escolha um
-        para editar textos, ativar ou desativar etapas, reordenar e trocar o conteúdo de
-        apoio.
-      </p>
-      {entradas.length === 0 ? (
-        <Vazio titulo="Nenhum formulário para editar">
-          Escolha um painel na tela inicial para ver os formulários dele.
-        </Vazio>
-      ) : null}
-      <ul className="space-y-3">
-        {entradas.map((e) => (
-          <li key={e.id}>
+      <div
+        role="tablist"
+        aria-label="Seções da administração"
+        className="flex w-full max-w-full overflow-x-auto rounded-xl border border-abb-line bg-white p-1 shadow-sm"
+      >
+        {ABAS.map((a) => {
+          const ativa = aba === a.id;
+          const n = selo[a.id] ?? 0;
+          return (
             <button
+              key={a.id}
               type="button"
-              onClick={() => setSelecionado(e.id)}
-              className="flex min-h-16 w-full items-center justify-between gap-3 rounded-lg border border-abb-line bg-white p-4 text-left hover:border-abb-red"
+              role="tab"
+              id={`aba-${a.id}`}
+              aria-selected={ativa}
+              aria-controls={`painel-${a.id}`}
+              onClick={() =>
+                setParametros(a.id === 'acessos' ? {} : { aba: a.id }, { replace: true })
+              }
+              className={[
+                'inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-semibold whitespace-nowrap transition',
+                ativa
+                  ? 'bg-abb-black text-white shadow-sm'
+                  : 'text-abb-gray hover:bg-neutral-100 hover:text-abb-black',
+              ].join(' ')}
             >
-              <span>
-                <span className="block text-lg font-bold">{e.nome}</span>
-                <span className="block text-sm text-abb-gray">
-                  {e.linhaProduto} • {e.id}
+              <span className="sm:hidden">{a.curto}</span>
+              <span className="hidden sm:inline">{a.rotulo}</span>
+              {n > 0 ? (
+                <span
+                  aria-label={plural(n, 'pendente', 'pendentes')}
+                  className={[
+                    'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-bold',
+                    ativa ? 'bg-white text-abb-black' : 'bg-sky-500 text-white',
+                  ].join(' ')}
+                >
+                  {n}
                 </span>
-              </span>
-              <span className="text-base font-semibold text-abb-red">Editar</span>
+              ) : null}
             </button>
-          </li>
-        ))}
-      </ul>
-        </>
-      ) : null}
+          );
+        })}
+      </div>
+
+      <div role="tabpanel" id={`painel-${aba}`} aria-labelledby={`aba-${aba}`}>
+        {aba === 'acessos' ? (
+          <GestaoAcessos onSessaoVencida={sessaoVencida} onAlterado={lerResumo} />
+        ) : aba === 'andamento' ? (
+          <div className="space-y-3">
+            <div>
+              <h2 className="text-xl font-bold">Andamento</h2>
+              <p className="text-sm text-abb-gray">
+                Quanto cada montador já preencheu, do que o aparelho dele sincronizou.
+              </p>
+            </div>
+            <Andamento onSessaoVencida={sessaoVencida} />
+          </div>
+        ) : aba === 'validacao' ? (
+          <div className="space-y-3">
+            <div>
+              <h2 className="text-xl font-bold">Validação ABB</h2>
+              <p className="text-sm text-abb-gray">
+                Solicitações de certificação gravadas neste aparelho: aprovar
+                atribui o número do certificado, devolver reabre para o montador.
+              </p>
+            </div>
+            <ValidacaoAbb />
+          </div>
+        ) : aba === 'contas' ? (
+          <GestaoContas onSessaoVencida={sessaoVencida} onAlterado={lerResumo} />
+        ) : aba === 'administradores' ? (
+          <GestaoAdministradores onSessaoVencida={sessaoVencida} onAlterado={lerResumo} />
+        ) : aba === 'historico' ? (
+          <Historico onSessaoVencida={sessaoVencida} />
+        ) : aba === 'sistema' ? (
+          <Sistema onSessaoVencida={sessaoVencida} />
+        ) : (
+          <GestaoPaineis />
+        )}
+      </div>
     </div>
   );
 }

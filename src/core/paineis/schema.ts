@@ -1,12 +1,14 @@
 import { z } from 'zod';
-import { campoCabecalhoSchema, descreverErro } from '../forms/schema';
+import { campoCabecalhoSchema, descreverErro } from '../../../compartilhado/formulario';
 
 /**
- * Catálogo dos tipos de painel (`/public/paineis/index.json`).
+ * Catálogo dos fluxos por painel (`/public/paineis/index.json`).
  *
- * É este arquivo que decide, para cada painel, quais checklists aparecem, qual
- * template de certificado é usado e quem é o responsável ABB pela validação.
- * Incluir um painel novo é acrescentar uma entrada aqui — o núcleo não muda.
+ * Os painéis em si — nome, responsáveis que aprovam o acesso e checklists —
+ * moram no servidor e são cadastrados na administração. Este arquivo só
+ * acrescenta, pelo `slug` do painel, o que é dado de publicação: o fluxo
+ * (verificação ou certificação), o template do certificado e o responsável ABB
+ * que assina. Painel do servidor sem entrada aqui segue o fluxo de verificação.
  */
 
 export const fluxosPainel = ['verificacao', 'certificacao'] as const;
@@ -21,6 +23,7 @@ export const responsavelSchema = z.object({
 
 export const painelSchema = z
   .object({
+    /** `slug` do painel no servidor (`sen-plus`, `system-pro-e-energy`…). */
     id: z.string().min(1),
     nome: z.string().min(1),
     descricao: z.string().optional().default(''),
@@ -29,17 +32,9 @@ export const painelSchema = z
      * `certificacao` — solicitação, validação ABB e emissão de certificado.
      */
     fluxo: z.enum(fluxosPainel),
-    formularios: z.array(z.string().min(1)).min(1),
     /** Id do template em `/public/certificados`. Exigido no fluxo de certificação. */
     certificado: z.string().min(1).optional(),
     responsavel: responsavelSchema.optional(),
-    /**
-     * Contatos de referência do painel, aceitos no catálogo e hoje sem efeito
-     * na aplicação: não há login, e a área de administração é liberada pela
-     * senha do build, não por e-mail.
-     */
-    responsavelMontagem: z.email().optional(),
-    administradores: z.array(z.email()).optional(),
     /** Sobrescreve `camposPadrao` do catálogo, quando este painel pedir outros campos. */
     campos: z.array(campoCabecalhoSchema).optional(),
     ativo: z.boolean().optional().default(true),

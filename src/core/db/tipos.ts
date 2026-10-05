@@ -1,24 +1,42 @@
-import type { MapaRespostas, ValoresCabecalho } from '../forms/tipos';
+import type {
+  DefinicaoFormulario,
+  MapaRespostas,
+  ValoresCabecalho,
+} from '../forms/tipos';
 
 export interface Projeto {
   id?: number;
-  /**
-   * Tipo de painel do catálogo. Ausente nos projetos gravados antes da
-   * inclusão dos demais painéis — esses são, por definição, SEN Plus.
-   */
-  tipoPainel?: string;
   empresa: string;
   nomeProjeto: string;
   operador: string;
-  /**
-   * Linha de produto (painel) escolhida no login. Projetos gravados antes da
-   * escolha de painel não têm o campo e continuam visíveis em qualquer painel.
-   */
-  painel?: string;
   /** Modelado desde a v1 para a futura integração SAP/ERP. */
   numeroPedido?: string;
+  /**
+   * Painel do servidor a que este projeto corresponde. Ausente nos projetos
+   * criados localmente antes do login existir.
+   */
+  painelId?: number;
+  /**
+   * `slug` do painel (`sen-plus`, `mns`…). Guardado junto do id para que a
+   * tela saiba quais formulários valem sem consultar o servidor — é o que
+   * mantém o preenchimento funcionando offline.
+   */
+  painelSlug?: string;
+  /**
+   * Dono da cópia local. Separa os dados de quem divide o mesmo aparelho.
+   * Ausente nos projetos anteriores ao login — esses aparecem para todos,
+   * e é o comportamento pretendido: não há a quem atribuí-los.
+   */
+  usuarioId?: number;
   criadoEm: number;
   atualizadoEm: number;
+  /**
+   * `atualizadoEm` do que foi enviado ao servidor por último. Projeto com
+   * `atualizadoEm` maior tem alteração ainda só neste aparelho.
+   */
+  sincronizadoEm?: number;
+  /** Versão do servidor de que esta cópia partiu. */
+  versaoServidor?: number;
 }
 
 export interface Tag {
@@ -26,13 +44,21 @@ export interface Tag {
   projetoId: number;
   nome: string;
   ordem: number;
+  /**
+   * Identificador que vale em todo aparelho. O `id` é só deste aparelho; para
+   * a mesma TAG ser reconhecida no servidor e em outro aparelho, é o `uid`.
+   */
+  uid?: string;
 }
 
 export interface Preenchimento {
   id?: number;
   /** Preenchimento do fluxo de verificação (projeto → TAG → formulário). */
   tagId?: number;
-  /** Preenchimento do fluxo de certificação: uma solicitação, um checklist. */
+  /**
+   * Preenchimento do fluxo de certificação: uma solicitação, um checklist.
+   * Fica só no aparelho — a sincronização trata apenas os de TAG.
+   */
   solicitacaoId?: number;
   formId: string;
   /** Revisão da definição usada — impressa no PDF. */
@@ -54,23 +80,32 @@ export interface Midia {
   nomeOriginal?: string;
   criadoEm: number;
   ordem: number;
+  /** Identificador que vale em todo aparelho e é o nome do arquivo no servidor. */
+  uid?: string;
 }
 
 /**
- * Definição de formulário editada pela aba de administração.
- * Quando existe, tem precedência sobre o arquivo em `/public/forms`.
+ * Checklist baixado do servidor e guardado no aparelho.
+ *
+ * O servidor é a fonte da verdade — é lá que a administração monta o
+ * checklist. Esta cópia existe para o montador continuar preenchendo dentro
+ * do galpão, sem rede: a tela de preenchimento lê sempre daqui, e a sincronia
+ * acontece quando há conexão.
  */
-export interface FormularioCustomizado {
+export interface FormularioCache {
   id: string;
-  definicao: unknown;
+  painelSlug: string;
+  nome: string;
+  tipo: 'montagem' | 'rotina';
+  linhaProduto: string;
+  ativo: boolean;
+  /** Etapas ativas; zero significa checklist ainda em construção. */
+  etapas: number;
+  /** Carimbo do servidor: muda quando a administração grava o checklist. */
   atualizadoEm: number;
-}
-
-/** Permissões de um painel editadas na aba de administração. */
-export interface PermissaoCustomizada {
-  painelId: string;
-  permissao: unknown;
-  atualizadoEm: number;
+  definicao: DefinicaoFormulario;
+  /** Quando este aparelho baixou — para mostrar a idade da cópia offline. */
+  sincronizadoEm: number;
 }
 
 /**
@@ -98,10 +133,12 @@ export interface EventoSolicitacao {
 
 export interface Solicitacao {
   id?: number;
-  /** Id do painel no catálogo (`spee`, `spep`, `safr`). */
+  /** `slug` do painel (`system-pro-e-energy`, `system-pro-e-power`, `safr`). */
   tipoPainel: string;
-  /** Id do checklist usado — vem do catálogo de painéis. */
+  /** Id do checklist usado — o primeiro checklist ativo do painel. */
   formId: string;
+  /** Conta que abriu a solicitação. Separa os dados de quem divide o aparelho. */
+  usuarioId?: number;
   estado: EstadoSolicitacao;
   dados: DadosSolicitacao;
   /** Apontamentos da última devolução, exibidos ao montador. */

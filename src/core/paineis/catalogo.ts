@@ -1,6 +1,6 @@
 import type { CampoCabecalho } from '../forms/tipos';
 import { catalogoPaineisSchema, descreverErro } from './schema';
-import type { CatalogoPaineis, Painel } from './tipos';
+import type { CatalogoPaineis, FluxoPainel, Painel } from './tipos';
 
 const base = import.meta.env.BASE_URL;
 
@@ -25,23 +25,39 @@ export async function carregarCatalogoPaineis(forcar = false): Promise<CatalogoP
   return cache;
 }
 
-export async function paineisAtivos(): Promise<Painel[]> {
-  return (await carregarCatalogoPaineis()).paineis.filter((p) => p.ativo !== false);
+/** Entrada do catálogo para o `slug`, ou `null` quando o painel não tem uma. */
+export async function entradaDoPainel(slug: string): Promise<Painel | null> {
+  const catalogo = await carregarCatalogoPaineis();
+  return catalogo.paineis.find((p) => p.id === slug && p.ativo !== false) ?? null;
 }
 
-export async function obterPainel(id: string): Promise<Painel> {
-  const painel = (await carregarCatalogoPaineis()).paineis.find((p) => p.id === id);
-  if (!painel) throw new Error(`Tipo de painel "${id}" não consta no catálogo.`);
+export async function obterPainel(slug: string): Promise<Painel> {
+  const painel = await entradaDoPainel(slug);
+  if (!painel) throw new Error(`O painel "${slug}" não consta no catálogo de fluxos.`);
   return painel;
+}
+
+/**
+ * Fluxo de um painel do servidor. Sem entrada no catálogo — ou sem o catálogo,
+ * por falta de rede na primeira abertura — vale a verificação, que é o
+ * comportamento de todo painel cadastrado na administração.
+ */
+export async function fluxoDoPainel(slug: string | undefined): Promise<FluxoPainel> {
+  if (!slug) return 'verificacao';
+  try {
+    return (await entradaDoPainel(slug))?.fluxo ?? 'verificacao';
+  } catch {
+    return 'verificacao';
+  }
 }
 
 /**
  * Campos da solicitação para um painel: os próprios, quando declarados, ou os
  * campos padrão do catálogo. Nenhum deles é escrito no código das telas.
  */
-export async function camposDoPainel(id: string): Promise<CampoCabecalho[]> {
+export async function camposDoPainel(slug: string): Promise<CampoCabecalho[]> {
   const catalogo = await carregarCatalogoPaineis();
-  const painel = await obterPainel(id);
+  const painel = await obterPainel(slug);
   return painel.campos ?? catalogo.camposPadrao;
 }
 

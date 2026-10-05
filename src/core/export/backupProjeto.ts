@@ -51,12 +51,10 @@ export async function exportarProjeto(projetoId: number): Promise<void> {
     versao: VERSAO,
     exportadoEm: new Date().toISOString(),
     projeto: {
-      tipoPainel: projeto.tipoPainel,
       empresa: projeto.empresa,
       nomeProjeto: projeto.nomeProjeto,
       operador: projeto.operador,
       numeroPedido: projeto.numeroPedido,
-      painel: projeto.painel,
       criadoEm: projeto.criadoEm,
       atualizadoEm: projeto.atualizadoEm,
     },
@@ -106,7 +104,10 @@ export async function exportarProjeto(projetoId: number): Promise<void> {
  * chave primária, o que antes acontecia porque o objeto do arquivo era
  * repassado ao Dexie inteiro.
  */
-export async function importarProjeto(arquivo: File | Blob): Promise<number> {
+export async function importarProjeto(
+  arquivo: File | Blob,
+  usuarioId?: number,
+): Promise<number> {
   const { default: JSZip } = await import('jszip');
   let zip: Awaited<ReturnType<typeof JSZip.loadAsync>>;
   try {
@@ -157,6 +158,11 @@ export async function importarProjeto(arquivo: File | Blob): Promise<number> {
         nomeProjeto: `${pacote.projeto.nomeProjeto} (importado)`,
         operador: pacote.projeto.operador,
         numeroPedido: pacote.projeto.numeroPedido,
+        // O projeto importado passa a ser de quem importou: o pacote vem de
+        // outro aparelho, e o `usuarioId` de lá não vale nada aqui. O
+        // `painelId` também não viaja — o vínculo com o painel se refaz ao
+        // abrir pelo servidor.
+        usuarioId,
         criadoEm: pacote.projeto.criadoEm,
         atualizadoEm: agora,
       });

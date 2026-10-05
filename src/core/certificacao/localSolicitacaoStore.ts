@@ -19,6 +19,9 @@ export const localSolicitacaoStore: SolicitacaoStore = {
     return todas.filter(
       (s) =>
         (!filtro.tipoPainel || s.tipoPainel === filtro.tipoPainel) &&
+        (filtro.usuarioId === undefined ||
+          s.usuarioId === undefined ||
+          s.usuarioId === filtro.usuarioId) &&
         (!filtro.estados?.length || filtro.estados.includes(s.estado)),
     );
   },
@@ -32,6 +35,7 @@ export const localSolicitacaoStore: SolicitacaoStore = {
     return db.solicitacoes.add({
       tipoPainel: entrada.tipoPainel,
       formId: entrada.formId,
+      usuarioId: entrada.usuarioId,
       estado: 'rascunho',
       dados: entrada.dados,
       historico: [{ estado: 'rascunho', em: agora, por: entrada.dados.operador ?? '' }],

@@ -6,6 +6,9 @@
       "nome": "Verificação de Montagem — SEN Plus",
       "tipo": "montagem",
       "linhaProduto": "SEN Plus",
+      "paineis": [
+        "sen-plus"
+      ],
       "ativo": true
     },
     {
@@ -14,6 +17,9 @@
       "nome": "Verificação de Rotina — Baixa Tensão",
       "tipo": "rotina",
       "linhaProduto": "Baixa tensão",
+      "paineis": [
+        "sen-plus"
+      ],
       "ativo": true
     },
     {
@@ -22,6 +28,11 @@
       "nome": "Ensaios de Rotina — NBR IEC 61439",
       "tipo": "rotina",
       "linhaProduto": "Painéis certificados ABB",
+      "paineis": [
+        "system-pro-e-energy",
+        "system-pro-e-power",
+        "safr"
+      ],
       "ativo": true
     }
   ]

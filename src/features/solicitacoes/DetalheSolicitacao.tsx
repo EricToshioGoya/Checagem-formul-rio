@@ -19,12 +19,16 @@ import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
 import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { IconePdf, IconeSeta, IconeVoltar } from '../../shared/componentes/Icones';
 import { dataHoraBr } from '../../shared/utils/texto';
+import { useSessao } from '../../core/api/SessaoContexto';
+import { AcessoBloqueado } from '../paineis/AcessoBloqueado';
 import { EtiquetaEstado } from './estado';
+import { useAcessoCertificacao } from './acesso';
 
 export function DetalheSolicitacao() {
   const { solicitacaoId } = useParams();
   const id = Number(solicitacaoId);
   const navegar = useNavigate();
+  const { usuario } = useSessao();
 
   const [solicitacao, setSolicitacao] = useState<Solicitacao | null>(null);
   const [situacao, setSituacao] = useState<SituacaoSolicitacao | null>(null);
@@ -37,7 +41,8 @@ export function DetalheSolicitacao() {
   const recarregar = useCallback(async () => {
     try {
       const s = await solicitacaoStore.obter(id);
-      if (!s) {
+      // Solicitação de outra conta no mesmo aparelho não abre aqui.
+      if (!s || (s.usuarioId !== undefined && s.usuarioId !== usuario?.id)) {
         setErro('Solicitação não encontrada neste aparelho.');
         return;
       }
@@ -48,7 +53,9 @@ export function DetalheSolicitacao() {
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao carregar a solicitação.');
     }
-  }, [id]);
+  }, [id, usuario]);
+
+  const acesso = useAcessoCertificacao(solicitacao?.tipoPainel);
 
   useEffect(() => {
     void recarregar();
@@ -60,7 +67,8 @@ export function DetalheSolicitacao() {
   );
 
   if (erro && !solicitacao) return <Erro detalhe={erro} />;
-  if (!solicitacao || !situacao) return <Carregando mensagem="Carregando a solicitação…" />;
+  if (acesso.bloqueio) return <AcessoBloqueado bloqueio={acesso.bloqueio} />;
+  if (!solicitacao || !situacao || acesso.conferindo) return <Carregando mensagem="Carregando a solicitação…" />;
 
   const editavel = podeEditar(solicitacao.estado);
   const podeEnviar = editavel && situacao.completa && pendentesCampos.length === 0;
@@ -75,7 +83,7 @@ export function DetalheSolicitacao() {
     setOcupado(true);
     setErro(null);
     try {
-      await servicoValidacao.enviarParaValidacao(id, valores.operador ?? '');
+      await servicoValidacao.enviarParaValidacao(id, usuario?.nome ?? valores.operador ?? '');
       setMensagem(
         `Solicitação enviada para ${situacao.painel.responsavel?.nome ?? 'a ABB'}. ` +
           'O certificado será gerado após a aprovação.',
@@ -96,7 +104,7 @@ export function DetalheSolicitacao() {
       const { gerarPdfCertificado } = await import('../../core/certificado/emissao');
       const arquivo = await gerarPdfCertificado(id);
       baixarBlob(arquivo.blob, arquivo.nome);
-      await servicoValidacao.registrarEmissao(id, valores.operador ?? '');
+      await servicoValidacao.registrarEmissao(id, usuario?.nome ?? valores.operador ?? '');
       setMensagem(`Certificado ${arquivo.numero} gerado: ${arquivo.nome}`);
       await recarregar();
     } catch (e) {

@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { PAINEL_PADRAO } from '../../core/config';
 import { ProjetoRepository } from '../../core/db/repositorios';
+import { useSessao } from '../../core/api/SessaoContexto';
+import { useEstadoSincronizacao } from '../../core/sync/useSincronizacao';
+import { conferirAcessoPainel, type Bloqueio } from '../../core/api/acessoLocal';
+import { AcessoBloqueado } from '../paineis/AcessoBloqueado';
 import {
   progressoDoProjeto,
   type ProgressoDeProjeto,
@@ -13,7 +16,8 @@ import { BarraProgresso } from '../../shared/componentes/BarraProgresso';
 import { CampoTexto } from '../../shared/componentes/Campos';
 import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { Modal } from '../../shared/componentes/Modal';
-import { Carregando, Erro, Vazio } from '../../shared/componentes/Estado';
+import { Aviso, Carregando, Erro, Vazio } from '../../shared/componentes/Estado';
+import { SituacaoSincronizacao } from './SituacaoSincronizacao';
 import {
   IconeLixeira,
   IconeMais,
@@ -26,9 +30,12 @@ export function DetalheProjeto() {
   const { projetoId } = useParams();
   const id = Number(projetoId);
   const navegar = useNavigate();
+  const { usuario } = useSessao();
+
   const [projeto, setProjeto] = useState<Projeto | null>(null);
   const [dados, setDados] = useState<ProgressoDeProjeto | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [bloqueio, setBloqueio] = useState<Bloqueio | null>(null);
   const [tagParaExcluir, setTagParaExcluir] = useState<{ id: number; nome: string } | null>(null);
   const [tagParaRenomear, setTagParaRenomear] = useState<{ id: number; nome: string } | null>(null);
   const [novoNome, setNovoNome] = useState('');
@@ -36,50 +43,114 @@ export function DetalheProjeto() {
   const [nomeNovaTag, setNomeNovaTag] = useState('');
   const [pdfAberto, setPdfAberto] = useState(false);
   const [exportando, setExportando] = useState(false);
+  const [empresaEditada, setEmpresaEditada] = useState<string | null>(null);
 
   const recarregar = useCallback(async () => {
-    if (!Number.isFinite(id)) return;
+    if (!Number.isFinite(id) || !usuario) return;
     try {
-      const [p, d] = await Promise.all([ProjetoRepository.obter(id), progressoDoProjeto(id)]);
+      const p = await ProjetoRepository.obterDoUsuario(id, usuario.id);
       if (!p) {
         setErro('Projeto não encontrado neste aparelho.');
         return;
       }
+      // O painel do projeto decide quais formulários existem aqui — e se o
+      // acesso a ele ainda vale. Projeto anterior aos painéis não tem a quem
+      // perguntar.
+      const [d, b] = await Promise.all([
+        progressoDoProjeto(id, p.painelSlug),
+        p.painelId === undefined ? null : conferirAcessoPainel(usuario.id, p.painelId),
+      ]);
+      setBloqueio(b);
       setProjeto(p);
       setDados(d);
       setErro(null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao carregar o projeto.');
     }
-  }, [id]);
+  }, [id, usuario]);
 
+  // Uma passada de sincronização pode ter trazido TAGs e respostas de outro aparelho.
+  const { ultimaEm: sincronizadoEm } = useEstadoSincronizacao();
   useEffect(() => {
     void recarregar();
-  }, [recarregar]);
+  }, [recarregar, sincronizadoEm]);
 
   if (erro) return <Erro detalhe={erro} />;
   if (!projeto || !dados) return <Carregando mensagem="Carregando o projeto…" />;
+  if (bloqueio) return <AcessoBloqueado bloqueio={bloqueio} />;
+
+  // Projetos abertos antes desta versão receberam o e-mail do responsável
+  // como empresa — valor provisório, que não vale como nome de empresa.
+  const empresaInformada =
+    projeto.empresa.trim() !== '' && projeto.empresa !== '—' && !projeto.empresa.includes('@');
+
+  const gravarEmpresa = async () => {
+    if (empresaEditada === null) return;
+    await ProjetoRepository.atualizar(id, { empresa: empresaEditada.trim() });
+    setEmpresaEditada(null);
+    await recarregar();
+  };
 
   return (
     <div className="space-y-5">
       <div className="flex items-start gap-2">
-        <Botao
-          variante="texto"
-          onClick={() =>
-            navegar(`/paineis/${projeto.tipoPainel ?? PAINEL_PADRAO}/projetos`)
-          }
-          aria-label="Voltar aos projetos"
-        >
+        <Botao variante="texto" onClick={() => navegar('/')} aria-label="Voltar aos projetos">
           <IconeVoltar />
         </Botao>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold tracking-wide text-abb-gray uppercase">
-            {projeto.empresa}
-          </p>
+          <button
+            type="button"
+            onClick={() => setEmpresaEditada(empresaInformada ? projeto.empresa : '')}
+            className="inline-flex max-w-full items-center gap-2 rounded text-left text-sm font-semibold tracking-wide text-abb-gray uppercase hover:text-abb-black"
+          >
+            <span className="truncate">{empresaInformada ? projeto.empresa : 'Empresa não informada'}</span>
+            <span className="text-xs font-semibold tracking-normal text-abb-red normal-case">
+              editar
+            </span>
+          </button>
           <h1 className="text-2xl font-bold break-words">{projeto.nomeProjeto}</h1>
           <p className="text-base text-abb-gray">Operador: {projeto.operador || '—'}</p>
+          <SituacaoSincronizacao projeto={projeto} />
         </div>
       </div>
+
+      {empresaInformada ? null : (
+        <Aviso>
+          <span className="flex flex-wrap items-center justify-between gap-2">
+            <span>Informe a empresa: ela aparece na capa e no nome do arquivo do PDF.</span>
+            <Botao tamanho="compacto" onClick={() => setEmpresaEditada('')}>
+              Informar empresa
+            </Botao>
+          </span>
+        </Aviso>
+      )}
+
+      <Modal
+        aberto={empresaEditada !== null}
+        titulo="Empresa do projeto"
+        onFechar={() => setEmpresaEditada(null)}
+        rodape={
+          <>
+            <Botao onClick={() => setEmpresaEditada(null)}>Cancelar</Botao>
+            <Botao
+              variante="primario"
+              disabled={!empresaEditada?.trim()}
+              onClick={() => void gravarEmpresa()}
+            >
+              Gravar
+            </Botao>
+          </>
+        }
+      >
+        <CampoTexto
+          rotulo="Nome da empresa"
+          valor={empresaEditada ?? ''}
+          onChange={setEmpresaEditada}
+          placeholder="Ex.: Montadora Parceira Ltda."
+          ajuda="Aparece na capa e no nome do arquivo do PDF."
+          autoFoco
+        />
+      </Modal>
 
       <div className="rounded-lg border border-abb-line bg-white p-4">
         <BarraProgresso
@@ -120,68 +191,71 @@ export function DetalheProjeto() {
         </Vazio>
       ) : (
         <ul className="space-y-4">
-          {dados.tags.map((tag) => {
-            const liberados = tag.formularios;
-            return (
-              <li key={tag.tagId} className="rounded-lg border border-abb-line bg-white p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="text-xl font-bold break-words">{tag.nome}</h2>
-                  <div className="flex gap-2">
-                    <Botao
-                      onClick={() => {
-                        setTagParaRenomear({ id: tag.tagId, nome: tag.nome });
-                        setNovoNome(tag.nome);
-                      }}
-                    >
-                      Renomear
-                    </Botao>
-                    <Botao
-                      variante="perigo"
-                      aria-label={`Remover TAG ${tag.nome}`}
-                      onClick={() => setTagParaExcluir({ id: tag.tagId, nome: tag.nome })}
-                    >
-                      <IconeLixeira className="h-5 w-5" />
-                    </Botao>
-                  </div>
+          {dados.tags.map((tag) => (
+            <li key={tag.tagId} className="rounded-lg border border-abb-line bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-xl font-bold break-words">{tag.nome}</h2>
+                <div className="flex gap-2">
+                  <Botao
+                    onClick={() => {
+                      setTagParaRenomear({ id: tag.tagId, nome: tag.nome });
+                      setNovoNome(tag.nome);
+                    }}
+                  >
+                    Renomear
+                  </Botao>
+                  <Botao
+                    variante="perigo"
+                    aria-label={`Remover TAG ${tag.nome}`}
+                    onClick={() => setTagParaExcluir({ id: tag.tagId, nome: tag.nome })}
+                  >
+                    <IconeLixeira className="h-5 w-5" />
+                  </Botao>
                 </div>
+              </div>
 
-                {liberados.length === 0 ? (
-                  <p className="mt-3 text-base text-abb-gray">
-                    Nenhum formulário liberado para o seu e-mail nesta TAG.
-                  </p>
-                ) : null}
+              {tag.formularios.length === 0 ? (
+                <div className="mt-3">
+                  <Aviso>
+                    Nenhum checklist cadastrado para a linha{' '}
+                    <strong>{projeto.nomeProjeto}</strong>. Assim que o JSON
+                    dela entrar em <code>public/forms</code> e for citado no
+                    catálogo, os formulários aparecem aqui — sem alteração de
+                    código e sem perder o que já estiver preenchido.
+                  </Aviso>
+                </div>
+              ) : null}
 
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  {liberados.map((f) => (
-                    <button
-                      key={f.formId}
-                      type="button"
-                      onClick={() =>
-                        navegar(`/projetos/${id}/tags/${tag.tagId}/formularios/${f.formId}`)
-                      }
-                      className="flex min-h-24 flex-col justify-between rounded-lg border-2 border-abb-line p-3 text-left hover:border-abb-red focus-visible:border-abb-red"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-base font-bold">
-                            {f.entrada.tipo === 'montagem' ? 'Montagem' : 'Rotina'}
-                          </p>
-                          <p className="text-sm text-abb-gray">{f.entrada.linhaProduto}</p>
-                        </div>
-                        <IconeSeta className="h-5 w-5 shrink-0 text-abb-red" />
-                      </div>
-                      <div className="mt-3">
-                        <BarraProgresso percentual={f.progresso.percentual} compacta />
-                        <p className="mt-1 text-sm text-abb-gray">
-                          {f.progresso.respondidas} de {f.progresso.total} etapas
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {tag.formularios.map((f) => (
+                  <button
+                    key={f.formId}
+                    type="button"
+                    onClick={() =>
+                      navegar(`/projetos/${id}/tags/${tag.tagId}/formularios/${f.formId}`)
+                    }
+                    className="flex min-h-24 flex-col justify-between rounded-lg border-2 border-abb-line p-3 text-left hover:border-abb-red focus-visible:border-abb-red"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-base font-bold">
+                          {f.entrada.tipo === 'montagem' ? 'Montagem' : 'Rotina'}
                         </p>
+                        <p className="text-sm text-abb-gray">{f.entrada.linhaProduto}</p>
                       </div>
-                    </button>
-                  ))}
-                </div>
-              </li>
-            );
-          })}
+                      <IconeSeta className="h-5 w-5 shrink-0 text-abb-red" />
+                    </div>
+                    <div className="mt-3">
+                      <BarraProgresso percentual={f.progresso.percentual} compacta />
+                      <p className="mt-1 text-sm text-abb-gray">
+                        {f.progresso.respondidas} de {f.progresso.total} etapas
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </li>
+          ))}
         </ul>
       )}
 
@@ -255,6 +329,7 @@ export function DetalheProjeto() {
       <DialogoGerarPdf
         aberto={pdfAberto}
         projetoId={id}
+        painelSlug={projeto.painelSlug}
         onFechar={() => setPdfAberto(false)}
       />
     </div>

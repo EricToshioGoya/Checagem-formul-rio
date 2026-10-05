@@ -9,6 +9,10 @@ import { Botao } from '../../shared/componentes/Botao';
 import { GradeCampos } from '../../shared/componentes/GradeCampos';
 import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
 import { IconeVoltar } from '../../shared/componentes/Icones';
+import { useSessao } from '../../core/api/SessaoContexto';
+import { formulariosDoPainel } from '../../core/forms/catalogo';
+import { AcessoBloqueado } from '../paineis/AcessoBloqueado';
+import { useAcessoCertificacao } from './acesso';
 
 /**
  * Dados da empresa e do projeto. Os campos vêm do catálogo de painéis, não do
@@ -17,10 +21,15 @@ import { IconeVoltar } from '../../shared/componentes/Icones';
 export function NovaSolicitacao() {
   const { tipoPainel = '' } = useParams();
   const navegar = useNavigate();
+  const { usuario } = useSessao();
+  const acesso = useAcessoCertificacao(tipoPainel);
 
   const [painel, setPainel] = useState<Painel | null>(null);
   const [campos, setCampos] = useState<CampoCabecalho[]>([]);
-  const [valores, setValores] = useState<ValoresCabecalho>({});
+  // O operador é quem está logado: a conta já diz o nome, como no dossiê.
+  const [valores, setValores] = useState<ValoresCabecalho>(
+    (): ValoresCabecalho => (usuario ? { operador: usuario.nome } : {}),
+  );
   const [tentouSalvar, setTentouSalvar] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -41,8 +50,9 @@ export function NovaSolicitacao() {
     [campos, valores],
   );
 
+  if (acesso.bloqueio) return <AcessoBloqueado bloqueio={acesso.bloqueio} />;
   if (erro && !painel) return <Erro detalhe={erro} />;
-  if (!painel) return <Carregando mensagem="Carregando os campos da solicitação…" />;
+  if (acesso.conferindo || !painel) return <Carregando mensagem="Carregando os campos da solicitação…" />;
 
   const salvar = async () => {
     setTentouSalvar(true);
@@ -50,9 +60,19 @@ export function NovaSolicitacao() {
     setSalvando(true);
     setErro(null);
     try {
+      // O checklist da solicitação é o do painel no servidor, já baixado
+      // para o aparelho na tela de painéis.
+      const [checklist] = await formulariosDoPainel(tipoPainel);
+      if (!checklist) {
+        throw new Error(
+          'O checklist deste painel ainda não está neste aparelho. Volte aos ' +
+            'painéis com conexão para baixá-lo, ou peça à administração para montá-lo.',
+        );
+      }
       const id = await solicitacaoStore.criar({
         tipoPainel,
-        formId: painel.formularios[0],
+        formId: checklist.id,
+        usuarioId: usuario?.id,
         dados: valores,
       });
       navegar(`/solicitacoes/${id}`, { replace: true });
