@@ -140,7 +140,7 @@ pedido enviado ao responsável do painel  →  aguardando
         ↓                                       ↓
   acesso aprovado  ←──────────  responsável aprova em /aprovacoes
         ↓
- abrir checagens daquele painel (daqui em diante, offline)
+ abrir checagens → projetos do painel → novo projeto (daqui em diante, offline)
 ```
 
 **A aprovação vale para um painel só.** Quem foi aprovado em SEN Plus não abre
@@ -425,11 +425,21 @@ Fotos são gravadas como **Blob**, nunca base64. `respostas` é um mapa
 `etapaId → { valor, observacao }`. Excluir um projeto, uma TAG ou uma
 solicitação remove em cascata os preenchimentos e as mídias.
 
-O painel (SEN Plus, MNS…) é o tipo, não uma TAG: o projeto abre vazio e as
-checagens aparecem quando o montador cadastra as TAGs. Ao cadastrar, ele marca
-quais checklists do painel aquela TAG vai preencher (`tags.formIds`), e pode
-trocar depois em **Checklists**. Desmarcar não apaga respostas. TAG sem
-`formIds` — anterior a esta regra — segue com todos os checklists.
+O painel (SEN Plus, MNS…) é o tipo, não uma TAG. **Abrir checagens** leva à
+lista de projetos do montador naquele painel, onde ele cria quantos projetos
+quiser. O cadastro pede, tudo obrigatório: nome do projeto, empresa, quantidade
+de TAGs e, para cada TAG, o nome, os checklists que ela vai preencher
+(`tags.formIds`) e os **dados do painel** — a união dos campos de cabeçalho
+desses checklists. Os dados são gravados no cabeçalho de cada checklist
+escolhido, e alterar um campo num checklist altera o mesmo campo nos outros da
+TAG. Os checklists podem ser trocados depois em **Checklists**; desmarcar não
+apaga respostas. TAG sem `formIds` — anterior a esta regra — segue com todos.
+
+Cada projeto tem `uid`, que o identifica no servidor (`sync_projetos` e
+`sync_midias` usam `projetoUid`; rotas `/api/sync/projetos/:uid`). O projeto
+que existia antes, um por conta e painel, recebe nos dois lados o mesmo `uid`
+legado derivado do id do painel (`compartilhado/projeto.ts`), e a migração não
+duplica nada.
 
 Projetos gravados antes de existir login ficam sem `usuarioId` e continuam
 visíveis para quem estiver logado — não há a quem atribuí-los.

@@ -20,6 +20,8 @@ const ESPERA_REDE_MS = 4000;
 interface Registro {
   /** `slug` do painel, para as telas que só conhecem o slug (certificação). */
   slug?: string;
+  /** Nome do painel, para a lista de projetos abrir sem rede. */
+  nome?: string;
   meuAcesso: AcessoPainel;
   podePreencher: boolean;
   expiraEm: number | null;
@@ -48,6 +50,7 @@ export function guardarAcessos(usuarioId: number, paineis: readonly PainelApi[])
     for (const p of paineis) {
       mapa[chaveDe(usuarioId, p.id)] = {
         slug: p.slug,
+        nome: p.nome,
         meuAcesso: p.meuAcesso,
         podePreencher: p.podePreencher,
         expiraEm: p.acessoExpiraEm,
@@ -57,6 +60,15 @@ export function guardarAcessos(usuarioId: number, paineis: readonly PainelApi[])
   } catch {
     // Armazenamento bloqueado: sem rede, o aparelho não terá o que conferir.
   }
+}
+
+/** Nome e `slug` do painel como vistos na última conexão; `null` se nunca visto. */
+export function painelGuardado(
+  usuarioId: number,
+  painelId: number,
+): { slug: string; nome: string } | null {
+  const r = ler()[chaveDe(usuarioId, painelId)];
+  return r?.slug && r.nome ? { slug: r.slug, nome: r.nome } : null;
 }
 
 function bloqueioDe(r: Registro, conferirRelogio: boolean): Bloqueio | null {

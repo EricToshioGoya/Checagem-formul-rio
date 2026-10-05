@@ -356,10 +356,12 @@ export interface RespostaHistorico extends Paginado {
   registros: RegistroHistorico[];
 }
 
-/** Andamento de um montador num painel, do que ele sincronizou. */
+/** Andamento de um projeto de um montador num painel, do que ele sincronizou. */
 export interface ItemAndamento {
   painel: { id: number; nome: string };
   usuario: { id: number; nome: string; email: string };
+  /** Nulo para quem tem acesso e ainda não enviou projeto nenhum. */
+  projeto: { uid: string; nome: string | null } | null;
   empresa: string | null;
   tags: number;
   total: number;

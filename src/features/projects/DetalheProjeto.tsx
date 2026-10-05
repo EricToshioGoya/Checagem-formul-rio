@@ -9,8 +9,9 @@ import {
   progressoDoProjeto,
   type ProgressoDeProjeto,
 } from '../../core/forms/progressoProjeto';
-import { formulariosDoPainel } from '../../core/forms/catalogo';
-import type { EntradaCatalogo } from '../../core/forms/tipos';
+import { carregarFormulario, formulariosDoPainel } from '../../core/forms/catalogo';
+import { prepararTag, trocarChecklistsDaTag } from '../../core/forms/dadosTag';
+import type { DefinicaoFormulario, EntradaCatalogo } from '../../core/forms/tipos';
 import type { Projeto } from '../../core/db/tipos';
 import { DialogoGerarPdf } from '../pdf/DialogoGerarPdf';
 import { Botao } from '../../shared/componentes/Botao';
@@ -21,6 +22,13 @@ import { Modal } from '../../shared/componentes/Modal';
 import { Aviso, Carregando, Erro, Vazio } from '../../shared/componentes/Estado';
 import { SituacaoSincronizacao } from './SituacaoSincronizacao';
 import { EscolhaChecklists } from './EscolhaChecklists';
+import {
+  CamposTag,
+  pendenciasDaTag,
+  rascunhoVazio,
+  tagCompleta,
+  type RascunhoTag,
+} from './CamposTag';
 import {
   IconeLixeira,
   IconeMais,
@@ -38,14 +46,15 @@ export function DetalheProjeto() {
   const [projeto, setProjeto] = useState<Projeto | null>(null);
   const [dados, setDados] = useState<ProgressoDeProjeto | null>(null);
   const [checklists, setChecklists] = useState<EntradaCatalogo[]>([]);
+  const [definicoes, setDefinicoes] = useState<Record<string, DefinicaoFormulario>>({});
   const [erro, setErro] = useState<string | null>(null);
   const [bloqueio, setBloqueio] = useState<Bloqueio | null>(null);
   const [tagParaExcluir, setTagParaExcluir] = useState<{ id: number; nome: string } | null>(null);
   const [tagParaRenomear, setTagParaRenomear] = useState<{ id: number; nome: string } | null>(null);
   const [novoNome, setNovoNome] = useState('');
   const [adicionando, setAdicionando] = useState(false);
-  const [nomeNovaTag, setNomeNovaTag] = useState('');
-  const [checklistsNovaTag, setChecklistsNovaTag] = useState<string[]>([]);
+  const [novaTag, setNovaTag] = useState<RascunhoTag>(rascunhoVazio);
+  const [tentouNovaTag, setTentouNovaTag] = useState(false);
   const [tagChecklists, setTagChecklists] = useState<{
     id: number;
     nome: string;
@@ -74,7 +83,10 @@ export function DetalheProjeto() {
       setBloqueio(b);
       setProjeto(p);
       setDados(d);
+      const mapa: Record<string, DefinicaoFormulario> = {};
+      for (const entrada of c) mapa[entrada.id] = await carregarFormulario(entrada.id);
       setChecklists(c);
+      setDefinicoes(mapa);
       setErro(null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao carregar o projeto.');
@@ -104,31 +116,30 @@ export function DetalheProjeto() {
   };
 
   const abrirNovaTag = () => {
-    setNomeNovaTag('');
-    setChecklistsNovaTag([]);
+    setNovaTag(rascunhoVazio());
+    setTentouNovaTag(false);
     setAdicionando(true);
   };
 
-  // Painel sem checklist cadastrado: não há o que escolher, e a TAG segue
-  // com os que vierem a existir.
-  const podeAdicionarTag =
-    nomeNovaTag.trim() !== '' && (checklists.length === 0 || checklistsNovaTag.length > 0);
-
   const adicionarTag = async () => {
-    if (!podeAdicionarTag) return;
-    await ProjetoRepository.adicionarTag(
-      id,
-      nomeNovaTag,
-      checklists.length ? checklistsNovaTag : undefined,
-    );
+    setTentouNovaTag(true);
+    if (!tagCompleta(pendenciasDaTag(novaTag, checklists, definicoes))) return;
+    // Painel sem checklist cadastrado: não há o que escolher, e a TAG segue
+    // com os que vierem a existir.
+    const formIds = checklists.length
+      ? checklists.filter((c) => novaTag.formIds.includes(c.id)).map((c) => c.id)
+      : undefined;
+    await ProjetoRepository.adicionarTag(id, await prepararTag(novaTag.nome, formIds, novaTag.dados));
     setAdicionando(false);
     await recarregar();
   };
 
+  const voltar = projeto.painelId === undefined ? '/projetos' : `/paineis/${projeto.painelId}/projetos`;
+
   return (
     <div className="space-y-5">
       <div className="flex items-start gap-2">
-        <Botao variante="texto" onClick={() => navegar('/')} aria-label="Voltar aos projetos">
+        <Botao variante="texto" onClick={() => navegar(voltar)} aria-label="Voltar aos projetos">
           <IconeVoltar />
         </Botao>
         <div className="min-w-0 flex-1">
@@ -340,30 +351,24 @@ export function DetalheProjeto() {
         rodape={
           <>
             <Botao onClick={() => setAdicionando(false)}>Cancelar</Botao>
-            <Botao
-              variante="primario"
-              disabled={!podeAdicionarTag}
-              onClick={() => void adicionarTag()}
-            >
+            <Botao variante="primario" onClick={() => void adicionarTag()}>
               Adicionar
             </Botao>
           </>
         }
       >
         <div className="space-y-4">
-          <CampoTexto
-            rotulo="Nome da TAG"
-            valor={nomeNovaTag}
-            onChange={setNomeNovaTag}
-            placeholder="Ex.: QGBT-01"
+          <CamposTag
+            rascunho={novaTag}
+            onChange={setNovaTag}
+            checklists={checklists}
+            definicoes={definicoes}
+            mostrarPendencias={tentouNovaTag}
+            prefixoId="nova-tag"
             autoFoco
           />
-          {checklists.length ? (
-            <EscolhaChecklists
-              checklists={checklists}
-              selecionados={checklistsNovaTag}
-              onChange={setChecklistsNovaTag}
-            />
+          {tentouNovaTag && !tagCompleta(pendenciasDaTag(novaTag, checklists, definicoes)) ? (
+            <Erro titulo="Preencha os campos destacados" />
           ) : null}
         </div>
       </Modal>
@@ -380,9 +385,9 @@ export function DetalheProjeto() {
               disabled={!tagChecklists?.formIds.length}
               onClick={async () => {
                 if (tagChecklists?.formIds.length) {
-                  await ProjetoRepository.definirChecklistsDaTag(
+                  await trocarChecklistsDaTag(
                     tagChecklists.id,
-                    tagChecklists.formIds,
+                    checklists.filter((c) => tagChecklists.formIds.includes(c.id)).map((c) => c.id),
                   );
                 }
                 setTagChecklists(null);

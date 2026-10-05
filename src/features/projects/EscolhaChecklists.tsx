@@ -4,13 +4,15 @@ interface Props {
   checklists: EntradaCatalogo[];
   selecionados: string[];
   onChange: (selecionados: string[]) => void;
+  /** Mostra o aviso de nenhum marcado; no cadastro, só depois de tentar gravar. */
+  avisarVazio?: boolean;
 }
 
 /**
  * Checklists do painel que a TAG vai preencher. Nem toda TAG passa por todos:
  * o montador marca só os que valem para ela.
  */
-export function EscolhaChecklists({ checklists, selecionados, onChange }: Props) {
+export function EscolhaChecklists({ checklists, selecionados, onChange, avisarVazio = true }: Props) {
   return (
     <fieldset>
       <legend className="mb-2 text-base font-bold">Checklists a preencher</legend>
@@ -41,7 +43,7 @@ export function EscolhaChecklists({ checklists, selecionados, onChange }: Props)
           </label>
         ))}
       </div>
-      {selecionados.length === 0 ? (
+      {avisarVazio && selecionados.length === 0 ? (
         <p className="mt-2 text-sm text-abb-red">Marque ao menos um checklist.</p>
       ) : null}
     </fieldset>

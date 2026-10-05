@@ -40,7 +40,7 @@ const rotas = { ...rotasBase, ...rotasGestao, ...rotasSync };
 const LIMITE_JSON = 1024 * 1024;
 /** Rotas com limite próprio: o projeto sincronizado e o arquivo de uma foto. */
 const LIMITES: Record<string, number> = {
-  'PUT /api/sync/projetos/:painelId': 8 * 1024 * 1024,
+  'PUT /api/sync/projetos/:uid': 8 * 1024 * 1024,
   'PUT /api/sync/midias/:uid': 26 * 1024 * 1024,
 };
 /** Rotas que recebem arquivo, e não JSON. */

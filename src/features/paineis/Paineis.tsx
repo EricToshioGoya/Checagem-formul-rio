@@ -3,7 +3,6 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, ErroApi, type AcessoPainel, type PainelApi } from '../../core/api/cliente';
 import { useSessao } from '../../core/api/SessaoContexto';
 import { guardarAcessos } from '../../core/api/acessoLocal';
-import { ProjetoRepository } from '../../core/db/repositorios';
 import { sincronizarPaineis } from '../../core/forms/catalogo';
 import { carregarCatalogoPaineis } from '../../core/paineis/catalogo';
 import type { FluxoPainel } from '../../core/paineis/tipos';
@@ -107,35 +106,14 @@ export function Paineis() {
     if (painel && painel.meuAcesso === 'nenhum') void solicitar(painel.id);
   }, [parametros, paineis, setParametros, solicitar]);
 
-  /**
-   * Abre o painel aprovado. O projeto local nasce na primeira abertura,
-   * amarrado ao painel e ao usuário; reabrir cai no mesmo.
-   */
-  const abrir = async (painel: PainelApi) => {
-    if (!usuario) return;
+  /** Abre o painel aprovado: a lista de projetos dele, ou as solicitações na certificação. */
+  const abrir = (painel: PainelApi) => {
     // Na certificação não há projeto: cada painel/quadro é uma solicitação.
     if (fluxos[painel.slug] === 'certificacao') {
       navegar(`/paineis/${painel.slug}/solicitacoes`);
       return;
     }
-    setOcupado(painel.id);
-    try {
-      const id = await ProjetoRepository.obterOuCriarPorPainel(usuario.id, painel.id, {
-        // A empresa é do montador, e só ele sabe: fica em branco até ele
-        // informar na tela do projeto. Antes ia o e-mail do responsável.
-        empresa: '',
-        nomeProjeto: painel.nome,
-        operador: usuario.nome,
-        painelSlug: painel.slug,
-        // O painel é o tipo (SEN Plus, MNS…), não uma TAG: o projeto nasce
-        // vazio e as checagens aparecem quando o montador cadastra as TAGs.
-        tags: [],
-      });
-      navegar(`/projetos/${id}`);
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Não foi possível abrir o painel.');
-      setOcupado(null);
-    }
+    navegar(`/paineis/${painel.id}/projetos`);
   };
 
   if (!paineis && !erro && !semConexao) return <Carregando mensagem="Lendo os painéis…" />;

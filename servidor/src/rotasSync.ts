@@ -13,14 +13,15 @@ import { caminhoMidia, gravarMidia, moverParaLixeira, uidValido } from './midias
 import { ErroHttp, exigirSessao, listarPaineis, RespostaArquivo, type Contexto } from './rotas';
 
 /**
- * Sincronização das checagens: cada montador manda para o servidor o projeto
+ * Sincronização das checagens: cada montador manda para o servidor os projetos
  * que tem em cada painel — respostas, TAGs e fotos. Com isso, perder o
  * aparelho deixa de ser perder o trabalho, a mesma conta continua em outro
  * aparelho, e o responsável acompanha o andamento.
  *
- * O projeto é identificado por (conta, painel), o mesmo par que o identifica
- * no aparelho. Cada montador tem o seu; não há disputa entre pessoas, só entre
- * aparelhos da mesma conta, resolvida pela versão (ver `envioProjetoSchema`).
+ * O projeto é identificado pelo `uid` que tem no aparelho; um painel pode ter
+ * vários projetos da mesma conta. Cada montador tem os seus; não há disputa
+ * entre pessoas, só entre aparelhos da mesma conta, resolvida pela versão (ver
+ * `envioProjetoSchema`).
  */
 
 type Manipulador = (ctx: Contexto) => unknown;
@@ -73,13 +74,25 @@ export function andamentoDoDocumento(
   return { total, respondidas };
 }
 
-function uidsDoUsuario(usuarioId: number, painelId?: number): Set<string> {
+/** Teto de projetos por conta: cada um é um documento inteiro guardado aqui. */
+const MAXIMO_PROJETOS_POR_CONTA = 500;
+
+function uidsDoUsuario(usuarioId: number, projetoUid?: string): Set<string> {
   const linhas = (
-    painelId === undefined
+    projetoUid === undefined
       ? banco.prepare('SELECT uid FROM sync_midias WHERE usuarioId = ?').all(usuarioId)
-      : banco.prepare('SELECT uid FROM sync_midias WHERE usuarioId = ? AND painelId = ?').all(usuarioId, painelId)
+      : banco
+          .prepare('SELECT uid FROM sync_midias WHERE usuarioId = ? AND projetoUid = ?')
+          .all(usuarioId, projetoUid)
   ) as Array<{ uid: string }>;
   return new Set(linhas.map((l) => l.uid.toLowerCase()));
+}
+
+/** `uid` do projeto vindo da URL, já normalizado. */
+function lerUidProjeto(ctx: Contexto): string {
+  const uid = ctx.params.uid.toLowerCase();
+  if (!uidValido(uid)) throw new ErroHttp(400, 'Identificador de projeto inválido.');
+  return uid;
 }
 
 export const rotasSync: Record<string, Manipulador> = {
@@ -87,10 +100,11 @@ export const rotasSync: Record<string, Manipulador> = {
   'GET /api/sync/projetos': (ctx) => {
     const eu = exigirSessao(ctx);
     const linhas = banco
-      .prepare('SELECT painelId, versao, enviadoEm FROM sync_projetos WHERE usuarioId = ?')
-      .all(eu.id) as Array<{ painelId: number; versao: number; enviadoEm: number }>;
+      .prepare('SELECT projetoUid, painelId, versao, enviadoEm FROM sync_projetos WHERE usuarioId = ?')
+      .all(eu.id) as Array<{ projetoUid: string; painelId: number; versao: number; enviadoEm: number }>;
     return {
       projetos: linhas.map((l) => ({
+        uid: l.projetoUid,
         painelId: Number(l.painelId),
         versao: Number(l.versao),
         enviadoEm: Number(l.enviadoEm),
@@ -98,15 +112,20 @@ export const rotasSync: Record<string, Manipulador> = {
     };
   },
 
-  'GET /api/sync/projetos/:painelId': (ctx) => {
+  'GET /api/sync/projetos/:uid': (ctx) => {
     const eu = exigirSessao(ctx);
-    const painelId = Number(ctx.params.painelId);
-    exigirAcessoAoPainel(eu, painelId);
+    const uid = lerUidProjeto(ctx);
     const linha = banco
-      .prepare('SELECT versao, documento, enviadoEm FROM sync_projetos WHERE usuarioId = ? AND painelId = ?')
-      .get(eu.id, painelId) as { versao: number; documento: string; enviadoEm: number } | undefined;
-    if (!linha) throw new ErroHttp(404, 'Nada sincronizado deste painel ainda.');
+      .prepare(
+        'SELECT painelId, versao, documento, enviadoEm FROM sync_projetos WHERE usuarioId = ? AND projetoUid = ?',
+      )
+      .get(eu.id, uid) as
+      | { painelId: number; versao: number; documento: string; enviadoEm: number }
+      | undefined;
+    if (!linha) throw new ErroHttp(404, 'Projeto não sincronizado.');
+    exigirAcessoAoPainel(eu, Number(linha.painelId));
     return {
+      painelId: Number(linha.painelId),
       versao: Number(linha.versao),
       enviadoEm: Number(linha.enviadoEm),
       documento: JSON.parse(linha.documento) as DocumentoProjeto,
@@ -118,13 +137,12 @@ export const rotasSync: Record<string, Manipulador> = {
    * as que ele cita e o servidor ainda não tem voltam em `faltando`, para o
    * aparelho mandar em seguida.
    */
-  'PUT /api/sync/projetos/:painelId': (ctx) => {
+  'PUT /api/sync/projetos/:uid': (ctx) => {
     const eu = exigirSessao(ctx);
-    const painelId = Number(ctx.params.painelId);
-    exigirAcessoAoPainel(eu, painelId);
+    const uid = lerUidProjeto(ctx);
     const r = envioProjetoSchema.safeParse(ctx.corpo);
     if (!r.success) throw new ErroHttp(400, primeiroErro(r.error));
-    const { versaoBase, documento } = r.data;
+    const { versaoBase, painelId, documento } = r.data;
 
     const citadas = documento.midias.map((m) => m.uid.toLowerCase());
     if (new Set(citadas).size !== citadas.length) throw new ErroHttp(400, 'Mídia repetida no projeto.');
@@ -132,8 +150,22 @@ export const rotasSync: Record<string, Manipulador> = {
     if (new Set(tags).size !== tags.length) throw new ErroHttp(400, 'TAG repetida no projeto.');
 
     const atual = banco
-      .prepare('SELECT versao FROM sync_projetos WHERE usuarioId = ? AND painelId = ?')
-      .get(eu.id, painelId) as { versao: number } | undefined;
+      .prepare('SELECT painelId, versao FROM sync_projetos WHERE usuarioId = ? AND projetoUid = ?')
+      .get(eu.id, uid) as { painelId: number; versao: number } | undefined;
+    // O projeto nasce num painel e fica nele: trocar o painel pela URL levaria
+    // as checagens para onde a pessoa talvez nem tenha acesso aprovado.
+    if (atual && Number(atual.painelId) !== painelId) {
+      throw new ErroHttp(400, 'O projeto pertence a outro painel.');
+    }
+    exigirAcessoAoPainel(eu, painelId);
+    if (!atual) {
+      const { n } = banco
+        .prepare('SELECT COUNT(*) AS n FROM sync_projetos WHERE usuarioId = ?')
+        .get(eu.id) as { n: number };
+      if (Number(n) >= MAXIMO_PROJETOS_POR_CONTA) {
+        throw new ErroHttp(409, 'Limite de projetos desta conta atingido.');
+      }
+    }
     if ((atual?.versao ?? 0) !== versaoBase) {
       throw new ErroHttp(
         409,
@@ -151,17 +183,20 @@ export const rotasSync: Record<string, Manipulador> = {
       banco
         .prepare(
           `INSERT INTO sync_projetos
-             (usuarioId, painelId, versao, documento, enviadoEm, alteradoEm, total, respondidas, empresa, qtdTags)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT (usuarioId, painelId) DO UPDATE SET
+             (usuarioId, painelId, projetoUid, versao, documento, enviadoEm, alteradoEm,
+              total, respondidas, empresa, qtdTags, nomeProjeto)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (usuarioId, projetoUid) DO UPDATE SET
              versao = excluded.versao, documento = excluded.documento,
              enviadoEm = excluded.enviadoEm, alteradoEm = excluded.alteradoEm,
              total = excluded.total, respondidas = excluded.respondidas,
-             empresa = excluded.empresa, qtdTags = excluded.qtdTags`,
+             empresa = excluded.empresa, qtdTags = excluded.qtdTags,
+             nomeProjeto = excluded.nomeProjeto`,
         )
         .run(
           eu.id,
           painelId,
+          uid,
           versao,
           JSON.stringify(documento),
           agora,
@@ -170,16 +205,17 @@ export const rotasSync: Record<string, Manipulador> = {
           respondidas,
           documento.projeto.empresa || null,
           documento.tags.length,
+          documento.projeto.nomeProjeto || null,
         );
-      const fora = [...uidsDoUsuario(eu.id, painelId)].filter((uid) => !citadasSet.has(uid));
+      const fora = [...uidsDoUsuario(eu.id, uid)].filter((m) => !citadasSet.has(m));
       const apagar = banco.prepare('DELETE FROM sync_midias WHERE uid = ?');
-      for (const uid of fora) apagar.run(uid);
+      for (const m of fora) apagar.run(m);
       return fora;
     });
     moverParaLixeira(sobrando);
 
     const recebidas = uidsDoUsuario(eu.id);
-    return { versao, faltando: citadas.filter((uid) => !recebidas.has(uid)) };
+    return { versao, faltando: citadas.filter((m) => !recebidas.has(m)) };
   },
 
   /**
@@ -187,17 +223,13 @@ export const rotasSync: Record<string, Manipulador> = {
    * sincronização o traria de volta. Não exige o acesso valendo — é o próprio
    * trabalho dele. As fotos passam 30 dias na lixeira.
    */
-  'DELETE /api/sync/projetos/:painelId': (ctx) => {
+  'DELETE /api/sync/projetos/:uid': (ctx) => {
     const eu = exigirSessao(ctx);
-    const painelId = Number(ctx.params.painelId);
+    const uid = lerUidProjeto(ctx);
     const fotos = emTransacao(() => {
-      const uids = (
-        banco
-          .prepare('SELECT uid FROM sync_midias WHERE usuarioId = ? AND painelId = ?')
-          .all(eu.id, painelId) as Array<{ uid: string }>
-      ).map((m) => m.uid);
-      banco.prepare('DELETE FROM sync_midias WHERE usuarioId = ? AND painelId = ?').run(eu.id, painelId);
-      banco.prepare('DELETE FROM sync_projetos WHERE usuarioId = ? AND painelId = ?').run(eu.id, painelId);
+      const uids = [...uidsDoUsuario(eu.id, uid)];
+      banco.prepare('DELETE FROM sync_midias WHERE usuarioId = ? AND projetoUid = ?').run(eu.id, uid);
+      banco.prepare('DELETE FROM sync_projetos WHERE usuarioId = ? AND projetoUid = ?').run(eu.id, uid);
       return uids;
     });
     moverParaLixeira(fotos);
@@ -216,41 +248,40 @@ export const rotasSync: Record<string, Manipulador> = {
     // Só entra arquivo que algum projeto da conta cita: o servidor não vira
     // depósito de qualquer coisa que alguém resolva mandar.
     const projetos = banco
-      .prepare('SELECT painelId, documento FROM sync_projetos WHERE usuarioId = ?')
-      .all(eu.id) as Array<{ painelId: number; documento: string }>;
-    let painelId: number | null = null;
-    let mime: string | null = null;
+      .prepare('SELECT projetoUid, painelId, documento FROM sync_projetos WHERE usuarioId = ?')
+      .all(eu.id) as Array<{ projetoUid: string; painelId: number; documento: string }>;
+    let dono: { projetoUid: string; painelId: number; mime: string } | null = null;
     for (const p of projetos) {
       const citada = (JSON.parse(p.documento) as DocumentoProjeto).midias.find(
         (m) => m.uid.toLowerCase() === uid,
       );
       if (citada) {
-        painelId = Number(p.painelId);
-        mime = citada.mime;
+        dono = { projetoUid: p.projetoUid, painelId: Number(p.painelId), mime: citada.mime };
         break;
       }
     }
-    if (painelId === null || mime === null) {
+    if (dono === null) {
       throw new ErroHttp(404, 'Esta mídia não consta de nenhum projeto sincronizado.', 'midia-desconhecida');
     }
-    exigirAcessoAoPainel(eu, painelId);
+    exigirAcessoAoPainel(eu, dono.painelId);
 
     const tipo = (ctx.tipoConteudo ?? '').split(';')[0].trim().toLowerCase();
-    if (tipo !== mime) throw new ErroHttp(400, 'O tipo do arquivo não é o registrado no projeto.');
-    const dono = banco.prepare('SELECT usuarioId FROM sync_midias WHERE uid = ?').get(uid) as
+    if (tipo !== dono.mime) throw new ErroHttp(400, 'O tipo do arquivo não é o registrado no projeto.');
+    const registrada = banco.prepare('SELECT usuarioId FROM sync_midias WHERE uid = ?').get(uid) as
       | { usuarioId: number }
       | undefined;
-    if (dono && dono.usuarioId !== eu.id) throw new ErroHttp(409, 'Identificador de mídia já usado.');
+    if (registrada && registrada.usuarioId !== eu.id) throw new ErroHttp(409, 'Identificador de mídia já usado.');
 
     gravarMidia(uid, dados);
     banco
       .prepare(
-        `INSERT INTO sync_midias (uid, usuarioId, painelId, mime, tamanho, recebidoEm)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT (uid) DO UPDATE SET painelId = excluded.painelId, tamanho = excluded.tamanho,
+        `INSERT INTO sync_midias (uid, usuarioId, painelId, projetoUid, mime, tamanho, recebidoEm)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (uid) DO UPDATE SET painelId = excluded.painelId,
+           projetoUid = excluded.projetoUid, tamanho = excluded.tamanho,
            recebidoEm = excluded.recebidoEm`,
       )
-      .run(uid, eu.id, painelId, mime, dados.length, Date.now());
+      .run(uid, eu.id, dono.painelId, dono.projetoUid, dono.mime, dados.length, Date.now());
     return { ok: true };
   },
 

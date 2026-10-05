@@ -37,6 +37,11 @@ export interface Projeto {
   sincronizadoEm?: number;
   /** Versão do servidor de que esta cópia partiu. */
   versaoServidor?: number;
+  /**
+   * Identificador que vale em todo aparelho e no servidor. Um painel pode ter
+   * vários projetos da mesma conta, então o par (conta, painel) não basta.
+   */
+  uid?: string;
 }
 
 export interface Tag {

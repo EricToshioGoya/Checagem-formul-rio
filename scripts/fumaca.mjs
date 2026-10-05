@@ -4,8 +4,10 @@
  * Conta: cria a conta do administrador inicial (que também é o responsável
  * semeado em todos os painéis, e por isso abre todos sem pedir acesso).
  *
- * Verificação (SEN Plus): abre o painel, entra no checklist de montagem,
- * marca uma etapa e confere que a marcação sobrevive a um recarregamento.
+ * Verificação (SEN Plus): abre o painel na lista de projetos, cria um projeto
+ * (dados do painel obrigatórios), entra no checklist de montagem, confere que
+ * o cabeçalho veio do cadastro, marca uma etapa e confere que a marcação
+ * sobrevive a um recarregamento.
  *
  * Certificação (System Pro E Energy): solicitação com campos obrigatórios,
  * envio bloqueado enquanto falta checklist, validação ABB na administração
@@ -67,21 +69,34 @@ try {
   const senPlus = p.locator('li', { hasText: 'SEN Plus' });
   await senPlus.getByRole('button', { name: 'Abrir checagens' }).waitFor();
   await senPlus.getByRole('button', { name: 'Abrir checagens' }).click();
+  await p.waitForURL(/#\/paineis\/\d+\/projetos$/);
+  await p.getByText('Nenhum projeto neste painel').waitFor();
+  checa('o painel abre na lista de projetos, vazia', true);
+  await p.getByRole('button', { name: 'Novo projeto' }).first().click();
+  await p.waitForURL(/projetos\/novo$/);
+  await p.getByLabel('Nome do projeto').fill('Obra Fumaça');
+  await p.getByLabel('Empresa').fill('Montadora Fumaça');
+  const tag1 = p.getByRole('region', { name: 'TAG 1' });
+  await tag1.getByLabel('Nome da TAG').fill('QGBT-01');
+  await tag1.getByRole('checkbox', { name: /Montagem/ }).check();
+  await p.getByRole('button', { name: 'Criar projeto' }).click();
+  checa(
+    'criar exige os dados do painel',
+    (await p.getByText(/TAG 1: \d+ campos dos dados do painel/).count()) === 1 &&
+      /novo$/.test(p.url()),
+  );
+  for (const [rotulo, valor] of [
+    ['Fabricante do conjunto', 'ABB Parceira'],
+    ['Cliente final', 'Cliente Fumaça'],
+    ['Número do pedido', 'PED-1'],
+    ['Tensão de operação (Un)', '380'],
+    ['Grau de proteção (IP)', 'IP54'],
+  ]) {
+    await tag1.getByLabel(rotulo).fill(valor);
+  }
+  await tag1.getByLabel('Norma atendida').selectOption({ index: 1 });
+  await p.getByRole('button', { name: 'Criar projeto' }).click();
   await p.waitForURL(/#\/projetos\/\d+$/);
-  await p.getByText('Nenhuma TAG cadastrada').waitFor();
-  checa(
-    'o painel abre sem TAG e sem checagem',
-    (await p.locator('button', { hasText: 'Montagem' }).count()) === 0,
-  );
-  await p.getByRole('button', { name: 'Adicionar TAG' }).first().click();
-  const dialogo = p.getByRole('dialog');
-  await dialogo.getByLabel('Nome da TAG').fill('QGBT-01');
-  checa(
-    'adicionar exige escolher o checklist',
-    await dialogo.getByRole('button', { name: 'Adicionar' }).isDisabled(),
-  );
-  await dialogo.getByRole('checkbox', { name: /Montagem/ }).check();
-  await dialogo.getByRole('button', { name: 'Adicionar' }).click();
   await p.locator('button', { hasText: 'Montagem' }).first().waitFor();
   checa(
     'a TAG mostra só o checklist escolhido',
@@ -89,6 +104,11 @@ try {
   );
   await p.locator('button', { hasText: 'Montagem' }).first().click();
   await p.waitForURL(/formularios/);
+  await p.getByRole('button', { name: 'Dados do painel' }).first().click();
+  checa(
+    'o cabeçalho do checklist vem do cadastro da TAG',
+    (await p.getByLabel('Fabricante do conjunto').inputValue()) === 'ABB Parceira',
+  );
   const primeira = p.locator('nav[aria-label="Etapas do formulário"] li button').first();
   await primeira.click();
   await p.getByRole('button', { name: 'Marcar como verificado' }).click();

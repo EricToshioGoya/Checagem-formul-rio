@@ -12,6 +12,8 @@ import { Paineis } from '../features/paineis/Paineis';
 import { Aprovacoes } from '../features/paineis/Aprovacoes';
 import { ListaProjetos } from '../features/projects/ListaProjetos';
 import { DetalheProjeto } from '../features/projects/DetalheProjeto';
+import { ProjetosDoPainel } from '../features/projects/ProjetosDoPainel';
+import { NovoProjeto } from '../features/projects/NovoProjeto';
 import { ListaSolicitacoes } from '../features/solicitacoes/ListaSolicitacoes';
 import { NovaSolicitacao } from '../features/solicitacoes/NovaSolicitacao';
 import { DetalheSolicitacao } from '../features/solicitacoes/DetalheSolicitacao';
@@ -43,9 +45,11 @@ export function App() {
                 <Route path="/paineis" element={<Paineis />} />
                 <Route path="/aprovacoes" element={<Aprovacoes />} />
                 <Route path="/projetos" element={<ListaProjetos />} />
-                {/* Não há mais criação avulsa de projeto: um projeto só nasce
-                    ao abrir um painel aprovado, e é o que garante que a pessoa
-                    preencha apenas aquilo que pediu e teve aprovado. */}
+                {/* O projeto nasce dentro de um painel aprovado — é o que
+                    garante que a pessoa preencha apenas aquilo que pediu e
+                    teve aprovado. Um painel tem vários projetos. */}
+                <Route path="/paineis/:painelId/projetos" element={<ProjetosDoPainel />} />
+                <Route path="/paineis/:painelId/projetos/novo" element={<NovoProjeto />} />
                 <Route path="/projetos/:projetoId" element={<DetalheProjeto />} />
                 {/* Fluxo de certificação (SPEE, SPEP e SAFR): uma solicitação
                     por painel/quadro, validada pela ABB antes do certificado. */}

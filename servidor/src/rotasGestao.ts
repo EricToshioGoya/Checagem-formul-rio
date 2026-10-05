@@ -306,9 +306,10 @@ export const rotasGestao: Record<string, Manipulador> = {
     const linhas = banco
       .prepare(
         `SELECT p.id AS painelId, p.nome AS painelNome, u.id AS usuarioId, u.nome, u.email,
-                sp.total, sp.respondidas, sp.enviadoEm, sp.alteradoEm, sp.empresa, sp.qtdTags
+                sp.total, sp.respondidas, sp.enviadoEm, sp.alteradoEm, sp.empresa, sp.qtdTags,
+                sp.projetoUid, sp.nomeProjeto
            ${base}
-          ORDER BY p.ordem, p.id, lower(u.nome)
+          ORDER BY p.ordem, p.id, lower(u.nome), lower(sp.nomeProjeto)
           LIMIT ? OFFSET ?`,
       )
       .all(agora, ...ids, porPagina, deslocamento) as Array<Record<string, unknown>>;
@@ -324,6 +325,10 @@ export const rotasGestao: Record<string, Manipulador> = {
         return {
           painel: { id: Number(l.painelId), nome: String(l.painelNome) },
           usuario: { id: Number(l.usuarioId), nome: String(l.nome), email: String(l.email) },
+          projeto:
+            l.projetoUid === null
+              ? null
+              : { uid: String(l.projetoUid), nome: (l.nomeProjeto as string | null) ?? null },
           empresa: (l.empresa as string | null) ?? null,
           tags: l.qtdTags === null ? 0 : Number(l.qtdTags),
           total: totalEtapas,

@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie';
+import { uidProjetoLegado } from '../../../compartilhado/projeto';
 import type {
   Certificado,
   Contador,
@@ -91,8 +92,29 @@ class BancoVerificacao extends Dexie {
       contadores: 'id',
     });
 
-    // Toda TAG e mídia nova nasce com `uid`, venha de onde vier: tela,
-    // importação de .zip ou a própria sincronização.
+    // v7: um painel passa a ter vários projetos da mesma conta, e o projeto
+    // ganha `uid` próprio para ser reconhecido no servidor. O projeto que já
+    // existia de cada painel recebe o `uid` legado — o mesmo que o servidor
+    // deu à cópia dele na migração —, e os dois continuam casando.
+    this.version(7)
+      .stores({
+        projetos:
+          '++id, empresa, nomeProjeto, operador, criadoEm, atualizadoEm, painelId, usuarioId, [usuarioId+painelId], uid',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('projetos')
+          .toCollection()
+          .modify((p: Projeto) => {
+            if (!p.uid) p.uid = p.painelId === undefined ? novoUid() : uidProjetoLegado(p.painelId);
+          });
+      });
+
+    // Todo projeto, TAG e mídia novo nasce com `uid`, venha de onde vier:
+    // tela, importação de .zip ou a própria sincronização.
+    this.projetos.hook('creating', (_chave, projeto) => {
+      if (!projeto.uid) projeto.uid = novoUid();
+    });
     this.tags.hook('creating', (_chave, tag) => {
       if (!tag.uid) tag.uid = novoUid();
     });
