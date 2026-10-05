@@ -20,6 +20,7 @@ import { faxinarMidias } from './midias';
 import { ErroHttp, RespostaArquivo, rotas as rotasBase, type Contexto } from './rotas';
 import { rotasGestao } from './rotasGestao';
 import { rotasSync } from './rotasSync';
+import { rotasApoio, TAMANHO_MAXIMO_APOIO } from './rotasApoio';
 
 /**
  * Servidor de acesso: contas, painéis, aprovação, sincronização das
@@ -31,7 +32,7 @@ import { rotasSync } from './rotasSync';
 
 const PORTA = Number(process.env.PORTA ?? 3001);
 
-const rotas = { ...rotasBase, ...rotasGestao, ...rotasSync };
+const rotas = { ...rotasBase, ...rotasGestao, ...rotasSync, ...rotasApoio };
 
 /**
  * 1 MB para JSON. O de 64 KB não comportava um checklist grande: a partir de
@@ -42,9 +43,10 @@ const LIMITE_JSON = 1024 * 1024;
 const LIMITES: Record<string, number> = {
   'PUT /api/sync/projetos/:uid': 8 * 1024 * 1024,
   'PUT /api/sync/midias/:uid': 26 * 1024 * 1024,
+  'PUT /api/admin/apoio/:uid': TAMANHO_MAXIMO_APOIO + 1024,
 };
 /** Rotas que recebem arquivo, e não JSON. */
-const ROTAS_ARQUIVO = new Set(['PUT /api/sync/midias/:uid']);
+const ROTAS_ARQUIVO = new Set(['PUT /api/sync/midias/:uid', 'PUT /api/admin/apoio/:uid']);
 
 /**
  * `decodeURIComponent` lança erro com "%" malformado. Fora do `try` do

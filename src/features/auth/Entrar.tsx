@@ -3,7 +3,7 @@ import { Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { api, ErroApi, type Perfil, type PainelPublico } from '../../core/api/cliente';
 import { useSessao } from '../../core/api/SessaoContexto';
 import { Botao } from '../../shared/componentes/Botao';
-import { CampoTexto } from '../../shared/componentes/Campos';
+import { CampoTexto, EntradaSenha } from '../../shared/componentes/Campos';
 import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
 import { IconeChave, IconeCheck, IconeVoltar } from '../../shared/componentes/Icones';
 
@@ -245,9 +245,8 @@ export function Entrar() {
               </span>
             ) : null}
           </label>
-          <input
+          <EntradaSenha
             id="campo-senha"
-            type="password"
             autoComplete={modo === 'entrar' ? 'current-password' : 'new-password'}
             required
             minLength={8}

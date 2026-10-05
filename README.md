@@ -372,7 +372,7 @@ diálogo de geração.
 | Novo tipo de campo | Implementar o componente e registrá-lo em `src/features/fill/campos/registro.tsx`. |
 | Novo destino de exportação | Implementar `ExportTarget` (`src/core/export/ExportTarget.ts`). `PdfExport` é a implementação da v1. |
 | Trocar a persistência | Todo acesso ao Dexie passa por `ProjetoRepository`, `PreenchimentoRepository`, `MidiaRepository` e `FormularioRepository`. Nenhuma tela importa Dexie. |
-| Conteúdo de apoio | Trocar o arquivo em `public/media`. O caminho fica no JSON. |
+| Conteúdo de apoio | Imagem: enviar pela administração, na etapa. Vídeo e PDF: arquivo em `public/media`, com o caminho no JSON. |
 | Painel de certificação | Acrescentar a entrada em `public/paineis/index.json` com o `slug` do painel, `fluxo: "certificacao"`, o template em `public/certificados` e o responsável ABB. Nenhuma alteração de código. |
 | Novos campos da solicitação | Editar `camposPadrao` em `public/paineis/index.json`, ou dar ao painel a sua própria lista `campos`. |
 | Solicitações no servidor | Trocar o que `src/core/certificacao/index.ts` aponta em `solicitacaoStore` e `servicoValidacao`. Nenhuma tela muda. |
@@ -582,7 +582,14 @@ administrador. As seções principais:
   registro de todas as emissões.
 - **Painéis e checklists** — cadastro dos painéis, de quem aprova e do
   conteúdo das etapas. Os checklists são gravados no servidor, e todo montador
-  aprovado naquele painel recebe a mesma versão.
+  aprovado naquele painel recebe a mesma versão. Em cada etapa a
+  administração escolhe a **resposta exigida do montador** (só conferir,
+  conferir e fotografar, só foto, valor, texto, opções, PDF, grade) — a tela
+  diz o que cada opção exige — e pode enviar uma **imagem de apoio**
+  (opcional). A imagem é comprimida no aparelho, gravada no servidor
+  (`apoio_midias`, mesma pasta e mesmo backup das fotos) e referenciada no
+  checklist como `/api/apoio/<uid>`; o aparelho do montador a baixa junto com o
+  checklist e a mostra dentro da etapa, também sem rede.
 - **Administradores** — quem administra, e quem pediu para administrar.
 
 ### Quem é administrador

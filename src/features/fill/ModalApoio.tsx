@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Modal } from '../../shared/componentes/Modal';
 import { Aviso } from '../../shared/componentes/Estado';
 import type { Etapa } from '../../core/forms/tipos';
+import { ehApoioDoServidor } from '../../core/media/apoio';
+import { ImagemApoio } from '../../shared/componentes/ImagemApoio';
 
 interface Props {
   etapa: Etapa | null;
@@ -55,18 +57,23 @@ export function ModalApoio({ etapa, onFechar }: Props) {
             const falhou = falhas[m.src];
             return (
               <figure key={i} className="space-y-2">
-                {falhou ? (
+                {falhou && ehApoioDoServidor(m.src) ? (
+                  <Aviso>
+                    Imagem ainda não baixada neste aparelho. Abra a lista de
+                    painéis com conexão para baixá-la.
+                  </Aviso>
+                ) : falhou ? (
                   <Aviso>
                     Arquivo de apoio ainda não disponível neste aparelho.
                     <br />
                     Caminho esperado: <code className="break-all">{m.src}</code>
                   </Aviso>
                 ) : m.tipo === 'imagem' ? (
-                  <img
-                    src={url}
+                  <ImagemApoio
+                    src={m.src}
                     alt={m.legenda ?? `Referência da etapa ${etapa.id}`}
                     className="w-full rounded-md border border-abb-line bg-white"
-                    onError={() => setFalhas((f) => ({ ...f, [m.src]: true }))}
+                    onFalha={() => setFalhas((f) => (f[m.src] ? f : { ...f, [m.src]: true }))}
                   />
                 ) : m.tipo === 'video' ? (
                   <video

@@ -4,6 +4,7 @@ import type {
   Certificado,
   Contador,
   FormularioCache,
+  ImagemApoioCache,
   Midia,
   Preenchimento,
   Projeto,
@@ -25,6 +26,7 @@ class BancoVerificacao extends Dexie {
   solicitacoes!: Table<Solicitacao, number>;
   certificados!: Table<Certificado, number>;
   contadores!: Table<Contador, string>;
+  apoio!: Table<ImagemApoioCache, string>;
 
   constructor() {
     super('verificacao-montagem');
@@ -122,6 +124,12 @@ class BancoVerificacao extends Dexie {
           await tabela.update(p.id!, uid === legado ? { uid } : { uid, versaoServidor: 0, sincronizadoEm: 0 });
         }
       });
+
+    // v8: imagens de apoio das etapas, enviadas pela administração. Ficam no
+    // aparelho junto com o checklist, para a referência abrir sem rede.
+    this.version(8).stores({
+      apoio: 'src',
+    });
 
     // Todo projeto, TAG e mídia novo nasce com `uid`, venha de onde vier:
     // tela, importação de .zip ou a própria sincronização.

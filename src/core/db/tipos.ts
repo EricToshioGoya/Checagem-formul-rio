@@ -188,3 +188,14 @@ export interface Contador {
   id: string;
   proximo: number;
 }
+
+/**
+ * Imagem de apoio de uma etapa, baixada do servidor e guardada no aparelho:
+ * o montador abre o checklist sem rede e ainda vê a referência.
+ */
+export interface ImagemApoioCache {
+  /** Endereço como está no checklist (`/api/apoio/<uid>`). */
+  src: string;
+  blob: Blob;
+  baixadoEm: number;
+}

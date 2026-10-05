@@ -271,6 +271,17 @@ banco.exec(`
     recebidoEm INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_sync_midias_dono ON sync_midias (usuarioId, painelId);
+
+  -- Imagens de apoio das etapas, enviadas pela administração ao montar o
+  -- checklist. O arquivo fica na mesma pasta das fotos (e entra no mesmo
+  -- espelho de backup); aqui o registro que impede a faxina de apagá-lo.
+  CREATE TABLE IF NOT EXISTS apoio_midias (
+    uid       TEXT    PRIMARY KEY,
+    mime      TEXT    NOT NULL,
+    tamanho   INTEGER NOT NULL,
+    criadoEm  INTEGER NOT NULL,
+    criadoPor INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
+  );
 `);
 
 /** Acrescenta a coluna se a tabela ainda não a tem — bancos de antes dos perfis. */

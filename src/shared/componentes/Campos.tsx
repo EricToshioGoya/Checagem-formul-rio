@@ -1,5 +1,6 @@
-import { useId, type ReactNode } from 'react';
+import { useId, useState, type InputHTMLAttributes, type ReactNode } from 'react';
 import { useCampoNumerico } from '../hooks/useCampoNumerico';
+import { IconeOlho, IconeOlhoFechado } from './Icones';
 
 const entrada =
   'min-h-12 w-full rounded-md border border-abb-line bg-white px-3 text-base text-abb-black placeholder:text-neutral-400 focus:border-abb-red';
@@ -22,6 +23,41 @@ export function Rotulo({ htmlFor, children, ajuda, obrigatorio }: RotuloProps) {
       {obrigatorio ? <span className="text-abb-red"> *</span> : null}
       {ajuda ? <span className="block text-sm font-normal text-abb-gray">{ajuda}</span> : null}
     </label>
+  );
+}
+
+/**
+ * Entrada de senha com o olho à direita: tocar mostra o que foi digitado, e
+ * tocar de novo esconde. No celular, com luvas, conferir a senha evita a
+ * tentativa errada que bloqueia o login.
+ */
+export function EntradaSenha({
+  className = '',
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>) {
+  const [visivel, setVisivel] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        {...props}
+        type={visivel ? 'text' : 'password'}
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        className={`${className} pr-12`}
+      />
+      <button
+        type="button"
+        onClick={() => setVisivel((v) => !v)}
+        aria-label={visivel ? 'Ocultar senha' : 'Mostrar senha'}
+        aria-pressed={visivel}
+        aria-controls={props.id}
+        title={visivel ? 'Ocultar senha' : 'Mostrar senha'}
+        className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-md text-abb-gray hover:text-abb-black focus-visible:text-abb-black"
+      >
+        {visivel ? <IconeOlhoFechado className="h-5 w-5" /> : <IconeOlho className="h-5 w-5" />}
+      </button>
+    </div>
   );
 }
 
@@ -86,12 +122,23 @@ export function CampoTexto({
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
         />
+      ) : senha ? (
+        <EntradaSenha
+          id={idCampo}
+          aria-label={rotulo ? undefined : rotuloAcessivel}
+          aria-invalid={invalido || undefined}
+          autoFocus={autoFoco}
+          className={borda}
+          value={valor}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+        />
       ) : (
         <input
           id={idCampo}
-          type={senha ? 'password' : teclado.type}
-          inputMode={senha ? undefined : teclado.inputMode}
-          autoComplete={senha ? undefined : teclado.autoComplete}
+          type={teclado.type}
+          inputMode={teclado.inputMode}
+          autoComplete={teclado.autoComplete}
           aria-label={rotulo ? undefined : rotuloAcessivel}
           aria-invalid={invalido || undefined}
           autoFocus={autoFoco}

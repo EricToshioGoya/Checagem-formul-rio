@@ -1,5 +1,6 @@
 import { validarDefinicao } from '../../../compartilhado/formulario';
 import { api } from '../api/cliente';
+import { baixarImagensDoChecklist } from '../media/apoio';
 import { FormularioRepository } from '../db/repositorios';
 import type { FormularioCache } from '../db/tipos';
 import type { DefinicaoFormulario, EntradaCatalogo } from './tipos';
@@ -70,6 +71,8 @@ export async function sincronizarPainel(
 
   await FormularioRepository.substituirPainel(painelSlug, cache);
   for (const f of cache) memoria.set(f.id, f.definicao);
+  // As imagens de apoio vêm junto, enquanto há rede; sem esperar por elas.
+  for (const f of cache) void baixarImagensDoChecklist(f.definicao);
   return cache.map(paraEntrada);
 }
 

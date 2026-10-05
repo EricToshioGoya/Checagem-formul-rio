@@ -91,9 +91,11 @@ export function removerRegistrosDeMidias(filtro: { usuarioId?: number; painelId?
 export function faxinarMidias(): void {
   if (existsSync(PASTA_MIDIAS)) {
     const conhecidas = new Set(
-      (banco.prepare('SELECT uid FROM sync_midias').all() as Array<{ uid: string }>).map((m) =>
-        m.uid.toLowerCase(),
-      ),
+      (
+        banco
+          .prepare('SELECT uid FROM sync_midias UNION SELECT uid FROM apoio_midias')
+          .all() as Array<{ uid: string }>
+      ).map((m) => m.uid.toLowerCase()),
     );
     const orfas = readdirSync(PASTA_MIDIAS).filter(
       (nome) => uidValido(nome) && !conhecidas.has(nome.toLowerCase()),

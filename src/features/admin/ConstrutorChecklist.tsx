@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  DESCRICOES_TIPO_RESPOSTA,
   ROTULOS_TIPO_RESPOSTA,
   novaEtapa,
   novaSecao,
@@ -12,6 +13,9 @@ import {
   type TipoResposta,
 } from '../../../compartilhado/formulario';
 import { api } from '../../core/api/cliente';
+import { ehApoioDoServidor, enviarImagemApoio } from '../../core/media/apoio';
+import { ehImagem } from '../../core/media/imagem';
+import { ImagemApoio } from '../../shared/componentes/ImagemApoio';
 import { plural } from '../../../compartilhado/plural';
 import { useSalvamentoAutomatico } from '../../shared/hooks/useSalvamentoAutomatico';
 import { baixarBlob } from '../../shared/utils/download';
@@ -71,6 +75,15 @@ export function ConstrutorChecklist({
   const [abertas, setAbertas] = useState<Set<string>>(new Set());
   const [secaoParaExcluir, setSecaoParaExcluir] = useState<Secao | null>(null);
   const entradaArquivo = useRef<HTMLInputElement>(null);
+  const entradaImagem = useRef<HTMLInputElement>(null);
+  /** Etapa que recebe a imagem escolhida no seletor de arquivo. */
+  const alvoImagem = useRef<{ secaoId: string; etapaId: string } | null>(null);
+  const [enviandoImagem, setEnviandoImagem] = useState<string | null>(null);
+  /**
+   * A definição mais recente, para o que termina depois de uma espera (o envio
+   * da imagem): o estado capturado no início já pode estar velho.
+   */
+  const atual = useRef<DefinicaoFormulario | null>(null);
 
   const gravar = useCallback(
     async ({ definicao: nova, ativo: ligado }: Pendente) => {
@@ -91,7 +104,9 @@ export function ConstrutorChecklist({
     api
       .get<{ definicao: DefinicaoFormulario }>(`/api/admin/formularios/${formId}`)
       .then(({ definicao: d }) => {
-        if (vivo) setDefinicao(d);
+        if (!vivo) return;
+        atual.current = d;
+        setDefinicao(d);
       })
       .catch((e: unknown) =>
         setErro(e instanceof Error ? e.message : 'Falha ao abrir o checklist.'),
@@ -107,6 +122,7 @@ export function ConstrutorChecklist({
   /** Aplica a mudança na tela na hora e agenda a gravação. */
   const alterar = (nova: DefinicaoFormulario) => {
     setErro(null);
+    atual.current = nova;
     setDefinicao(nova);
     agendar({ definicao: nova, ativo });
   };
@@ -154,6 +170,41 @@ export function ConstrutorChecklist({
     else if (indice >= midias.length) midias.push({ tipo: 'imagem', src: '', ...mudanca });
     else midias[indice] = { ...midias[indice], ...mudanca };
     alterarEtapa(secaoId, etapa.id, { midiaApoio: midias });
+  };
+
+  const enviarImagem = async (arquivo: File) => {
+    const alvo = alvoImagem.current;
+    alvoImagem.current = null;
+    if (!alvo) return;
+    if (!ehImagem(arquivo)) {
+      setErro('Escolha um arquivo de imagem (JPEG, PNG…).');
+      return;
+    }
+    setEnviandoImagem(`${alvo.secaoId}/${alvo.etapaId}`);
+    try {
+      const src = await enviarImagemApoio(arquivo);
+      const d = atual.current;
+      if (!d) return;
+      alterar({
+        ...d,
+        secoes: d.secoes.map((s) =>
+          s.id !== alvo.secaoId
+            ? s
+            : {
+                ...s,
+                etapas: s.etapas.map((e) =>
+                  e.id !== alvo.etapaId
+                    ? e
+                    : { ...e, midiaApoio: [...(e.midiaApoio ?? []), { tipo: 'imagem' as const, src }] },
+                ),
+              },
+        ),
+      });
+    } catch (e) {
+      setErro(e instanceof Error ? `Não foi possível enviar a imagem: ${e.message}` : 'Falha ao enviar a imagem.');
+    } finally {
+      setEnviandoImagem(null);
+    }
   };
 
   const importar = async (arquivo: File) => {
@@ -244,6 +295,19 @@ export function ConstrutorChecklist({
           const arquivo = e.target.files?.[0];
           e.target.value = '';
           if (arquivo) void importar(arquivo);
+        }}
+      />
+
+      <input
+        ref={entradaImagem}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        aria-label="Imagem de apoio"
+        onChange={(e) => {
+          const arquivo = e.target.files?.[0];
+          e.target.value = '';
+          if (arquivo) void enviarImagem(arquivo);
         }}
       />
 
@@ -382,10 +446,11 @@ export function ConstrutorChecklist({
                         htmlFor={`tipo-${etapa.id}`}
                         className="mb-1 block text-base font-semibold"
                       >
-                        O que o montador faz
+                        Resposta exigida do montador
                       </label>
                       <select
                         id={`tipo-${etapa.id}`}
+                        aria-describedby={`tipo-ajuda-${etapa.id}`}
                         className={campoSelect}
                         value={etapa.tipoResposta}
                         onChange={(e) =>
@@ -400,6 +465,9 @@ export function ConstrutorChecklist({
                           </option>
                         ))}
                       </select>
+                      <p id={`tipo-ajuda-${etapa.id}`} className="mt-1 text-sm text-abb-gray">
+                        {DESCRICOES_TIPO_RESPOSTA[etapa.tipoResposta]}
+                      </p>
                     </div>
 
                     {etapa.tipoResposta === 'selecao' ? (
@@ -445,54 +513,100 @@ export function ConstrutorChecklist({
                     />
 
                     <div className="space-y-2">
-                      <p className="text-base font-semibold">Conteúdo de apoio</p>
-                      {(etapa.midiaApoio ?? []).map((midia, i) => (
-                        <div
-                          key={i}
-                          className="grid gap-2 rounded border border-abb-line p-2 sm:grid-cols-[9rem_1fr_auto]"
+                      <p className="text-base font-semibold">
+                        Imagem de apoio{' '}
+                        <span className="font-normal text-abb-gray">(opcional)</span>
+                      </p>
+                      <p className="text-sm text-abb-gray">
+                        Aparece na etapa para o montador comparar com o painel.
+                      </p>
+                      {(etapa.midiaApoio ?? []).map((midia, i) =>
+                        ehApoioDoServidor(midia.src) ? (
+                          <div
+                            key={midia.src}
+                            className="grid items-start gap-2 rounded border border-abb-line p-2 sm:grid-cols-[10rem_1fr_auto]"
+                          >
+                            <ImagemApoio
+                              src={midia.src}
+                              alt={midia.legenda || `Imagem de apoio da ${etapa.id}`}
+                              className="h-28 w-full rounded border border-abb-line object-contain"
+                            />
+                            <CampoTexto
+                              valor={midia.legenda ?? ''}
+                              placeholder="Legenda (opcional)"
+                              onChange={(v) =>
+                                alterarMidia(secao.id, etapa, i, { legenda: v || undefined })
+                              }
+                            />
+                            <Botao
+                              variante="perigo"
+                              onClick={() => alterarMidia(secao.id, etapa, i, null)}
+                            >
+                              Remover
+                            </Botao>
+                          </div>
+                        ) : (
+                          <div
+                            key={i}
+                            className="grid gap-2 rounded border border-abb-line p-2 sm:grid-cols-[9rem_1fr_auto]"
+                          >
+                            <select
+                              className={campoSelect}
+                              aria-label="Tipo de mídia"
+                              value={midia.tipo}
+                              onChange={(e) =>
+                                alterarMidia(secao.id, etapa, i, {
+                                  tipo: e.target.value as MidiaApoio['tipo'],
+                                })
+                              }
+                            >
+                              <option value="imagem">imagem</option>
+                              <option value="video">vídeo</option>
+                              <option value="pdf">pdf</option>
+                            </select>
+                            <CampoTexto
+                              valor={midia.src}
+                              placeholder="/media/sen-plus/arquivo.png"
+                              onChange={(v) => alterarMidia(secao.id, etapa, i, { src: v })}
+                            />
+                            <Botao
+                              variante="perigo"
+                              onClick={() => alterarMidia(secao.id, etapa, i, null)}
+                            >
+                              Remover
+                            </Botao>
+                            <CampoTexto
+                              valor={midia.legenda ?? ''}
+                              placeholder="Legenda"
+                              onChange={(v) => alterarMidia(secao.id, etapa, i, { legenda: v })}
+                            />
+                          </div>
+                        ),
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <Botao
+                          disabled={enviandoImagem !== null}
+                          onClick={() => {
+                            alvoImagem.current = { secaoId: secao.id, etapaId: etapa.id };
+                            entradaImagem.current?.click();
+                          }}
                         >
-                          <select
-                            className={campoSelect}
-                            aria-label="Tipo de mídia"
-                            value={midia.tipo}
-                            onChange={(e) =>
-                              alterarMidia(secao.id, etapa, i, {
-                                tipo: e.target.value as MidiaApoio['tipo'],
-                              })
-                            }
-                          >
-                            <option value="imagem">imagem</option>
-                            <option value="video">vídeo</option>
-                            <option value="pdf">pdf</option>
-                          </select>
-                          <CampoTexto
-                            valor={midia.src}
-                            placeholder="/media/sen-plus/arquivo.png"
-                            onChange={(v) => alterarMidia(secao.id, etapa, i, { src: v })}
-                          />
-                          <Botao
-                            variante="perigo"
-                            onClick={() => alterarMidia(secao.id, etapa, i, null)}
-                          >
-                            Remover
-                          </Botao>
-                          <CampoTexto
-                            valor={midia.legenda ?? ''}
-                            placeholder="Legenda"
-                            onChange={(v) => alterarMidia(secao.id, etapa, i, { legenda: v })}
-                          />
-                        </div>
-                      ))}
-                      <Botao
-                        onClick={() =>
-                          alterarMidia(secao.id, etapa, (etapa.midiaApoio ?? []).length, {
-                            tipo: 'imagem',
-                            src: '',
-                          })
-                        }
-                      >
-                        Adicionar mídia
-                      </Botao>
+                          {enviandoImagem === `${secao.id}/${etapa.id}`
+                            ? 'Enviando imagem…'
+                            : 'Adicionar imagem'}
+                        </Botao>
+                        <Botao
+                          variante="texto"
+                          onClick={() =>
+                            alterarMidia(secao.id, etapa, (etapa.midiaApoio ?? []).length, {
+                              tipo: 'video',
+                              src: '',
+                            })
+                          }
+                        >
+                          Vídeo ou PDF por endereço
+                        </Botao>
+                      </div>
                     </div>
                   </article>
                 ))}
