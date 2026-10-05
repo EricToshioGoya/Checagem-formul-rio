@@ -28,7 +28,8 @@ export interface DocumentoProjeto {
     criadoEm: number;
     atualizadoEm: number;
   };
-  tags: Array<{ uid: string; nome: string; ordem: number }>;
+  /** `formIds` ausente: TAG que segue com todos os checklists do painel. */
+  tags: Array<{ uid: string; nome: string; ordem: number; formIds?: string[] }>;
   preenchimentos: Array<{
     tagUid: string;
     formId: string;
@@ -190,7 +191,7 @@ export async function montarDocumento(
       criadoEm: projeto.criadoEm,
       atualizadoEm: projeto.atualizadoEm,
     },
-    tags: tags.map((t) => ({ uid: t.uid!, nome: t.nome, ordem: t.ordem })),
+    tags: tags.map((t) => ({ uid: t.uid!, nome: t.nome, ordem: t.ordem, formIds: t.formIds })),
     preenchimentos: preenchimentos.map((p) => ({
       tagUid: uidDaTag.get(p.tagId!)!,
       formId: p.formId,
@@ -282,10 +283,13 @@ async function aplicarDocumento(
     for (const t of documento.tags) {
       const existente = tagPorUid.get(t.uid);
       if (existente) {
-        await db.tags.update(existente.id!, { nome: t.nome, ordem: t.ordem });
+        await db.tags.update(existente.id!, { nome: t.nome, ordem: t.ordem, formIds: t.formIds });
         idDaTag.set(t.uid, existente.id!);
       } else {
-        idDaTag.set(t.uid, await db.tags.add({ projetoId, nome: t.nome, ordem: t.ordem, uid: t.uid }));
+        idDaTag.set(
+          t.uid,
+          await db.tags.add({ projetoId, nome: t.nome, ordem: t.ordem, uid: t.uid, formIds: t.formIds }),
+        );
       }
     }
     const uidsTags = new Set(documento.tags.map((t) => t.uid));

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { calcularProgresso, type MapaRespostas } from '../../compartilhado/progresso';
+import { calcularProgresso, checklistsDaTag, type MapaRespostas } from '../../compartilhado/progresso';
 import type { DefinicaoFormulario } from '../../compartilhado/formulario';
 import { banco, emTransacao, type Usuario } from './banco';
 import {
@@ -36,7 +36,8 @@ function exigirAcessoAoPainel(eu: Usuario, painelId: number): void {
 
 /**
  * Andamento do projeto com a mesma regra do aparelho: cada TAG vezes cada
- * checklist ativo do painel, contando as fotos de cada etapa.
+ * checklist ativo do painel escolhido para ela, contando as fotos de cada
+ * etapa.
  */
 export function andamentoDoDocumento(
   painelId: number,
@@ -50,7 +51,7 @@ export function andamentoDoDocumento(
   let total = 0;
   let respondidas = 0;
   for (const tag of documento.tags) {
-    for (const definicao of definicoes) {
+    for (const definicao of checklistsDaTag(tag.formIds, definicoes)) {
       const preenchimento = documento.preenchimentos.find(
         (p) => p.tagUid === tag.uid && p.formId === definicao.id,
       );

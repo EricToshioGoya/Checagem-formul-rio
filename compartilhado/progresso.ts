@@ -116,3 +116,17 @@ export function idsPendentes(
     .filter((e) => !etapaRespondida(e, respostas[e.id], fotosPorEtapa[e.id] ?? 0))
     .map((e) => e.id);
 }
+
+/**
+ * Checklists que valem para uma TAG. Nem toda TAG passa por todos os
+ * checklists do painel: o montador escolhe, ao cadastrar a TAG, quais vai
+ * preencher. TAG sem escolha gravada (anterior a esta regra, ou vinda de um
+ * aparelho desatualizado) segue com todos — nada já preenchido some.
+ */
+export function checklistsDaTag<T extends { id: string }>(
+  formIds: readonly string[] | undefined,
+  checklists: readonly T[],
+): T[] {
+  if (!formIds) return [...checklists];
+  return checklists.filter((c) => formIds.includes(c.id));
+}

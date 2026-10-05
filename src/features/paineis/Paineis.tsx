@@ -127,7 +127,9 @@ export function Paineis() {
         nomeProjeto: painel.nome,
         operador: usuario.nome,
         painelSlug: painel.slug,
-        tags: [painel.nome],
+        // O painel é o tipo (SEN Plus, MNS…), não uma TAG: o projeto nasce
+        // vazio e as checagens aparecem quando o montador cadastra as TAGs.
+        tags: [],
       });
       navegar(`/projetos/${id}`);
     } catch (e) {

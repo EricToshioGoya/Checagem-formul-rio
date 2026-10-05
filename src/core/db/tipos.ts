@@ -49,6 +49,11 @@ export interface Tag {
    * a mesma TAG ser reconhecida no servidor e em outro aparelho, é o `uid`.
    */
   uid?: string;
+  /**
+   * Checklists escolhidos para esta TAG. Ausente nas TAGs anteriores à
+   * escolha: essas seguem com todos os checklists do painel.
+   */
+  formIds?: string[];
 }
 
 export interface Preenchimento {

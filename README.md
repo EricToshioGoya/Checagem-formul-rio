@@ -425,6 +425,12 @@ Fotos são gravadas como **Blob**, nunca base64. `respostas` é um mapa
 `etapaId → { valor, observacao }`. Excluir um projeto, uma TAG ou uma
 solicitação remove em cascata os preenchimentos e as mídias.
 
+O painel (SEN Plus, MNS…) é o tipo, não uma TAG: o projeto abre vazio e as
+checagens aparecem quando o montador cadastra as TAGs. Ao cadastrar, ele marca
+quais checklists do painel aquela TAG vai preencher (`tags.formIds`), e pode
+trocar depois em **Checklists**. Desmarcar não apaga respostas. TAG sem
+`formIds` — anterior a esta regra — segue com todos os checklists.
+
 Projetos gravados antes de existir login ficam sem `usuarioId` e continuam
 visíveis para quem estiver logado — não há a quem atribuí-los.
 
@@ -615,7 +621,8 @@ npm run admin -- promover pessoa@empresa.com
 - Sempre disponível, independentemente de pendências.
 - Etapas sem resposta são impressas como **“Não verificado”**.
 - Primeira página: capa com dados do projeto e resumo de pendências por TAG.
-- Um PDF por tipo de verificação, com todas as TAGs, separadas por seção.
+- Um PDF por tipo de verificação, com as TAGs que têm aquele checklist,
+  separadas por seção.
 - Colunas `Etapa | Descrição | Aferido | Status | Data | Operador`, cabeçalhos de
   seção destacados e numeração de páginas no rodapé.
 - Registro da revisão do formulário utilizada.

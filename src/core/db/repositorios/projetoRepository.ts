@@ -162,11 +162,31 @@ export const ProjetoRepository = {
       .sortBy('ordem');
   },
 
-  async adicionarTag(projetoId: number, nome: string): Promise<number> {
+  /**
+   * `formIds`: checklists que o montador vai preencher nesta TAG. Ausente,
+   * a TAG segue com todos os do painel.
+   */
+  async adicionarTag(projetoId: number, nome: string, formIds?: string[]): Promise<number> {
     const existentes = await db.tags.where('projetoId').equals(projetoId).count();
-    const id = await db.tags.add({ projetoId, nome: nome.trim(), ordem: existentes });
+    const id = await db.tags.add({
+      projetoId,
+      nome: nome.trim(),
+      ordem: existentes,
+      formIds: formIds ? [...formIds] : undefined,
+    });
     await this.marcarAlteracao(projetoId);
     return id;
+  },
+
+  /**
+   * Troca os checklists da TAG. Desmarcar não apaga nada: o que já foi
+   * respondido fica guardado e volta se o checklist for marcado de novo.
+   */
+  async definirChecklistsDaTag(tagId: number, formIds: string[]): Promise<void> {
+    const tag = await db.tags.get(tagId);
+    if (!tag) return;
+    await db.tags.update(tagId, { formIds: [...formIds] });
+    await this.marcarAlteracao(tag.projetoId);
   },
 
   async renomearTag(tagId: number, nome: string): Promise<void> {

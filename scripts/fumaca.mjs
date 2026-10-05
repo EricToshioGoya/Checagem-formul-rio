@@ -68,6 +68,25 @@ try {
   await senPlus.getByRole('button', { name: 'Abrir checagens' }).waitFor();
   await senPlus.getByRole('button', { name: 'Abrir checagens' }).click();
   await p.waitForURL(/#\/projetos\/\d+$/);
+  await p.getByText('Nenhuma TAG cadastrada').waitFor();
+  checa(
+    'o painel abre sem TAG e sem checagem',
+    (await p.locator('button', { hasText: 'Montagem' }).count()) === 0,
+  );
+  await p.getByRole('button', { name: 'Adicionar TAG' }).first().click();
+  const dialogo = p.getByRole('dialog');
+  await dialogo.getByLabel('Nome da TAG').fill('QGBT-01');
+  checa(
+    'adicionar exige escolher o checklist',
+    await dialogo.getByRole('button', { name: 'Adicionar' }).isDisabled(),
+  );
+  await dialogo.getByRole('checkbox', { name: /Montagem/ }).check();
+  await dialogo.getByRole('button', { name: 'Adicionar' }).click();
+  await p.locator('button', { hasText: 'Montagem' }).first().waitFor();
+  checa(
+    'a TAG mostra só o checklist escolhido',
+    (await p.locator('button', { hasText: 'Rotina' }).count()) === 0,
+  );
   await p.locator('button', { hasText: 'Montagem' }).first().click();
   await p.waitForURL(/formularios/);
   const primeira = p.locator('nav[aria-label="Etapas do formulário"] li button').first();

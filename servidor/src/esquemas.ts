@@ -172,7 +172,15 @@ export const documentoProjetoSchema = z.object({
     atualizadoEm: z.number(),
   }),
   tags: z
-    .array(z.object({ uid: uidSchema, nome: textoCurto, ordem: z.number().int() }))
+    .array(
+      z.object({
+        uid: uidSchema,
+        nome: textoCurto,
+        ordem: z.number().int(),
+        // Checklists escolhidos para a TAG; ausente, ela segue com todos.
+        formIds: z.array(textoCurto).max(100).optional(),
+      }),
+    )
     .max(1000),
   preenchimentos: z
     .array(
