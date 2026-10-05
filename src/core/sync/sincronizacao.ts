@@ -457,7 +457,7 @@ async function enviar(projeto: Projeto, tentativa = 1): Promise<void> {
   await db.projetos.update(projeto.id!, { versaoServidor: resposta.versao });
   for (const uid of resposta.faltando) {
     const arquivo = arquivos.get(uid);
-    if (arquivo) await api.enviarArquivo(`/api/sync/midias/${uid}`, arquivo);
+    if (arquivo) await api.enviarArquivo(`/api/sync/midias/${uid}?projeto=${projeto.uid}`, arquivo);
   }
   await db.projetos.update(projeto.id!, { sincronizadoEm: documento.projeto.atualizadoEm });
 }
@@ -551,10 +551,12 @@ export async function sincronizarAgora(usuarioId: number): Promise<void> {
     const locais = (await db.projetos.where('usuarioId').equals(usuarioId).toArray()).filter(
       (p) => p.painelId !== undefined,
     );
-    // Projeto anterior à v7 que escapou da migração: recebe o `uid` legado.
+    // Projeto anterior à v7 que escapou da migração: recebe o `uid` legado,
+    // a menos que outro projeto do painel já o tenha.
     for (const p of locais) {
       if (!p.uid) {
-        p.uid = uidProjetoLegado(p.painelId!);
+        const legado = uidProjetoLegado(p.painelId!);
+        p.uid = locais.some((o) => o.uid === legado) ? novoUid() : legado;
         await db.projetos.update(p.id!, { uid: p.uid });
       }
     }

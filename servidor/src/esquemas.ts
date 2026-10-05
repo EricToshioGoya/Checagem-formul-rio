@@ -225,8 +225,11 @@ export type DocumentoProjeto = z.output<typeof documentoProjetoSchema>;
  */
 export const envioProjetoSchema = z.object({
   versaoBase: z.number().int().min(0),
-  /** Painel do projeto: decide o acesso e o checklist do andamento. */
-  painelId: z.number().int().positive(),
+  /**
+   * Painel do projeto: decide o acesso e o checklist do andamento. Ausente no
+   * envio do aplicativo anterior, que põe o painel na URL.
+   */
+  painelId: z.number().int().positive().optional(),
   documento: documentoProjetoSchema,
 });
 

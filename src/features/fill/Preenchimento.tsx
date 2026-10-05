@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { MidiaRepository, PreenchimentoRepository } from '../../core/db/repositorios';
+import { propagarCabecalho } from '../../core/forms/dadosTag';
 import { useSessao } from '../../core/api/SessaoContexto';
 import type { Bloqueio } from '../../core/api/acessoLocal';
 import { AcessoBloqueado } from '../paineis/AcessoBloqueado';
@@ -99,6 +100,7 @@ export function Preenchimento() {
     const mudancas = mudancasDeCabecalho(baseCabecalho.current, valor);
     if (Object.keys(mudancas).length === 0) return;
     await PreenchimentoRepository.aplicarMudancasCabecalho(contexto.preenchimento.id, mudancas);
+    await propagarCabecalho(contexto.preenchimento.id, mudancas);
     baseCabecalho.current = aplicarMudancas(baseCabecalho.current, mudancas);
     await contexto.marcarAlteracao();
   });

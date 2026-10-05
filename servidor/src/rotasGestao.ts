@@ -309,7 +309,9 @@ export const rotasGestao: Record<string, Manipulador> = {
                 sp.total, sp.respondidas, sp.enviadoEm, sp.alteradoEm, sp.empresa, sp.qtdTags,
                 sp.projetoUid, sp.nomeProjeto
            ${base}
-          ORDER BY p.ordem, p.id, lower(u.nome), lower(sp.nomeProjeto)
+          -- Desempate até a chave: uma pessoa tem várias linhas agora, e um
+          -- empate deixaria a paginação repetir ou pular linha.
+          ORDER BY p.ordem, p.id, lower(u.nome), u.id, lower(sp.nomeProjeto), sp.id
           LIMIT ? OFFSET ?`,
       )
       .all(agora, ...ids, porPagina, deslocamento) as Array<Record<string, unknown>>;

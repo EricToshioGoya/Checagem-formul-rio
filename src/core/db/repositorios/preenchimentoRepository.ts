@@ -115,30 +115,19 @@ export const PreenchimentoRepository = {
   },
 
   /**
-   * Igual às respostas: só os campos do cabeçalho que a pessoa mudou.
-   *
-   * Os dados do painel são da TAG, não de um checklist: a mudança vale também
-   * para os outros checklists da mesma TAG, e os PDFs não saem com o mesmo
-   * painel descrito de dois jeitos. Campo que o outro checklist não tem fica
-   * guardado sem aparecer — tela e PDF leem só os campos da definição.
+   * Igual às respostas: só os campos do cabeçalho que a pessoa mudou. Levar a
+   * mudança aos outros checklists da TAG é com `propagarCabecalho`.
    */
   async aplicarMudancasCabecalho(id: number, mudancas: Record<string, string | null>): Promise<void> {
     await db.transaction('rw', db.preenchimentos, async () => {
       const atual = await db.preenchimentos.get(id);
       if (!atual) return;
-      const daTag =
-        atual.tagId === undefined
-          ? [atual]
-          : await db.preenchimentos.where('tagId').equals(atual.tagId).toArray();
-      const agora = Date.now();
-      for (const p of daTag) {
-        const cabecalho: ValoresCabecalho = { ...p.cabecalho };
-        for (const [campoId, valor] of Object.entries(mudancas)) {
-          if (valor === null) delete cabecalho[campoId];
-          else cabecalho[campoId] = valor;
-        }
-        await db.preenchimentos.update(p.id!, { cabecalho, atualizadoEm: agora });
+      const cabecalho: ValoresCabecalho = { ...atual.cabecalho };
+      for (const [campoId, valor] of Object.entries(mudancas)) {
+        if (valor === null) delete cabecalho[campoId];
+        else cabecalho[campoId] = valor;
       }
+      await db.preenchimentos.update(id, { cabecalho, atualizadoEm: Date.now() });
     });
   },
 };

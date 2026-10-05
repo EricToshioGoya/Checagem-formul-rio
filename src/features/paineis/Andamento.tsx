@@ -54,7 +54,8 @@ export function Andamento({ onSessaoVencida }: { onSessaoVencida?: () => void })
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-abb-gray">
-              {dados.total} montador(es) com acesso ou trabalho enviado. Atualiza sozinho.
+              {dados.total} {dados.total === 1 ? 'linha' : 'linhas'}: cada projeto enviado e
+              quem tem acesso sem projeto ainda. Atualiza sozinho.
             </p>
             {dados.paineis.length > 1 ? (
               <select

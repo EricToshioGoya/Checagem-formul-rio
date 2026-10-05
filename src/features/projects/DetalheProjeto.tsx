@@ -55,6 +55,7 @@ export function DetalheProjeto() {
   const [adicionando, setAdicionando] = useState(false);
   const [novaTag, setNovaTag] = useState<RascunhoTag>(rascunhoVazio);
   const [tentouNovaTag, setTentouNovaTag] = useState(false);
+  const [gravandoTag, setGravandoTag] = useState(false);
   const [tagChecklists, setTagChecklists] = useState<{
     id: number;
     nome: string;
@@ -123,15 +124,20 @@ export function DetalheProjeto() {
 
   const adicionarTag = async () => {
     setTentouNovaTag(true);
-    if (!tagCompleta(pendenciasDaTag(novaTag, checklists, definicoes))) return;
-    // Painel sem checklist cadastrado: não há o que escolher, e a TAG segue
-    // com os que vierem a existir.
-    const formIds = checklists.length
-      ? checklists.filter((c) => novaTag.formIds.includes(c.id)).map((c) => c.id)
-      : undefined;
-    await ProjetoRepository.adicionarTag(id, await prepararTag(novaTag.nome, formIds, novaTag.dados));
-    setAdicionando(false);
-    await recarregar();
+    if (gravandoTag || !tagCompleta(pendenciasDaTag(novaTag, checklists, definicoes))) return;
+    setGravandoTag(true);
+    try {
+      // Painel sem checklist cadastrado: não há o que escolher, e a TAG segue
+      // com os que vierem a existir.
+      const formIds = checklists.length
+        ? checklists.filter((c) => novaTag.formIds.includes(c.id)).map((c) => c.id)
+        : undefined;
+      await ProjetoRepository.adicionarTag(id, await prepararTag(novaTag.nome, formIds, novaTag.dados));
+      setAdicionando(false);
+      await recarregar();
+    } finally {
+      setGravandoTag(false);
+    }
   };
 
   const voltar = projeto.painelId === undefined ? '/projetos' : `/paineis/${projeto.painelId}/projetos`;
@@ -351,8 +357,8 @@ export function DetalheProjeto() {
         rodape={
           <>
             <Botao onClick={() => setAdicionando(false)}>Cancelar</Botao>
-            <Botao variante="primario" onClick={() => void adicionarTag()}>
-              Adicionar
+            <Botao variante="primario" disabled={gravandoTag} onClick={() => void adicionarTag()}>
+              {gravandoTag ? 'Adicionando…' : 'Adicionar'}
             </Botao>
           </>
         }

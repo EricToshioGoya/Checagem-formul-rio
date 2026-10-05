@@ -102,12 +102,25 @@ class BancoVerificacao extends Dexie {
           '++id, empresa, nomeProjeto, operador, criadoEm, atualizadoEm, painelId, usuarioId, [usuarioId+painelId], uid',
       })
       .upgrade(async (tx) => {
-        await tx
-          .table('projetos')
-          .toCollection()
-          .modify((p: Projeto) => {
-            if (!p.uid) p.uid = p.painelId === undefined ? novoUid() : uidProjetoLegado(p.painelId);
-          });
+        // Só um projeto por conta e painel fica com o legado — o que já foi ao
+        // servidor, ou o mais antigo. Dois com o mesmo `uid` se fundiriam na
+        // sincronização; os demais (de antes da criação ser numa transação só)
+        // ganham `uid` novo e sobem como projetos próprios.
+        const tabela = tx.table('projetos');
+        const projetos = ((await tabela.toArray()) as Projeto[]).sort(
+          (a, b) =>
+            (b.versaoServidor ?? 0) - (a.versaoServidor ?? 0) || a.criadoEm - b.criadoEm,
+        );
+        const usados = new Set<string>();
+        for (const p of projetos) {
+          if (p.uid) continue;
+          const legado = p.painelId === undefined ? null : uidProjetoLegado(p.painelId);
+          const chave = `${p.usuarioId ?? ''}|${legado}`;
+          const uid = legado && !usados.has(chave) ? legado : novoUid();
+          if (legado) usados.add(chave);
+          // Quem não fica com o legado não tem cópia no servidor.
+          await tabela.update(p.id!, uid === legado ? { uid } : { uid, versaoServidor: 0, sincronizadoEm: 0 });
+        }
       });
 
     // Todo projeto, TAG e mídia novo nasce com `uid`, venha de onde vier:

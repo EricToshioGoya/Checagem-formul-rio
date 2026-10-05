@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { calcularProgresso, checklistsDaTag, type MapaRespostas } from '../../compartilhado/progresso';
+import { uidProjetoLegado } from '../../compartilhado/projeto';
 import type { DefinicaoFormulario } from '../../compartilhado/formulario';
 import { banco, emTransacao, type Usuario } from './banco';
 import {
@@ -88,11 +89,17 @@ function uidsDoUsuario(usuarioId: number, projetoUid?: string): Set<string> {
   return new Set(linhas.map((l) => l.uid.toLowerCase()));
 }
 
-/** `uid` do projeto vindo da URL, já normalizado. */
-function lerUidProjeto(ctx: Contexto): string {
-  const uid = ctx.params.uid.toLowerCase();
+/**
+ * `uid` do projeto vindo da URL, já normalizado. Um número é o id do painel,
+ * como o aplicativo anterior chamava (um projeto por painel): vale o `uid`
+ * legado, e uma exclusão feita num aparelho ainda desatualizado não se perde.
+ */
+function lerUidProjeto(ctx: Contexto): { uid: string; painelDaUrl?: number } {
+  const bruto = ctx.params.uid;
+  if (/^\d{1,9}$/.test(bruto)) return { uid: uidProjetoLegado(Number(bruto)), painelDaUrl: Number(bruto) };
+  const uid = bruto.toLowerCase();
   if (!uidValido(uid)) throw new ErroHttp(400, 'Identificador de projeto inválido.');
-  return uid;
+  return { uid };
 }
 
 export const rotasSync: Record<string, Manipulador> = {
@@ -114,7 +121,7 @@ export const rotasSync: Record<string, Manipulador> = {
 
   'GET /api/sync/projetos/:uid': (ctx) => {
     const eu = exigirSessao(ctx);
-    const uid = lerUidProjeto(ctx);
+    const { uid } = lerUidProjeto(ctx);
     const linha = banco
       .prepare(
         'SELECT painelId, versao, documento, enviadoEm FROM sync_projetos WHERE usuarioId = ? AND projetoUid = ?',
@@ -139,10 +146,10 @@ export const rotasSync: Record<string, Manipulador> = {
    */
   'PUT /api/sync/projetos/:uid': (ctx) => {
     const eu = exigirSessao(ctx);
-    const uid = lerUidProjeto(ctx);
+    const { uid, painelDaUrl } = lerUidProjeto(ctx);
     const r = envioProjetoSchema.safeParse(ctx.corpo);
     if (!r.success) throw new ErroHttp(400, primeiroErro(r.error));
-    const { versaoBase, painelId, documento } = r.data;
+    const { versaoBase, documento } = r.data;
 
     const citadas = documento.midias.map((m) => m.uid.toLowerCase());
     if (new Set(citadas).size !== citadas.length) throw new ErroHttp(400, 'Mídia repetida no projeto.');
@@ -152,6 +159,8 @@ export const rotasSync: Record<string, Manipulador> = {
     const atual = banco
       .prepare('SELECT painelId, versao FROM sync_projetos WHERE usuarioId = ? AND projetoUid = ?')
       .get(eu.id, uid) as { painelId: number; versao: number } | undefined;
+    const painelId = r.data.painelId ?? painelDaUrl ?? (atual ? Number(atual.painelId) : undefined);
+    if (painelId === undefined) throw new ErroHttp(400, 'Painel do projeto não informado.');
     // O projeto nasce num painel e fica nele: trocar o painel pela URL levaria
     // as checagens para onde a pessoa talvez nem tenha acesso aprovado.
     if (atual && Number(atual.painelId) !== painelId) {
@@ -225,7 +234,7 @@ export const rotasSync: Record<string, Manipulador> = {
    */
   'DELETE /api/sync/projetos/:uid': (ctx) => {
     const eu = exigirSessao(ctx);
-    const uid = lerUidProjeto(ctx);
+    const { uid } = lerUidProjeto(ctx);
     const fotos = emTransacao(() => {
       const uids = [...uidsDoUsuario(eu.id, uid)];
       banco.prepare('DELETE FROM sync_midias WHERE usuarioId = ? AND projetoUid = ?').run(eu.id, uid);
@@ -246,10 +255,21 @@ export const rotasSync: Record<string, Manipulador> = {
     if (dados.length > TAMANHO_MAXIMO_MIDIA) throw new ErroHttp(413, 'Arquivo grande demais.');
 
     // Só entra arquivo que algum projeto da conta cita: o servidor não vira
-    // depósito de qualquer coisa que alguém resolva mandar.
-    const projetos = banco
-      .prepare('SELECT projetoUid, painelId, documento FROM sync_projetos WHERE usuarioId = ?')
-      .all(eu.id) as Array<{ projetoUid: string; painelId: number; documento: string }>;
+    // depósito de qualquer coisa que alguém resolva mandar. O aparelho diz de
+    // qual projeto é a foto, e só esse documento é lido; sem a indicação (o
+    // aplicativo anterior), procura-se em todos.
+    const indicado = ctx.consulta.get('projeto')?.toLowerCase();
+    const projetos = (
+      indicado && uidValido(indicado)
+        ? banco
+            .prepare(
+              'SELECT projetoUid, painelId, documento FROM sync_projetos WHERE usuarioId = ? AND projetoUid = ?',
+            )
+            .all(eu.id, indicado)
+        : banco
+            .prepare('SELECT projetoUid, painelId, documento FROM sync_projetos WHERE usuarioId = ?')
+            .all(eu.id)
+    ) as Array<{ projetoUid: string; painelId: number; documento: string }>;
     let dono: { projetoUid: string; painelId: number; mime: string } | null = null;
     for (const p of projetos) {
       const citada = (JSON.parse(p.documento) as DocumentoProjeto).midias.find(
