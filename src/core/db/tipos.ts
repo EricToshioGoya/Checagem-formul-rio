@@ -37,6 +37,11 @@ export interface Projeto {
   sincronizadoEm?: number;
   /** Versão do servidor de que esta cópia partiu. */
   versaoServidor?: number;
+  /**
+   * Identificador que vale em todo aparelho e no servidor. Um painel pode ter
+   * vários projetos da mesma conta, então o par (conta, painel) não basta.
+   */
+  uid?: string;
 }
 
 export interface Tag {
@@ -49,6 +54,11 @@ export interface Tag {
    * a mesma TAG ser reconhecida no servidor e em outro aparelho, é o `uid`.
    */
   uid?: string;
+  /**
+   * Checklists escolhidos para esta TAG. Ausente nas TAGs anteriores à
+   * escolha: essas seguem com todos os checklists do painel.
+   */
+  formIds?: string[];
 }
 
 export interface Preenchimento {
@@ -177,4 +187,15 @@ export interface Certificado {
 export interface Contador {
   id: string;
   proximo: number;
+}
+
+/**
+ * Imagem de apoio de uma etapa, baixada do servidor e guardada no aparelho:
+ * o montador abre o checklist sem rede e ainda vê a referência.
+ */
+export interface ImagemApoioCache {
+  /** Endereço como está no checklist (`/api/apoio/<uid>`). */
+  src: string;
+  blob: Blob;
+  baixadoEm: number;
 }

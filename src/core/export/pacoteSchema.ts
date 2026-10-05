@@ -33,6 +33,8 @@ export const pacoteSchema = z.object({
       chave: z.number(),
       nome: z.string(),
       ordem: z.number(),
+      // Pacote de versão anterior não traz: a TAG segue com todos os checklists.
+      formIds: z.array(z.string().min(1)).optional(),
     }),
   ),
   preenchimentos: z.array(

@@ -4,7 +4,7 @@ import {
   ProjetoRepository,
 } from '../db/repositorios';
 import { carregarFormulario, formulariosDoPainel } from '../forms/catalogo';
-import { calcularProgresso, idsPendentes } from '../forms/progresso';
+import { calcularProgresso, checklistsDaTag, idsPendentes } from '../forms/progresso';
 import type { Progresso } from '../forms/progresso';
 import type { DefinicaoFormulario, MapaRespostas, ValoresCabecalho } from '../forms/tipos';
 import type { Midia, Projeto, Tag } from '../db/tipos';
@@ -58,7 +58,8 @@ export async function montarDossie(
 
   for (const tag of tags) {
     const formularios: FormularioDoDossie[] = [];
-    for (const entrada of entradas) {
+    // A TAG só entra com os checklists escolhidos para ela.
+    for (const entrada of checklistsDaTag(tag.formIds, entradas)) {
       const definicao = await carregarFormulario(entrada.id);
       const preenchimento = await PreenchimentoRepository.obter(tag.id!, entrada.id);
       const midiasPorEtapa: Record<string, Midia[]> = {};

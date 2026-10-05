@@ -122,6 +122,32 @@ function migrarSolicitacoesComPrazo(): void {
   console.warn('Solicitações migradas: acesso com prazo e revogação disponíveis.');
 }
 
+/**
+ * Cópia no servidor do trabalho de cada montador: um projeto por linha,
+ * identificado pelo `uid` que ele tem no aparelho — um painel pode ter vários
+ * projetos da mesma conta. O documento é o JSON do projeto; o andamento sai
+ * dele na gravação, para o painel de acompanhamento não precisar abrir
+ * documento nenhum.
+ */
+function ddlSyncProjetos(nome: string): string {
+  return `CREATE TABLE IF NOT EXISTS ${nome} (
+    id          INTEGER PRIMARY KEY,
+    usuarioId   INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    painelId    INTEGER NOT NULL REFERENCES paineis(id)  ON DELETE CASCADE,
+    projetoUid  TEXT    NOT NULL,
+    versao      INTEGER NOT NULL,
+    documento   TEXT    NOT NULL,
+    enviadoEm   INTEGER NOT NULL,
+    alteradoEm  INTEGER NOT NULL,
+    total       INTEGER NOT NULL DEFAULT 0,
+    respondidas INTEGER NOT NULL DEFAULT 0,
+    empresa     TEXT,
+    qtdTags     INTEGER NOT NULL DEFAULT 0,
+    nomeProjeto TEXT,
+    UNIQUE (usuarioId, projetoUid)
+  );`;
+}
+
 migrarSolicitacoesComPrazo();
 
 banco.exec(`
@@ -232,22 +258,7 @@ banco.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_avisos_fila ON avisos (enviadoEm, proximaEm);
 
-  -- Cópia no servidor do trabalho de cada montador em cada painel: o mesmo
-  -- par (conta, painel) que identifica o projeto no aparelho. O documento é o
-  -- JSON do projeto; o andamento sai dele na gravação, para o painel de
-  -- acompanhamento não precisar abrir documento nenhum.
-  CREATE TABLE IF NOT EXISTS sync_projetos (
-    id          INTEGER PRIMARY KEY,
-    usuarioId   INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-    painelId    INTEGER NOT NULL REFERENCES paineis(id)  ON DELETE CASCADE,
-    versao      INTEGER NOT NULL,
-    documento   TEXT    NOT NULL,
-    enviadoEm   INTEGER NOT NULL,
-    alteradoEm  INTEGER NOT NULL,
-    total       INTEGER NOT NULL DEFAULT 0,
-    respondidas INTEGER NOT NULL DEFAULT 0,
-    UNIQUE (usuarioId, painelId)
-  );
+  ${ddlSyncProjetos('sync_projetos')}
 
   -- Fotos e anexos sincronizados. O arquivo fica em disco, com o \`uid\` como
   -- nome; aqui só o registro de quem é.
@@ -260,6 +271,17 @@ banco.exec(`
     recebidoEm INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_sync_midias_dono ON sync_midias (usuarioId, painelId);
+
+  -- Imagens de apoio das etapas, enviadas pela administração ao montar o
+  -- checklist. O arquivo fica na mesma pasta das fotos (e entra no mesmo
+  -- espelho de backup); aqui o registro que impede a faxina de apagá-lo.
+  CREATE TABLE IF NOT EXISTS apoio_midias (
+    uid       TEXT    PRIMARY KEY,
+    mime      TEXT    NOT NULL,
+    tamanho   INTEGER NOT NULL,
+    criadoEm  INTEGER NOT NULL,
+    criadoPor INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
+  );
 `);
 
 /** Acrescenta a coluna se a tabela ainda não a tem — bancos de antes dos perfis. */
@@ -287,6 +309,50 @@ garantirColuna('usuarios', 'ultimoAcessoEm', 'INTEGER');
 // Resumo do projeto sincronizado, para o acompanhamento não abrir o documento.
 garantirColuna('sync_projetos', 'empresa', 'TEXT');
 garantirColuna('sync_projetos', 'qtdTags', 'INTEGER NOT NULL DEFAULT 0');
+// Foto ou anexo pertence a um projeto, não mais ao par (conta, painel).
+garantirColuna('sync_midias', 'projetoUid', 'TEXT');
+
+/**
+ * Um painel passa a ter vários projetos da mesma conta. A chave deixa de ser
+ * (conta, painel) e passa a ser o `uid` do projeto; a restrição UNIQUE não se
+ * altera no SQLite sem recriar a tabela. Cada linha existente recebe o `uid`
+ * legado do seu painel — o mesmo que o aparelho deriva para o projeto que já
+ * tinha (ver `compartilhado/projeto.ts`) —, e as fotos vão junto.
+ */
+function migrarSyncPorProjeto(): void {
+  const colunas = banco.prepare('PRAGMA table_info(sync_projetos)').all() as Array<{ name: string }>;
+  if (colunas.some((c) => c.name === 'projetoUid')) return;
+
+  const uidLegado = "printf('00000000-0000-4000-8000-%012d', painelId)";
+  banco.exec('PRAGMA foreign_keys = OFF');
+  banco.exec('BEGIN');
+  try {
+    banco.exec('DROP TABLE IF EXISTS sync_projetos_novo');
+    banco.exec(ddlSyncProjetos('sync_projetos_novo'));
+    banco.exec(
+      `INSERT INTO sync_projetos_novo
+         (id, usuarioId, painelId, projetoUid, versao, documento, enviadoEm, alteradoEm,
+          total, respondidas, empresa, qtdTags, nomeProjeto)
+       SELECT id, usuarioId, painelId, ${uidLegado}, versao, documento, enviadoEm, alteradoEm,
+              total, respondidas, empresa, qtdTags, json_extract(documento, '$.projeto.nomeProjeto')
+         FROM sync_projetos`,
+    );
+    banco.exec('DROP TABLE sync_projetos');
+    banco.exec('ALTER TABLE sync_projetos_novo RENAME TO sync_projetos');
+    banco.exec(`UPDATE sync_midias SET projetoUid = ${uidLegado} WHERE projetoUid IS NULL`);
+    banco.exec('COMMIT');
+  } catch (erro) {
+    banco.exec('ROLLBACK');
+    throw erro;
+  } finally {
+    banco.exec('PRAGMA foreign_keys = ON');
+  }
+  console.warn('Sincronização migrada: cada painel pode ter vários projetos por conta.');
+}
+
+migrarSyncPorProjeto();
+banco.exec('CREATE INDEX IF NOT EXISTS idx_sync_projetos_painel ON sync_projetos (usuarioId, painelId)');
+banco.exec('CREATE INDEX IF NOT EXISTS idx_sync_midias_projeto ON sync_midias (usuarioId, projetoUid)');
 
 export type Papel = 'montador' | 'admin';
 

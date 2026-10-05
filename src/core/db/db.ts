@@ -1,8 +1,10 @@
 import Dexie, { type Table } from 'dexie';
+import { uidProjetoLegado } from '../../../compartilhado/projeto';
 import type {
   Certificado,
   Contador,
   FormularioCache,
+  ImagemApoioCache,
   Midia,
   Preenchimento,
   Projeto,
@@ -24,6 +26,7 @@ class BancoVerificacao extends Dexie {
   solicitacoes!: Table<Solicitacao, number>;
   certificados!: Table<Certificado, number>;
   contadores!: Table<Contador, string>;
+  apoio!: Table<ImagemApoioCache, string>;
 
   constructor() {
     super('verificacao-montagem');
@@ -91,8 +94,48 @@ class BancoVerificacao extends Dexie {
       contadores: 'id',
     });
 
-    // Toda TAG e mídia nova nasce com `uid`, venha de onde vier: tela,
-    // importação de .zip ou a própria sincronização.
+    // v7: um painel passa a ter vários projetos da mesma conta, e o projeto
+    // ganha `uid` próprio para ser reconhecido no servidor. O projeto que já
+    // existia de cada painel recebe o `uid` legado — o mesmo que o servidor
+    // deu à cópia dele na migração —, e os dois continuam casando.
+    this.version(7)
+      .stores({
+        projetos:
+          '++id, empresa, nomeProjeto, operador, criadoEm, atualizadoEm, painelId, usuarioId, [usuarioId+painelId], uid',
+      })
+      .upgrade(async (tx) => {
+        // Só um projeto por conta e painel fica com o legado — o que já foi ao
+        // servidor, ou o mais antigo. Dois com o mesmo `uid` se fundiriam na
+        // sincronização; os demais (de antes da criação ser numa transação só)
+        // ganham `uid` novo e sobem como projetos próprios.
+        const tabela = tx.table('projetos');
+        const projetos = ((await tabela.toArray()) as Projeto[]).sort(
+          (a, b) =>
+            (b.versaoServidor ?? 0) - (a.versaoServidor ?? 0) || a.criadoEm - b.criadoEm,
+        );
+        const usados = new Set<string>();
+        for (const p of projetos) {
+          if (p.uid) continue;
+          const legado = p.painelId === undefined ? null : uidProjetoLegado(p.painelId);
+          const chave = `${p.usuarioId ?? ''}|${legado}`;
+          const uid = legado && !usados.has(chave) ? legado : novoUid();
+          if (legado) usados.add(chave);
+          // Quem não fica com o legado não tem cópia no servidor.
+          await tabela.update(p.id!, uid === legado ? { uid } : { uid, versaoServidor: 0, sincronizadoEm: 0 });
+        }
+      });
+
+    // v8: imagens de apoio das etapas, enviadas pela administração. Ficam no
+    // aparelho junto com o checklist, para a referência abrir sem rede.
+    this.version(8).stores({
+      apoio: 'src',
+    });
+
+    // Todo projeto, TAG e mídia novo nasce com `uid`, venha de onde vier:
+    // tela, importação de .zip ou a própria sincronização.
+    this.projetos.hook('creating', (_chave, projeto) => {
+      if (!projeto.uid) projeto.uid = novoUid();
+    });
     this.tags.hook('creating', (_chave, tag) => {
       if (!tag.uid) tag.uid = novoUid();
     });

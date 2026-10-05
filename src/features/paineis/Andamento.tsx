@@ -54,7 +54,8 @@ export function Andamento({ onSessaoVencida }: { onSessaoVencida?: () => void })
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-abb-gray">
-              {dados.total} montador(es) com acesso ou trabalho enviado. Atualiza sozinho.
+              {dados.total} {dados.total === 1 ? 'linha' : 'linhas'}: cada projeto enviado e
+              quem tem acesso sem projeto ainda. Atualiza sozinho.
             </p>
             {dados.paineis.length > 1 ? (
               <select
@@ -84,7 +85,7 @@ export function Andamento({ onSessaoVencida }: { onSessaoVencida?: () => void })
             <ul className="divide-y divide-abb-line/70 overflow-hidden rounded-xl border border-abb-line bg-white shadow-sm">
               {dados.itens.map((i) => (
                 <li
-                  key={`${i.painel.id}-${i.usuario.id}`}
+                  key={`${i.painel.id}-${i.usuario.id}-${i.projeto?.uid ?? ''}`}
                   className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 px-3 py-2.5 md:grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)_minmax(0,1.3fr)]"
                 >
                   <div className="flex min-w-0 items-center gap-2.5">
@@ -92,6 +93,7 @@ export function Andamento({ onSessaoVencida }: { onSessaoVencida?: () => void })
                     <div className="min-w-0">
                       <p className="truncate text-sm leading-tight font-semibold">{i.usuario.nome}</p>
                       <p className="truncate text-xs text-abb-gray">
+                        {i.projeto?.nome ? `${i.projeto.nome} · ` : ''}
                         {i.empresa ? `${i.empresa} · ` : ''}
                         {i.usuario.email}
                       </p>

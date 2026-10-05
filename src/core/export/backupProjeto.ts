@@ -58,7 +58,7 @@ export async function exportarProjeto(projetoId: number): Promise<void> {
       criadoEm: projeto.criadoEm,
       atualizadoEm: projeto.atualizadoEm,
     },
-    tags: tags.map((t) => ({ chave: t.id!, nome: t.nome, ordem: t.ordem })),
+    tags: tags.map((t) => ({ chave: t.id!, nome: t.nome, ordem: t.ordem, formIds: t.formIds })),
     preenchimentos: preenchimentos.map((p) => ({
       chave: p.id!,
       tagChave: p.tagId,
@@ -169,7 +169,12 @@ export async function importarProjeto(
 
       const mapaTags = new Map<number, number>();
       for (const tag of pacote.tags) {
-        const id = await db.tags.add({ projetoId, nome: tag.nome, ordem: tag.ordem });
+        const id = await db.tags.add({
+          projetoId,
+          nome: tag.nome,
+          ordem: tag.ordem,
+          formIds: tag.formIds,
+        });
         mapaTags.set(tag.chave, id);
       }
 

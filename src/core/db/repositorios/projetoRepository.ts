@@ -1,5 +1,15 @@
 import { db } from '../db';
 import type { Projeto, Tag } from '../tipos';
+import type { ValoresCabecalho } from '../../forms/tipos';
+
+/** TAG a gravar, com os checklists escolhidos e o cabeçalho de cada um. */
+export interface NovaTagEntrada {
+  nome: string;
+  /** Ausente: a TAG segue com todos os checklists do painel. */
+  formIds?: string[];
+  /** Checklists que já nascem com os dados do painel no cabeçalho. */
+  preenchimentos?: Array<{ formId: string; formRevisao: string; cabecalho: ValoresCabecalho }>;
+}
 
 export interface NovoProjetoEntrada {
   empresa: string;
@@ -9,7 +19,7 @@ export interface NovoProjetoEntrada {
   painelId?: number;
   painelSlug?: string;
   usuarioId?: number;
-  tags: string[];
+  tags: NovaTagEntrada[];
 }
 
 export interface ResumoProjeto extends Projeto {
@@ -18,8 +28,40 @@ export interface ResumoProjeto extends Projeto {
 }
 
 /**
+ * Grava a TAG e os preenchimentos com que ela nasce. Só é chamada de dentro de
+ * uma transação 'rw' sobre `tags` e `preenchimentos`.
+ */
+async function gravarTagEmTransacao(
+  projetoId: number,
+  entrada: NovaTagEntrada,
+  ordem: number,
+): Promise<number> {
+  const agora = Date.now();
+  const tagId = await db.tags.add({
+    projetoId,
+    nome: entrada.nome.trim() || `TAG ${ordem + 1}`,
+    ordem,
+    formIds: entrada.formIds ? [...entrada.formIds] : undefined,
+  });
+  if (entrada.preenchimentos?.length) {
+    await db.preenchimentos.bulkAdd(
+      entrada.preenchimentos.map((p) => ({
+        tagId,
+        formId: p.formId,
+        formRevisao: p.formRevisao,
+        cabecalho: { ...p.cabecalho },
+        respostas: {},
+        atualizadoEm: agora,
+      })),
+    );
+  }
+  return tagId;
+}
+
+/**
  * Grava o projeto e as suas TAGs. Só é chamada de dentro de uma transação
- * 'rw' sobre `projetos` e `tags` — quem chama abre a transação.
+ * 'rw' sobre `projetos`, `tags` e `preenchimentos` — quem chama abre a
+ * transação.
  */
 async function criarEmTransacao(entrada: NovoProjetoEntrada): Promise<number> {
   const agora = Date.now();
@@ -34,13 +76,9 @@ async function criarEmTransacao(entrada: NovoProjetoEntrada): Promise<number> {
     criadoEm: agora,
     atualizadoEm: agora,
   });
-  await db.tags.bulkAdd(
-    entrada.tags.map((nome, i) => ({
-      projetoId,
-      nome: nome.trim() || `TAG ${i + 1}`,
-      ordem: i,
-    })),
-  );
+  for (const [i, tag] of entrada.tags.entries()) {
+    await gravarTagEmTransacao(projetoId, tag, i);
+  }
   return projetoId;
 }
 
@@ -96,32 +134,27 @@ export const ProjetoRepository = {
     return projeto;
   },
 
-  /**
-   * Projeto local do painel para este usuário, criando-o na primeira abertura.
-   *
-   * Busca e criação na mesma transação: dois toques seguidos em "Abrir
-   * checagens" criariam dois projetos para o mesmo painel, e o montador
-   * preencheria um enquanto a tela mostra o outro.
-   */
-  async obterOuCriarPorPainel(
-    usuarioId: number,
-    painelId: number,
-    entrada: Omit<NovoProjetoEntrada, 'painelId' | 'usuarioId'>,
-  ): Promise<number> {
-    return db.transaction('rw', db.projetos, db.tags, async () => {
-      const existente = await db.projetos
-        .where('[usuarioId+painelId]')
-        .equals([usuarioId, painelId])
-        .first();
-      if (existente?.id) return existente.id;
-      return criarEmTransacao({ ...entrada, painelId, usuarioId });
-    });
+  /** Projetos do usuário num painel, do alterado por último ao mais antigo. */
+  async listarDoPainel(usuarioId: number, painelId: number): Promise<ResumoProjeto[]> {
+    const projetos = await db.projetos
+      .where('[usuarioId+painelId]')
+      .equals([usuarioId, painelId])
+      .toArray();
+    projetos.sort((a, b) => b.atualizadoEm - a.atualizadoEm);
+    return Promise.all(
+      projetos.map(async (p) => ({
+        ...(p as Projeto & { id: number }),
+        quantidadeTags: await db.tags.where('projetoId').equals(p.id!).count(),
+      })),
+    );
   },
 
   async criar(entrada: NovoProjetoEntrada): Promise<number> {
-    return db.transaction('rw', db.projetos, db.tags, async () => {
+    const id = await db.transaction('rw', db.projetos, db.tags, db.preenchimentos, async () => {
       return criarEmTransacao(entrada);
     });
+    avisarAlteracao();
+    return id;
   },
 
   async atualizar(id: number, dados: Partial<Projeto>): Promise<void> {
@@ -162,11 +195,47 @@ export const ProjetoRepository = {
       .sortBy('ordem');
   },
 
-  async adicionarTag(projetoId: number, nome: string): Promise<number> {
-    const existentes = await db.tags.where('projetoId').equals(projetoId).count();
-    const id = await db.tags.add({ projetoId, nome: nome.trim(), ordem: existentes });
+  async adicionarTag(projetoId: number, entrada: NovaTagEntrada): Promise<number> {
+    const id = await db.transaction('rw', db.tags, db.preenchimentos, async () => {
+      // A ordem segue a maior existente: contar repetiria a de uma TAG depois
+      // que outra do meio fosse removida.
+      const tags = await db.tags.where('projetoId').equals(projetoId).toArray();
+      const ordem = tags.reduce((maior, t) => Math.max(maior, t.ordem + 1), 0);
+      return gravarTagEmTransacao(projetoId, entrada, ordem);
+    });
     await this.marcarAlteracao(projetoId);
     return id;
+  },
+
+  /**
+   * Troca os checklists da TAG. Desmarcar não apaga nada: o que já foi
+   * respondido fica guardado e volta se o checklist for marcado de novo.
+   * `novos` são os preenchimentos dos checklists que entram, já com o
+   * cabeçalho — só são gravados se o checklist ainda não tiver preenchimento.
+   */
+  async definirChecklistsDaTag(
+    tagId: number,
+    formIds: string[],
+    novos: NonNullable<NovaTagEntrada['preenchimentos']> = [],
+  ): Promise<void> {
+    const tag = await db.tags.get(tagId);
+    if (!tag) return;
+    await db.transaction('rw', db.tags, db.preenchimentos, async () => {
+      await db.tags.update(tagId, { formIds: [...formIds] });
+      for (const p of novos) {
+        const existe = await db.preenchimentos.where('[tagId+formId]').equals([tagId, p.formId]).first();
+        if (existe) continue;
+        await db.preenchimentos.add({
+          tagId,
+          formId: p.formId,
+          formRevisao: p.formRevisao,
+          cabecalho: { ...p.cabecalho },
+          respostas: {},
+          atualizadoEm: Date.now(),
+        });
+      }
+    });
+    await this.marcarAlteracao(tag.projetoId);
   },
 
   async renomearTag(tagId: number, nome: string): Promise<void> {

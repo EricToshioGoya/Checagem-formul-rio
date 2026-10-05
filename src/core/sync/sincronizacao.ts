@@ -3,12 +3,13 @@ import { db, novoUid } from '../db/db';
 import { ProjetoRepository } from '../db/repositorios';
 import type { Midia, Preenchimento, Projeto } from '../db/tipos';
 import type { MapaRespostas, ValoresCabecalho } from '../forms/tipos';
+import { uidProjetoLegado } from '../../../compartilhado/projeto';
 
 /**
  * Sincronização das checagens com o servidor.
  *
- * Cada projeto (uma conta num painel) vai inteiro para o servidor como um
- * documento — dados, TAGs, respostas e a lista das fotos —, e as fotos vão
+ * Cada projeto (identificado pelo `uid`; um painel pode ter vários) vai
+ * inteiro para o servidor como um documento — dados, TAGs, respostas e a lista das fotos —, e as fotos vão
  * uma a uma, só as que o servidor ainda não tem. O aparelho continua sendo
  * onde se trabalha, offline; o servidor guarda a cópia, leva o trabalho para
  * outro aparelho da mesma conta e mostra o andamento ao responsável.
@@ -28,7 +29,8 @@ export interface DocumentoProjeto {
     criadoEm: number;
     atualizadoEm: number;
   };
-  tags: Array<{ uid: string; nome: string; ordem: number }>;
+  /** `formIds` ausente: TAG que segue com todos os checklists do painel. */
+  tags: Array<{ uid: string; nome: string; ordem: number; formIds?: string[] }>;
   preenchimentos: Array<{
     tagUid: string;
     formId: string;
@@ -98,19 +100,26 @@ function ehFaltaDeConexao(erro: unknown): boolean {
 
 const CHAVE_EXCLUSOES = 'sync-exclusoes-pendentes';
 
-/** Projetos excluídos sem rede: a exclusão vai ao servidor na próxima conexão. */
-function lerExclusoes(usuarioId: number): number[] {
+/**
+ * Projetos excluídos sem rede, pelo `uid`: a exclusão vai ao servidor na
+ * próxima conexão. Número na lista é de antes do `uid` — o id do painel, cujo
+ * projeto tem o `uid` legado.
+ */
+function lerExclusoes(usuarioId: number): string[] {
   try {
-    const todas = JSON.parse(localStorage.getItem(CHAVE_EXCLUSOES) ?? '{}') as Record<string, number[]>;
-    return todas[usuarioId] ?? [];
+    const todas = JSON.parse(localStorage.getItem(CHAVE_EXCLUSOES) ?? '{}') as Record<
+      string,
+      Array<string | number>
+    >;
+    return (todas[usuarioId] ?? []).map((e) => (typeof e === 'number' ? uidProjetoLegado(e) : e));
   } catch {
     return [];
   }
 }
 
-function gravarExclusoes(usuarioId: number, lista: number[]): void {
+function gravarExclusoes(usuarioId: number, lista: string[]): void {
   try {
-    const todas = JSON.parse(localStorage.getItem(CHAVE_EXCLUSOES) ?? '{}') as Record<string, number[]>;
+    const todas = JSON.parse(localStorage.getItem(CHAVE_EXCLUSOES) ?? '{}') as Record<string, string[]>;
     if (lista.length) todas[usuarioId] = lista;
     else delete todas[usuarioId];
     localStorage.setItem(CHAVE_EXCLUSOES, JSON.stringify(todas));
@@ -126,22 +135,22 @@ function gravarExclusoes(usuarioId: number, lista: number[]): void {
  */
 export async function excluirProjetoEmTodaParte(projeto: Projeto & { id: number }): Promise<void> {
   await ProjetoRepository.excluir(projeto.id);
-  if (projeto.painelId === undefined || projeto.usuarioId === undefined) return;
+  if (projeto.painelId === undefined || projeto.usuarioId === undefined || !projeto.uid) return;
   try {
-    await api.delete(`/api/sync/projetos/${projeto.painelId}`);
+    await api.delete(`/api/sync/projetos/${projeto.uid}`);
   } catch {
-    gravarExclusoes(projeto.usuarioId, [...new Set([...lerExclusoes(projeto.usuarioId), projeto.painelId])]);
+    gravarExclusoes(projeto.usuarioId, [...new Set([...lerExclusoes(projeto.usuarioId), projeto.uid])]);
   }
 }
 
 async function enviarExclusoesPendentes(usuarioId: number): Promise<void> {
   const pendentes = lerExclusoes(usuarioId);
-  const restantes: number[] = [];
-  for (const painelId of pendentes) {
+  const restantes: string[] = [];
+  for (const uid of pendentes) {
     try {
-      await api.delete(`/api/sync/projetos/${painelId}`);
+      await api.delete(`/api/sync/projetos/${uid}`);
     } catch (erro) {
-      if (ehFaltaDeConexao(erro)) restantes.push(painelId);
+      if (ehFaltaDeConexao(erro)) restantes.push(uid);
     }
   }
   gravarExclusoes(usuarioId, restantes);
@@ -190,7 +199,7 @@ export async function montarDocumento(
       criadoEm: projeto.criadoEm,
       atualizadoEm: projeto.atualizadoEm,
     },
-    tags: tags.map((t) => ({ uid: t.uid!, nome: t.nome, ordem: t.ordem })),
+    tags: tags.map((t) => ({ uid: t.uid!, nome: t.nome, ordem: t.ordem, formIds: t.formIds })),
     preenchimentos: preenchimentos.map((p) => ({
       tagUid: uidDaTag.get(p.tagId!)!,
       formId: p.formId,
@@ -222,6 +231,19 @@ export async function montarDocumento(
 }
 
 /**
+ * Projeto deste usuário com o `uid`. O filtro pelo usuário importa: no
+ * aparelho compartilhado, o projeto legado de um painel tem o mesmo `uid` para
+ * cada conta que o abriu.
+ */
+function projetoLocalPorUid(usuarioId: number, uid: string): Promise<Projeto | undefined> {
+  return db.projetos
+    .where('uid')
+    .equals(uid)
+    .filter((p) => p.usuarioId === usuarioId)
+    .first();
+}
+
+/**
  * Grava no aparelho o que veio do servidor. As fotos que faltam são baixadas
  * antes, fora da transação — o IndexedDB não espera pela rede no meio dela.
  * Preenchimentos daqui que o documento não tem ficam: podem ser o que está
@@ -230,6 +252,7 @@ export async function montarDocumento(
 async function aplicarDocumento(
   usuarioId: number,
   painelId: number,
+  uid: string,
   versao: number,
   documento: DocumentoProjeto,
   local?: Projeto,
@@ -260,8 +283,8 @@ async function aplicarDocumento(
     };
     let projetoId = local?.id;
     if (projetoId === undefined) {
-      // Outra aba pode ter criado o projeto deste painel enquanto as fotos baixavam.
-      const existente = await db.projetos.where('[usuarioId+painelId]').equals([usuarioId, painelId]).first();
+      // Outra aba pode ter trazido este projeto enquanto as fotos baixavam.
+      const existente = await projetoLocalPorUid(usuarioId, uid);
       projetoId =
         existente?.id ??
         (await db.projetos.add({
@@ -269,6 +292,7 @@ async function aplicarDocumento(
           painelId,
           painelSlug: documento.projeto.painelSlug,
           usuarioId,
+          uid,
           criadoEm: documento.projeto.criadoEm,
         }));
     }
@@ -282,10 +306,13 @@ async function aplicarDocumento(
     for (const t of documento.tags) {
       const existente = tagPorUid.get(t.uid);
       if (existente) {
-        await db.tags.update(existente.id!, { nome: t.nome, ordem: t.ordem });
+        await db.tags.update(existente.id!, { nome: t.nome, ordem: t.ordem, formIds: t.formIds });
         idDaTag.set(t.uid, existente.id!);
       } else {
-        idDaTag.set(t.uid, await db.tags.add({ projetoId, nome: t.nome, ordem: t.ordem, uid: t.uid }));
+        idDaTag.set(
+          t.uid,
+          await db.tags.add({ projetoId, nome: t.nome, ordem: t.ordem, uid: t.uid, formIds: t.formIds }),
+        );
       }
     }
     const uidsTags = new Set(documento.tags.map((t) => t.uid));
@@ -411,8 +438,9 @@ async function enviar(projeto: Projeto, tentativa = 1): Promise<void> {
   const { documento, arquivos } = await montarDocumento(projeto);
   let resposta: RespostaEnvio;
   try {
-    resposta = await api.put<RespostaEnvio>(`/api/sync/projetos/${projeto.painelId}`, {
+    resposta = await api.put<RespostaEnvio>(`/api/sync/projetos/${projeto.uid}`, {
       versaoBase: projeto.versaoServidor ?? 0,
+      painelId: projeto.painelId,
       documento,
     });
   } catch (erro) {
@@ -429,7 +457,7 @@ async function enviar(projeto: Projeto, tentativa = 1): Promise<void> {
   await db.projetos.update(projeto.id!, { versaoServidor: resposta.versao });
   for (const uid of resposta.faltando) {
     const arquivo = arquivos.get(uid);
-    if (arquivo) await api.enviarArquivo(`/api/sync/midias/${uid}`, arquivo);
+    if (arquivo) await api.enviarArquivo(`/api/sync/midias/${uid}?projeto=${projeto.uid}`, arquivo);
   }
   await db.projetos.update(projeto.id!, { sincronizadoEm: documento.projeto.atualizadoEm });
 }
@@ -437,11 +465,18 @@ async function enviar(projeto: Projeto, tentativa = 1): Promise<void> {
 /** Outro aparelho da mesma conta enviou antes: junta, grava aqui e envia de novo. */
 async function juntarEEnviar(projeto: Projeto, tentativa: number): Promise<void> {
   const remoto = await api.get<{ versao: number; documento: DocumentoProjeto }>(
-    `/api/sync/projetos/${projeto.painelId}`,
+    `/api/sync/projetos/${projeto.uid}`,
   );
   const { documento: local } = await montarDocumento(projeto);
   const juntado = juntarDocumentos(local, remoto.documento);
-  await aplicarDocumento(projeto.usuarioId!, projeto.painelId!, remoto.versao, juntado, projeto);
+  await aplicarDocumento(
+    projeto.usuarioId!,
+    projeto.painelId!,
+    projeto.uid!,
+    remoto.versao,
+    juntado,
+    projeto,
+  );
   // O juntado ainda não está no servidor: marca como pendente e manda.
   await db.projetos.update(projeto.id!, { sincronizadoEm: 0 });
   const atualizado = await db.projetos.get(projeto.id!);
@@ -471,9 +506,9 @@ async function sincronizarProjeto(
   try {
     if (servidorAvancou && !alterado) {
       const r = await api.get<{ versao: number; documento: DocumentoProjeto }>(
-        `/api/sync/projetos/${projeto.painelId}`,
+        `/api/sync/projetos/${projeto.uid}`,
       );
-      await aplicarDocumento(usuarioId, projeto.painelId!, r.versao, r.documento, projeto);
+      await aplicarDocumento(usuarioId, projeto.painelId!, projeto.uid!, r.versao, r.documento, projeto);
     } else if (servidorAvancou) {
       await juntarEEnviar(projeto, 1);
     } else {
@@ -511,28 +546,37 @@ export async function sincronizarAgora(usuarioId: number): Promise<void> {
   try {
     await enviarExclusoesPendentes(usuarioId);
     const { projetos: remotos } = await api.get<{
-      projetos: Array<{ painelId: number; versao: number; enviadoEm: number }>;
+      projetos: Array<{ uid: string; painelId: number; versao: number; enviadoEm: number }>;
     }>('/api/sync/projetos');
     const locais = (await db.projetos.where('usuarioId').equals(usuarioId).toArray()).filter(
       (p) => p.painelId !== undefined,
     );
+    // Projeto anterior à v7 que escapou da migração: recebe o `uid` legado,
+    // a menos que outro projeto do painel já o tenha.
+    for (const p of locais) {
+      if (!p.uid) {
+        const legado = uidProjetoLegado(p.painelId!);
+        p.uid = locais.some((o) => o.uid === legado) ? novoUid() : legado;
+        await db.projetos.update(p.id!, { uid: p.uid });
+      }
+    }
     const excluidos = new Set(lerExclusoes(usuarioId));
 
     for (const projeto of locais) {
       await sincronizarProjeto(
         usuarioId,
         projeto,
-        remotos.find((r) => r.painelId === projeto.painelId),
+        remotos.find((r) => r.uid === projeto.uid),
       );
     }
     // Aparelho novo, ou projeto começado em outro aparelho: vem do servidor.
     for (const remoto of remotos) {
-      if (excluidos.has(remoto.painelId) || locais.some((p) => p.painelId === remoto.painelId)) continue;
+      if (excluidos.has(remoto.uid) || locais.some((p) => p.uid === remoto.uid)) continue;
       try {
         const r = await api.get<{ versao: number; documento: DocumentoProjeto }>(
-          `/api/sync/projetos/${remoto.painelId}`,
+          `/api/sync/projetos/${remoto.uid}`,
         );
-        await aplicarDocumento(usuarioId, remoto.painelId, r.versao, r.documento);
+        await aplicarDocumento(usuarioId, remoto.painelId, remoto.uid, r.versao, r.documento);
       } catch (erro) {
         if (ehFaltaDeConexao(erro)) throw erro;
         // Sem acesso a esse painel agora: o projeto fica no servidor.

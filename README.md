@@ -140,7 +140,7 @@ pedido enviado ao responsável do painel  →  aguardando
         ↓                                       ↓
   acesso aprovado  ←──────────  responsável aprova em /aprovacoes
         ↓
- abrir checagens daquele painel (daqui em diante, offline)
+ abrir checagens → projetos do painel → novo projeto (daqui em diante, offline)
 ```
 
 **A aprovação vale para um painel só.** Quem foi aprovado em SEN Plus não abre
@@ -372,7 +372,7 @@ diálogo de geração.
 | Novo tipo de campo | Implementar o componente e registrá-lo em `src/features/fill/campos/registro.tsx`. |
 | Novo destino de exportação | Implementar `ExportTarget` (`src/core/export/ExportTarget.ts`). `PdfExport` é a implementação da v1. |
 | Trocar a persistência | Todo acesso ao Dexie passa por `ProjetoRepository`, `PreenchimentoRepository`, `MidiaRepository` e `FormularioRepository`. Nenhuma tela importa Dexie. |
-| Conteúdo de apoio | Trocar o arquivo em `public/media`. O caminho fica no JSON. |
+| Conteúdo de apoio | Imagem: enviar pela administração, na etapa. Vídeo e PDF: arquivo em `public/media`, com o caminho no JSON. |
 | Painel de certificação | Acrescentar a entrada em `public/paineis/index.json` com o `slug` do painel, `fluxo: "certificacao"`, o template em `public/certificados` e o responsável ABB. Nenhuma alteração de código. |
 | Novos campos da solicitação | Editar `camposPadrao` em `public/paineis/index.json`, ou dar ao painel a sua própria lista `campos`. |
 | Solicitações no servidor | Trocar o que `src/core/certificacao/index.ts` aponta em `solicitacaoStore` e `servicoValidacao`. Nenhuma tela muda. |
@@ -424,6 +424,22 @@ ou `removido` (administrador tirado do papel).
 Fotos são gravadas como **Blob**, nunca base64. `respostas` é um mapa
 `etapaId → { valor, observacao }`. Excluir um projeto, uma TAG ou uma
 solicitação remove em cascata os preenchimentos e as mídias.
+
+O painel (SEN Plus, MNS…) é o tipo, não uma TAG. **Abrir checagens** leva à
+lista de projetos do montador naquele painel, onde ele cria quantos projetos
+quiser. O cadastro pede, tudo obrigatório: nome do projeto, empresa, quantidade
+de TAGs e, para cada TAG, o nome, os checklists que ela vai preencher
+(`tags.formIds`) e os **dados do painel** — a união dos campos de cabeçalho
+desses checklists. Os dados são gravados no cabeçalho de cada checklist
+escolhido, e alterar um campo num checklist altera o mesmo campo nos outros da
+TAG. Os checklists podem ser trocados depois em **Checklists**; desmarcar não
+apaga respostas. TAG sem `formIds` — anterior a esta regra — segue com todos.
+
+Cada projeto tem `uid`, que o identifica no servidor (`sync_projetos` e
+`sync_midias` usam `projetoUid`; rotas `/api/sync/projetos/:uid`). O projeto
+que existia antes, um por conta e painel, recebe nos dois lados o mesmo `uid`
+legado derivado do id do painel (`compartilhado/projeto.ts`), e a migração não
+duplica nada.
 
 Projetos gravados antes de existir login ficam sem `usuarioId` e continuam
 visíveis para quem estiver logado — não há a quem atribuí-los.
@@ -566,7 +582,14 @@ administrador. As seções principais:
   registro de todas as emissões.
 - **Painéis e checklists** — cadastro dos painéis, de quem aprova e do
   conteúdo das etapas. Os checklists são gravados no servidor, e todo montador
-  aprovado naquele painel recebe a mesma versão.
+  aprovado naquele painel recebe a mesma versão. Em cada etapa a
+  administração escolhe a **resposta exigida do montador** (só conferir,
+  conferir e fotografar, só foto, valor, texto, opções, PDF, grade) — a tela
+  diz o que cada opção exige — e pode enviar uma **imagem de apoio**
+  (opcional). A imagem é comprimida no aparelho, gravada no servidor
+  (`apoio_midias`, mesma pasta e mesmo backup das fotos) e referenciada no
+  checklist como `/api/apoio/<uid>`; o aparelho do montador a baixa junto com o
+  checklist e a mostra dentro da etapa, também sem rede.
 - **Administradores** — quem administra, e quem pediu para administrar.
 
 ### Quem é administrador
@@ -615,7 +638,8 @@ npm run admin -- promover pessoa@empresa.com
 - Sempre disponível, independentemente de pendências.
 - Etapas sem resposta são impressas como **“Não verificado”**.
 - Primeira página: capa com dados do projeto e resumo de pendências por TAG.
-- Um PDF por tipo de verificação, com todas as TAGs, separadas por seção.
+- Um PDF por tipo de verificação, com as TAGs que têm aquele checklist,
+  separadas por seção.
 - Colunas `Etapa | Descrição | Aferido | Status | Data | Operador`, cabeçalhos de
   seção destacados e numeração de páginas no rodapé.
 - Registro da revisão do formulário utilizada.

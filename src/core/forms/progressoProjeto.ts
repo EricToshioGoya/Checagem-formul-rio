@@ -4,7 +4,7 @@ import {
   ProjetoRepository,
 } from '../db/repositorios';
 import { carregarFormulario, formulariosDoPainel } from './catalogo';
-import { calcularProgresso, idsPendentes, type Progresso } from './progresso';
+import { calcularProgresso, checklistsDaTag, idsPendentes, type Progresso } from './progresso';
 import type { DefinicaoFormulario, EntradaCatalogo } from './tipos';
 
 export interface ProgressoDeFormulario {
@@ -19,6 +19,8 @@ export interface ProgressoDeFormulario {
 export interface ProgressoDeTag {
   tagId: number;
   nome: string;
+  /** Escolha gravada na TAG; ausente quando ela segue com todos. */
+  formIds?: string[];
   formularios: ProgressoDeFormulario[];
   progresso: Progresso;
 }
@@ -40,7 +42,8 @@ function somar(partes: Progresso[]): Progresso {
 }
 
 /**
- * Progresso de um projeto inteiro: cada TAG × cada formulário ativo.
+ * Progresso de um projeto inteiro: cada TAG × cada formulário ativo escolhido
+ * para ela.
  * Serve à tela do projeto, à lista inicial e ao resumo de pendências do PDF.
  */
 export async function progressoDoProjeto(
@@ -63,7 +66,7 @@ export async function progressoDoProjeto(
   const resultado: ProgressoDeTag[] = [];
   for (const tag of tags) {
     const formularios: ProgressoDeFormulario[] = [];
-    for (const entrada of entradas) {
+    for (const entrada of checklistsDaTag(tag.formIds, entradas)) {
       const definicao = definicoes.get(entrada.id)!;
       const preenchimento = preenchimentos.find(
         (p) => p.tagId === tag.id && p.formId === entrada.id,
@@ -84,6 +87,7 @@ export async function progressoDoProjeto(
     resultado.push({
       tagId: tag.id!,
       nome: tag.nome,
+      formIds: tag.formIds,
       formularios,
       progresso: somar(formularios.map((f) => f.progresso)),
     });

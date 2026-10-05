@@ -114,7 +114,10 @@ export const PreenchimentoRepository = {
     });
   },
 
-  /** Igual às respostas: só os campos do cabeçalho que a pessoa mudou. */
+  /**
+   * Igual às respostas: só os campos do cabeçalho que a pessoa mudou. Levar a
+   * mudança aos outros checklists da TAG é com `propagarCabecalho`.
+   */
   async aplicarMudancasCabecalho(id: number, mudancas: Record<string, string | null>): Promise<void> {
     await db.transaction('rw', db.preenchimentos, async () => {
       const atual = await db.preenchimentos.get(id);

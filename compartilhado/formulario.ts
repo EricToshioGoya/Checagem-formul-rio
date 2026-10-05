@@ -34,6 +34,19 @@ export const ROTULOS_TIPO_RESPOSTA: Record<TipoResposta, string> = {
   grade_numerica: 'Grade de medições',
 };
 
+/** O que cada tipo exige do montador, dito para quem monta o checklist. */
+export const DESCRICOES_TIPO_RESPOSTA: Record<TipoResposta, string> = {
+  check: 'O montador só marca "verificado". Sem foto.',
+  check_com_foto:
+    'O montador marca "verificado" e anexa pelo menos uma foto. Sem a foto, a etapa fica pendente.',
+  foto: 'O montador só envia fotos — pelo menos uma. Sem a foto, a etapa fica pendente.',
+  numero: 'O montador digita o valor medido, na unidade abaixo.',
+  texto: 'O montador escreve a resposta.',
+  selecao: 'O montador escolhe uma das opções abaixo.',
+  anexo_pdf: 'O montador anexa um arquivo PDF (laudo, relatório).',
+  grade_numerica: 'O montador preenche uma tabela de medições.',
+};
+
 /** Tipos que exigem foto para a etapa contar como respondida. */
 export const TIPOS_COM_FOTO: readonly TipoResposta[] = ['check_com_foto', 'foto'];
 

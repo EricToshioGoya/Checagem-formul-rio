@@ -4,6 +4,7 @@
  */
 export {
   calcularProgresso,
+  checklistsDaTag,
   etapaRespondida,
   etapasAtivas,
   etapaVisivel,

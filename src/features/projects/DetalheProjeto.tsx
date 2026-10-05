@@ -9,6 +9,9 @@ import {
   progressoDoProjeto,
   type ProgressoDeProjeto,
 } from '../../core/forms/progressoProjeto';
+import { carregarFormulario, formulariosDoPainel } from '../../core/forms/catalogo';
+import { prepararTag, trocarChecklistsDaTag } from '../../core/forms/dadosTag';
+import type { DefinicaoFormulario, EntradaCatalogo } from '../../core/forms/tipos';
 import type { Projeto } from '../../core/db/tipos';
 import { DialogoGerarPdf } from '../pdf/DialogoGerarPdf';
 import { Botao } from '../../shared/componentes/Botao';
@@ -18,6 +21,14 @@ import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { Modal } from '../../shared/componentes/Modal';
 import { Aviso, Carregando, Erro, Vazio } from '../../shared/componentes/Estado';
 import { SituacaoSincronizacao } from './SituacaoSincronizacao';
+import { EscolhaChecklists } from './EscolhaChecklists';
+import {
+  CamposTag,
+  pendenciasDaTag,
+  rascunhoVazio,
+  tagCompleta,
+  type RascunhoTag,
+} from './CamposTag';
 import {
   IconeLixeira,
   IconeMais,
@@ -34,13 +45,22 @@ export function DetalheProjeto() {
 
   const [projeto, setProjeto] = useState<Projeto | null>(null);
   const [dados, setDados] = useState<ProgressoDeProjeto | null>(null);
+  const [checklists, setChecklists] = useState<EntradaCatalogo[]>([]);
+  const [definicoes, setDefinicoes] = useState<Record<string, DefinicaoFormulario>>({});
   const [erro, setErro] = useState<string | null>(null);
   const [bloqueio, setBloqueio] = useState<Bloqueio | null>(null);
   const [tagParaExcluir, setTagParaExcluir] = useState<{ id: number; nome: string } | null>(null);
   const [tagParaRenomear, setTagParaRenomear] = useState<{ id: number; nome: string } | null>(null);
   const [novoNome, setNovoNome] = useState('');
   const [adicionando, setAdicionando] = useState(false);
-  const [nomeNovaTag, setNomeNovaTag] = useState('');
+  const [novaTag, setNovaTag] = useState<RascunhoTag>(rascunhoVazio);
+  const [tentouNovaTag, setTentouNovaTag] = useState(false);
+  const [gravandoTag, setGravandoTag] = useState(false);
+  const [tagChecklists, setTagChecklists] = useState<{
+    id: number;
+    nome: string;
+    formIds: string[];
+  } | null>(null);
   const [pdfAberto, setPdfAberto] = useState(false);
   const [exportando, setExportando] = useState(false);
   const [empresaEditada, setEmpresaEditada] = useState<string | null>(null);
@@ -56,13 +76,18 @@ export function DetalheProjeto() {
       // O painel do projeto decide quais formulários existem aqui — e se o
       // acesso a ele ainda vale. Projeto anterior aos painéis não tem a quem
       // perguntar.
-      const [d, b] = await Promise.all([
+      const [d, b, c] = await Promise.all([
         progressoDoProjeto(id, p.painelSlug),
         p.painelId === undefined ? null : conferirAcessoPainel(usuario.id, p.painelId),
+        formulariosDoPainel(p.painelSlug),
       ]);
       setBloqueio(b);
       setProjeto(p);
       setDados(d);
+      const mapa: Record<string, DefinicaoFormulario> = {};
+      for (const entrada of c) mapa[entrada.id] = await carregarFormulario(entrada.id);
+      setChecklists(c);
+      setDefinicoes(mapa);
       setErro(null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao carregar o projeto.');
@@ -91,10 +116,36 @@ export function DetalheProjeto() {
     await recarregar();
   };
 
+  const abrirNovaTag = () => {
+    setNovaTag(rascunhoVazio());
+    setTentouNovaTag(false);
+    setAdicionando(true);
+  };
+
+  const adicionarTag = async () => {
+    setTentouNovaTag(true);
+    if (gravandoTag || !tagCompleta(pendenciasDaTag(novaTag, checklists, definicoes))) return;
+    setGravandoTag(true);
+    try {
+      // Painel sem checklist cadastrado: não há o que escolher, e a TAG segue
+      // com os que vierem a existir.
+      const formIds = checklists.length
+        ? checklists.filter((c) => novaTag.formIds.includes(c.id)).map((c) => c.id)
+        : undefined;
+      await ProjetoRepository.adicionarTag(id, await prepararTag(novaTag.nome, formIds, novaTag.dados));
+      setAdicionando(false);
+      await recarregar();
+    } finally {
+      setGravandoTag(false);
+    }
+  };
+
+  const voltar = projeto.painelId === undefined ? '/projetos' : `/paineis/${projeto.painelId}/projetos`;
+
   return (
     <div className="space-y-5">
       <div className="flex items-start gap-2">
-        <Botao variante="texto" onClick={() => navegar('/')} aria-label="Voltar aos projetos">
+        <Botao variante="texto" onClick={() => navegar(voltar)} aria-label="Voltar aos projetos">
           <IconeVoltar />
         </Botao>
         <div className="min-w-0 flex-1">
@@ -162,7 +213,7 @@ export function DetalheProjeto() {
             <IconePdf className="h-5 w-5" />
             Gerar PDF
           </Botao>
-          <Botao onClick={() => setAdicionando(true)}>
+          <Botao onClick={abrirNovaTag}>
             <IconeMais className="h-5 w-5" />
             Adicionar TAG
           </Botao>
@@ -187,7 +238,16 @@ export function DetalheProjeto() {
 
       {dados.tags.length === 0 ? (
         <Vazio titulo="Nenhuma TAG cadastrada">
-          Adicione a primeira TAG para começar o preenchimento.
+          <p>
+            Cadastre a TAG do painel e escolha quais checklists vai preencher.
+            As checagens aparecem depois disso.
+          </p>
+          <div className="mt-4 flex justify-center">
+            <Botao variante="primario" onClick={abrirNovaTag}>
+              <IconeMais className="h-5 w-5" />
+              Adicionar TAG
+            </Botao>
+          </div>
         </Vazio>
       ) : (
         <ul className="space-y-4">
@@ -196,6 +256,19 @@ export function DetalheProjeto() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-xl font-bold break-words">{tag.nome}</h2>
                 <div className="flex gap-2">
+                  {checklists.length ? (
+                    <Botao
+                      onClick={() =>
+                        setTagChecklists({
+                          id: tag.tagId,
+                          nome: tag.nome,
+                          formIds: tag.formIds ?? checklists.map((c) => c.id),
+                        })
+                      }
+                    >
+                      Checklists
+                    </Botao>
+                  ) : null}
                   <Botao
                     onClick={() => {
                       setTagParaRenomear({ id: tag.tagId, nome: tag.nome });
@@ -214,7 +287,25 @@ export function DetalheProjeto() {
                 </div>
               </div>
 
-              {tag.formularios.length === 0 ? (
+              {tag.formularios.length === 0 && checklists.length > 0 ? (
+                <div className="mt-3">
+                  <Aviso>
+                    <span className="flex flex-wrap items-center justify-between gap-2">
+                      <span>Nenhum checklist escolhido para esta TAG.</span>
+                      <Botao
+                        tamanho="compacto"
+                        onClick={() =>
+                          setTagChecklists({ id: tag.tagId, nome: tag.nome, formIds: [] })
+                        }
+                      >
+                        Escolher checklists
+                      </Botao>
+                    </span>
+                  </Aviso>
+                </div>
+              ) : null}
+
+              {checklists.length === 0 ? (
                 <div className="mt-3">
                   <Aviso>
                     Nenhum checklist cadastrado para a linha{' '}
@@ -266,22 +357,66 @@ export function DetalheProjeto() {
         rodape={
           <>
             <Botao onClick={() => setAdicionando(false)}>Cancelar</Botao>
-            <Botao
-              variante="primario"
-              onClick={async () => {
-                if (!nomeNovaTag.trim()) return;
-                await ProjetoRepository.adicionarTag(id, nomeNovaTag);
-                setNomeNovaTag('');
-                setAdicionando(false);
-                await recarregar();
-              }}
-            >
-              Adicionar
+            <Botao variante="primario" disabled={gravandoTag} onClick={() => void adicionarTag()}>
+              {gravandoTag ? 'Adicionando…' : 'Adicionar'}
             </Botao>
           </>
         }
       >
-        <CampoTexto rotulo="Nome da TAG" valor={nomeNovaTag} onChange={setNomeNovaTag} autoFoco />
+        <div className="space-y-4">
+          <CamposTag
+            rascunho={novaTag}
+            onChange={setNovaTag}
+            checklists={checklists}
+            definicoes={definicoes}
+            mostrarPendencias={tentouNovaTag}
+            prefixoId="nova-tag"
+            autoFoco
+          />
+          {tentouNovaTag && !tagCompleta(pendenciasDaTag(novaTag, checklists, definicoes)) ? (
+            <Erro titulo="Preencha os campos destacados" />
+          ) : null}
+        </div>
+      </Modal>
+
+      <Modal
+        aberto={tagChecklists !== null}
+        titulo={tagChecklists ? `Checklists da TAG ${tagChecklists.nome}` : 'Checklists'}
+        onFechar={() => setTagChecklists(null)}
+        rodape={
+          <>
+            <Botao onClick={() => setTagChecklists(null)}>Cancelar</Botao>
+            <Botao
+              variante="primario"
+              disabled={!tagChecklists?.formIds.length}
+              onClick={async () => {
+                if (tagChecklists?.formIds.length) {
+                  await trocarChecklistsDaTag(
+                    tagChecklists.id,
+                    checklists.filter((c) => tagChecklists.formIds.includes(c.id)).map((c) => c.id),
+                  );
+                }
+                setTagChecklists(null);
+                await recarregar();
+              }}
+            >
+              Salvar
+            </Botao>
+          </>
+        }
+      >
+        {tagChecklists ? (
+          <div className="space-y-3">
+            <EscolhaChecklists
+              checklists={checklists}
+              selecionados={tagChecklists.formIds}
+              onChange={(formIds) => setTagChecklists({ ...tagChecklists, formIds })}
+            />
+            <p className="text-sm text-abb-gray">
+              Desmarcar não apaga o que já foi respondido: volta ao marcar de novo.
+            </p>
+          </div>
+        ) : null}
       </Modal>
 
       <Modal
@@ -314,7 +449,7 @@ export function DetalheProjeto() {
         titulo="Remover TAG"
         mensagem={
           tagParaExcluir
-            ? `A TAG “${tagParaExcluir.nome}” será removida, junto com as respostas e fotos dos dois formulários.\n\nEsta ação não pode ser desfeita.`
+            ? `A TAG “${tagParaExcluir.nome}” será removida, junto com as respostas e fotos dos checklists dela.\n\nEsta ação não pode ser desfeita.`
             : ''
         }
         textoConfirmar="Remover"

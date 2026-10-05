@@ -172,7 +172,15 @@ export const documentoProjetoSchema = z.object({
     atualizadoEm: z.number(),
   }),
   tags: z
-    .array(z.object({ uid: uidSchema, nome: textoCurto, ordem: z.number().int() }))
+    .array(
+      z.object({
+        uid: uidSchema,
+        nome: textoCurto,
+        ordem: z.number().int(),
+        // Checklists escolhidos para a TAG; ausente, ela segue com todos.
+        formIds: z.array(textoCurto).max(100).optional(),
+      }),
+    )
     .max(1000),
   preenchimentos: z
     .array(
@@ -217,6 +225,11 @@ export type DocumentoProjeto = z.output<typeof documentoProjetoSchema>;
  */
 export const envioProjetoSchema = z.object({
   versaoBase: z.number().int().min(0),
+  /**
+   * Painel do projeto: decide o acesso e o checklist do andamento. Ausente no
+   * envio do aplicativo anterior, que põe o painel na URL.
+   */
+  painelId: z.number().int().positive().optional(),
   documento: documentoProjetoSchema,
 });
 

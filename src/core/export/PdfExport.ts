@@ -62,10 +62,13 @@ export async function gerarArquivos(
   for (const tipo of tiposPresentes) {
     const dossie: Dossie = {
       ...dossieCompleto,
-      tags: dossieCompleto.tags.map((t) => ({
-        ...t,
-        formularios: t.formularios.filter((f) => f.definicao.tipo === tipo),
-      })),
+      // TAG sem checklist deste tipo não entra no PDF dele.
+      tags: dossieCompleto.tags
+        .map((t) => ({
+          ...t,
+          formularios: t.formularios.filter((f) => f.definicao.tipo === tipo),
+        }))
+        .filter((t) => t.formularios.length > 0),
     };
 
     const pdf = await gerarPdf(dossie, {
