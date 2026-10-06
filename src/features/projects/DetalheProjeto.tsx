@@ -10,8 +10,16 @@ import {
   type ProgressoDeProjeto,
 } from '../../core/forms/progressoProjeto';
 import { carregarFormulario, formulariosDoPainel } from '../../core/forms/catalogo';
-import { prepararTag, trocarChecklistsDaTag } from '../../core/forms/dadosTag';
-import type { DefinicaoFormulario, EntradaCatalogo } from '../../core/forms/tipos';
+import {
+  prepararTag,
+  trocarChecklistsDaTag,
+  valoresDoProjeto,
+} from '../../core/forms/dadosTag';
+import type {
+  DefinicaoFormulario,
+  EntradaCatalogo,
+  ValoresCabecalho,
+} from '../../core/forms/tipos';
 import type { Projeto } from '../../core/db/tipos';
 import { DialogoGerarPdf } from '../pdf/DialogoGerarPdf';
 import { Botao } from '../../shared/componentes/Botao';
@@ -54,6 +62,8 @@ export function DetalheProjeto() {
   const [novoNome, setNovoNome] = useState('');
   const [adicionando, setAdicionando] = useState(false);
   const [novaTag, setNovaTag] = useState<RascunhoTag>(rascunhoVazio);
+  // Fabricante e cliente final já informados no projeto: a TAG nova herda.
+  const [herdadosDoProjeto, setHerdadosDoProjeto] = useState<ValoresCabecalho>({});
   const [tentouNovaTag, setTentouNovaTag] = useState(false);
   const [gravandoTag, setGravandoTag] = useState(false);
   const [tagChecklists, setTagChecklists] = useState<{
@@ -116,15 +126,21 @@ export function DetalheProjeto() {
     await recarregar();
   };
 
-  const abrirNovaTag = () => {
+  const abrirNovaTag = async () => {
     setNovaTag(rascunhoVazio());
     setTentouNovaTag(false);
+    setHerdadosDoProjeto(await valoresDoProjeto(id));
     setAdicionando(true);
   };
 
+  // Campo do projeto sem valor em nenhuma TAG ainda é perguntado aqui.
+  const ocultarNaNovaTag = Object.keys(herdadosDoProjeto);
+  const novaTagCompleta = () =>
+    tagCompleta(pendenciasDaTag(novaTag, checklists, definicoes, ocultarNaNovaTag));
+
   const adicionarTag = async () => {
     setTentouNovaTag(true);
-    if (gravandoTag || !tagCompleta(pendenciasDaTag(novaTag, checklists, definicoes))) return;
+    if (gravandoTag || !novaTagCompleta()) return;
     setGravandoTag(true);
     try {
       // Painel sem checklist cadastrado: não há o que escolher, e a TAG segue
@@ -132,7 +148,10 @@ export function DetalheProjeto() {
       const formIds = checklists.length
         ? checklists.filter((c) => novaTag.formIds.includes(c.id)).map((c) => c.id)
         : undefined;
-      await ProjetoRepository.adicionarTag(id, await prepararTag(novaTag.nome, formIds, novaTag.dados));
+      await ProjetoRepository.adicionarTag(
+        id,
+        await prepararTag(novaTag.nome, formIds, { ...novaTag.dados, ...herdadosDoProjeto }),
+      );
       setAdicionando(false);
       await recarregar();
     } finally {
@@ -213,7 +232,7 @@ export function DetalheProjeto() {
             <IconePdf className="h-5 w-5" />
             Gerar PDF
           </Botao>
-          <Botao onClick={abrirNovaTag}>
+          <Botao onClick={() => void abrirNovaTag()}>
             <IconeMais className="h-5 w-5" />
             Adicionar TAG
           </Botao>
@@ -243,7 +262,7 @@ export function DetalheProjeto() {
             As checagens aparecem depois disso.
           </p>
           <div className="mt-4 flex justify-center">
-            <Botao variante="primario" onClick={abrirNovaTag}>
+            <Botao variante="primario" onClick={() => void abrirNovaTag()}>
               <IconeMais className="h-5 w-5" />
               Adicionar TAG
             </Botao>
@@ -372,8 +391,9 @@ export function DetalheProjeto() {
             mostrarPendencias={tentouNovaTag}
             prefixoId="nova-tag"
             autoFoco
+            ocultar={ocultarNaNovaTag}
           />
-          {tentouNovaTag && !tagCompleta(pendenciasDaTag(novaTag, checklists, definicoes)) ? (
+          {tentouNovaTag && !novaTagCompleta() ? (
             <Erro titulo="Preencha os campos destacados" />
           ) : null}
         </div>

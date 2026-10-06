@@ -340,6 +340,7 @@ export function Preenchimento() {
         definicao={contexto.definicao}
         valores={cabecalho}
         onChange={alterarCabecalho}
+        daTag={contexto.preenchimento.tagId !== undefined}
       />
     ) : etapaAtual ? (
       <EtapaCard

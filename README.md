@@ -427,12 +427,16 @@ solicitação remove em cascata os preenchimentos e as mídias.
 
 O painel (SEN Plus, MNS…) é o tipo, não uma TAG. **Abrir checagens** leva à
 lista de projetos do montador naquele painel, onde ele cria quantos projetos
-quiser. O cadastro pede, tudo obrigatório: nome do projeto, empresa, quantidade
-de TAGs e, para cada TAG, o nome, os checklists que ela vai preencher
-(`tags.formIds`) e os **dados do painel** — a união dos campos de cabeçalho
-desses checklists. Os dados são gravados no cabeçalho de cada checklist
-escolhido, e alterar um campo num checklist altera o mesmo campo nos outros da
-TAG. Os checklists podem ser trocados depois em **Checklists**; desmarcar não
+quiser. O cadastro pede, tudo obrigatório: nome do projeto, empresa,
+**fabricante do conjunto** e **cliente final** (valem para o projeto inteiro e
+aparecem assim que algum checklist marcado os tiver), quantidade de TAGs e,
+para cada TAG, o nome, os checklists que ela vai preencher (`tags.formIds`) e
+o restante dos **dados do painel** — a união dos campos de cabeçalho desses
+checklists. Os dados são gravados no cabeçalho de cada checklist escolhido, e
+alterar um campo num checklist altera o mesmo campo nos outros da TAG; no caso
+de fabricante e cliente final (`CAMPOS_DO_PROJETO` em
+`src/core/forms/dadosTag.ts`), em todas as TAGs do projeto. TAG adicionada
+depois herda esses dois do projeto. Os checklists podem ser trocados depois em **Checklists**; desmarcar não
 apaga respostas. TAG sem `formIds` — anterior a esta regra — segue com todos.
 
 Cada projeto tem `uid`, que o identifica no servidor (`sync_projetos` e

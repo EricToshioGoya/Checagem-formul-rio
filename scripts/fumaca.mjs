@@ -5,9 +5,10 @@
  * semeado em todos os painéis, e por isso abre todos sem pedir acesso).
  *
  * Verificação (SEN Plus): abre o painel na lista de projetos, cria um projeto
- * (dados do painel obrigatórios), entra no checklist de montagem, confere que
- * o cabeçalho veio do cadastro, marca uma etapa e confere que a marcação
- * sobrevive a um recarregamento.
+ * (dados do painel obrigatórios; fabricante e cliente final no projeto, o
+ * resto na TAG), entra no checklist de montagem, confere que o cabeçalho veio
+ * do cadastro, marca uma etapa e confere que a marcação sobrevive a um
+ * recarregamento.
  *
  * Certificação (System Pro E Energy): solicitação com campos obrigatórios,
  * envio bloqueado enquanto falta checklist, validação ABB na administração
@@ -85,9 +86,14 @@ try {
     (await p.getByText(/TAG 1: \d+ campos dos dados do painel/).count()) === 1 &&
       /novo$/.test(p.url()),
   );
+  checa(
+    'fabricante e cliente final ficam no projeto, fora da TAG',
+    (await tag1.getByLabel('Fabricante do conjunto').count()) === 0 &&
+      (await tag1.getByLabel('Cliente final').count()) === 0,
+  );
+  await p.getByLabel('Fabricante do conjunto').fill('ABB Parceira');
+  await p.getByLabel('Cliente final').fill('Cliente Fumaça');
   for (const [rotulo, valor] of [
-    ['Fabricante do conjunto', 'ABB Parceira'],
-    ['Cliente final', 'Cliente Fumaça'],
     ['Número do pedido', 'PED-1'],
     ['Tensão de operação (Un)', '380'],
     ['Grau de proteção (IP)', 'IP54'],
@@ -106,8 +112,9 @@ try {
   await p.waitForURL(/formularios/);
   await p.getByRole('button', { name: 'Dados do painel' }).first().click();
   checa(
-    'o cabeçalho do checklist vem do cadastro da TAG',
-    (await p.getByLabel('Fabricante do conjunto').inputValue()) === 'ABB Parceira',
+    'o cabeçalho do checklist vem do cadastro do projeto e da TAG',
+    (await p.getByLabel('Fabricante do conjunto').inputValue()) === 'ABB Parceira' &&
+      (await p.getByLabel('Número do pedido').inputValue()) === 'PED-1',
   );
   const primeira = p.locator('nav[aria-label="Etapas do formulário"] li button').first();
   await primeira.click();
