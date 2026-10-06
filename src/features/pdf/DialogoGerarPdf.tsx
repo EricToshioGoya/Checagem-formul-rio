@@ -6,6 +6,7 @@ import { baixarBlob } from '../../shared/utils/download';
 import { Botao } from '../../shared/componentes/Botao';
 import { Modal } from '../../shared/componentes/Modal';
 import { Aviso, Erro } from '../../shared/componentes/Estado';
+import { ArquivosGerados, EscolhaFotos } from './PartesDialogoPdf';
 
 interface Props {
   aberto: boolean;
@@ -82,7 +83,7 @@ export function DialogoGerarPdf({ aberto, projetoId, painelSlug, onFechar }: Pro
         {pendentes !== null && pendentes > 0 ? (
           <Aviso>
             Há <strong>{pendentes}</strong> etapa{pendentes === 1 ? '' : 's'} sem resposta.
-            O PDF será gerado assim mesmo e essas etapas sairão como{' '}
+            O PDF será gerado assim mesmo, com essas etapas sinalizadas como{' '}
             <strong>“Não verificado”</strong>.
           </Aviso>
         ) : null}
@@ -113,51 +114,10 @@ export function DialogoGerarPdf({ aberto, projetoId, painelSlug, onFechar }: Pro
           </div>
         </fieldset>
 
-        <fieldset>
-          <legend className="mb-2 text-base font-bold">Fotos</legend>
-          <div className="space-y-2">
-            <label className="flex min-h-12 items-center gap-3 rounded-md border border-abb-line-botao bg-abb-offwhite px-3 hover:bg-abb-offwhite-hover">
-              <input
-                type="radio"
-                name="fotos"
-                className="h-6 w-6"
-                checked={incluirFotos}
-                onChange={() => setIncluirFotos(true)}
-              />
-              <span className="text-base">Fotos incorporadas ao PDF</span>
-            </label>
-            <label className="flex min-h-12 items-center gap-3 rounded-md border border-abb-line-botao bg-abb-offwhite px-3 hover:bg-abb-offwhite-hover">
-              <input
-                type="radio"
-                name="fotos"
-                className="h-6 w-6"
-                checked={!incluirFotos}
-                onChange={() => setIncluirFotos(false)}
-              />
-              <span className="text-base">
-                PDF sem fotos + arquivo ZIP separado com as imagens
-              </span>
-            </label>
-          </div>
-        </fieldset>
+        <EscolhaFotos incluirFotos={incluirFotos} onChange={setIncluirFotos} />
 
         {erro ? <Erro detalhe={erro} /> : null}
-
-        {concluido ? (
-          <div className="rounded-md border border-green-600 bg-green-50 p-3 text-base">
-            <p className="font-bold text-green-800">Arquivos gerados:</p>
-            <ul className="mt-1 list-disc pl-5">
-              {concluido.map((n) => (
-                <li key={n} className="break-all">
-                  {n}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-2 text-sm text-abb-gray">
-              Envie o PDF por e-mail ao inspetor da ABB.
-            </p>
-          </div>
-        ) : null}
+        {concluido ? <ArquivosGerados nomes={concluido} /> : null}
       </div>
     </Modal>
   );

@@ -20,7 +20,8 @@ import { Botao } from '../../shared/componentes/Botao';
 import { BarraProgresso } from '../../shared/componentes/BarraProgresso';
 import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
 import { Modal } from '../../shared/componentes/Modal';
-import { IconeCheck, IconeVoltar } from '../../shared/componentes/Icones';
+import { IconeCheck, IconePdf, IconeVoltar } from '../../shared/componentes/Icones';
+import { DialogoPdfChecklist } from '../pdf/DialogoPdfChecklist';
 import { EtapaCard } from './EtapaCard';
 import { ModalApoio } from './ModalApoio';
 import { CabecalhoFormulario } from './CabecalhoFormulario';
@@ -63,6 +64,7 @@ export function Preenchimento() {
   const temCabecalho = (contexto?.definicao.cabecalho.length ?? 0) > 0;
   const [ajuda, setAjuda] = useState<Etapa | null>(null);
   const [indiceAberto, setIndiceAberto] = useState(false);
+  const [pdfAberto, setPdfAberto] = useState(false);
 
   /** Trocar de etapa recomeça a leitura pelo topo do cartão. */
   const selecionar = useCallback((id: string) => {
@@ -239,8 +241,13 @@ export function Preenchimento() {
     });
   };
 
-  const sair = async () => {
+  /** Leva ao banco o que ainda está agendado: sair e gerar o PDF partem dele. */
+  const descarregar = async () => {
     await Promise.all([salvamentoRespostas.descarregar(), salvamentoCabecalho.descarregar()]);
+  };
+
+  const sair = async () => {
+    await descarregar();
     navegar(contexto?.voltarPara ?? '/');
   };
 
@@ -402,6 +409,18 @@ export function Preenchimento() {
                     ? 'Salvo'
                     : 'Salvando…'}
             </span>
+            {/* Sempre disponível: com pendências, o PDF sai com elas sinalizadas. */}
+            <Botao
+              tamanho="compacto"
+              variante={progresso.total > 0 && progresso.pendentes === 0 ? 'primario' : 'secundario'}
+              className="shrink-0"
+              onClick={() => setPdfAberto(true)}
+              aria-label="Gerar PDF deste checklist"
+            >
+              <IconePdf className="h-5 w-5" />
+              <span className="hidden sm:inline">Gerar PDF</span>
+              <span className="sm:hidden">PDF</span>
+            </Botao>
           </div>
 
           <BarraProgresso
@@ -492,6 +511,19 @@ export function Preenchimento() {
       </Modal>
 
       <ModalApoio etapa={ajuda} onFechar={() => setAjuda(null)} />
+
+      <DialogoPdfChecklist
+        aberto={pdfAberto}
+        alvo={
+          solicitacaoId
+            ? { solicitacaoId: Number(solicitacaoId) }
+            : { projetoId: Number(projetoId), tagId: Number(tagId), formId: contexto.definicao.id }
+        }
+        nome={contexto.definicao.nome}
+        pendentes={progresso.pendentes}
+        antesDeGerar={descarregar}
+        onFechar={() => setPdfAberto(false)}
+      />
     </div>
   );
 }

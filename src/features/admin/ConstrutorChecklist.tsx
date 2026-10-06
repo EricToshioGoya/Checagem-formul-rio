@@ -453,11 +453,15 @@ export function ConstrutorChecklist({
                         aria-describedby={`tipo-ajuda-${etapa.id}`}
                         className={campoSelect}
                         value={etapa.tipoResposta}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const tipoResposta = e.target.value as TipoResposta;
                           alterarEtapa(secao.id, etapa.id, {
-                            tipoResposta: e.target.value as TipoResposta,
-                          })
-                        }
+                            tipoResposta,
+                            // A exigência de foto só existe em "marcar e fotografar".
+                            fotoObrigatoria:
+                              tipoResposta === 'check_com_foto' ? etapa.fotoObrigatoria : false,
+                          });
+                        }}
                       >
                         {tiposResposta.map((t) => (
                           <option key={t} value={t}>
@@ -469,6 +473,28 @@ export function ConstrutorChecklist({
                         {DESCRICOES_TIPO_RESPOSTA[etapa.tipoResposta]}
                       </p>
                     </div>
+
+                    {etapa.tipoResposta === 'check_com_foto' ? (
+                      <label className="flex items-start gap-2 text-base">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 size-5 shrink-0 accent-abb-red"
+                          checked={etapa.fotoObrigatoria === true}
+                          onChange={(e) =>
+                            alterarEtapa(secao.id, etapa.id, {
+                              fotoObrigatoria: e.target.checked,
+                            })
+                          }
+                        />
+                        <span>
+                          Foto obrigatória
+                          <span className="block text-sm text-abb-gray">
+                            Marcada, a etapa só conta como respondida com pelo menos
+                            uma foto. Desmarcada, basta marcar &ldquo;verificado&rdquo;.
+                          </span>
+                        </span>
+                      </label>
+                    ) : null}
 
                     {etapa.tipoResposta === 'selecao' ? (
                       <CampoTexto

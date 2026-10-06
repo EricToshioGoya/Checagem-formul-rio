@@ -1,4 +1,4 @@
-import { montarDossie, type Dossie } from './dossie';
+import { montarDossie, montarDossieSolicitacao, somarProgresso, type Dossie } from './dossie';
 import type { ExportTarget, OpcoesExportacao } from './ExportTarget';
 import type { Projeto } from '../db/tipos';
 import { baixarBlob } from '../../shared/utils/download';
@@ -9,8 +9,14 @@ export interface ArquivoGerado {
   blob: Blob;
 }
 
-function rotuloTipo(tipo: 'montagem' | 'rotina'): string {
+type TipoChecklist = 'montagem' | 'rotina';
+
+function rotuloTipo(tipo: TipoChecklist): string {
   return tipo === 'montagem' ? 'Verificação de Montagem' : 'Verificação de Rotina';
+}
+
+function sufixoTipo(tipo: TipoChecklist): string {
+  return tipo === 'montagem' ? 'MONTAGEM' : 'ROTINA';
 }
 
 /**
@@ -28,7 +34,7 @@ async function montarZipFotos(dossie: Dossie): Promise<Blob | null> {
       for (const [etapaId, lista] of Object.entries(formulario.midiasPorEtapa)) {
         lista.forEach((midia, i) => {
           const extensao = midia.mime === 'application/pdf' ? 'pdf' : 'jpg';
-          const nome = `${normalizarParaArquivo(tag.tag.nome)}_${normalizarParaArquivo(
+          const nome = `${normalizarParaArquivo(tag.nome)}_${normalizarParaArquivo(
             etapaId,
           )}_${i + 1}.${extensao}`;
           zip.file(nome, midia.blob);
@@ -43,6 +49,33 @@ async function montarZipFotos(dossie: Dossie): Promise<Blob | null> {
 }
 
 /**
+ * O PDF do dossiê e, quando as fotos não vão embutidas, o ZIP com elas.
+ * `sufixo` entra no nome do arquivo depois de empresa e projeto.
+ */
+async function arquivosDoDossie(
+  dossie: Dossie,
+  opcoes: { incluirFotos: boolean; titulo: string; sufixo: string },
+): Promise<ArquivoGerado[]> {
+  const { gerarPdf } = await import('./pdf/documento');
+  const arquivos: ArquivoGerado[] = [];
+  const zip = opcoes.incluirFotos ? null : await montarZipFotos(dossie);
+  const nomeZip = zip
+    ? nomeArquivoExportacao(dossie.empresa, dossie.nomeProjeto, `${opcoes.sufixo}-FOTOS`, 'zip', dossie.geradoEm)
+    : undefined;
+
+  arquivos.push({
+    nome: nomeArquivoExportacao(dossie.empresa, dossie.nomeProjeto, opcoes.sufixo, 'pdf', dossie.geradoEm),
+    blob: await gerarPdf(dossie, {
+      incluirFotos: opcoes.incluirFotos,
+      titulo: opcoes.titulo,
+      arquivoFotos: nomeZip,
+    }),
+  });
+  if (zip && nomeZip) arquivos.push({ nome: nomeZip, blob: zip });
+  return arquivos;
+}
+
+/**
  * Gera um arquivo por tipo de verificação selecionado. As fotos vão embutidas
  * no PDF ou em um ZIP separado, conforme a escolha do montador.
  */
@@ -50,8 +83,7 @@ export async function gerarArquivos(
   projetoId: number,
   opcoes: OpcoesExportacao & { incluirFotos: boolean },
 ): Promise<ArquivoGerado[]> {
-  const { gerarPdf } = await import('./pdf/documento');
-  const dossieCompleto = await montarDossie(projetoId, opcoes.formIds);
+  const dossieCompleto = await montarDossie(projetoId, { formIds: opcoes.formIds });
   const tiposPresentes = Array.from(
     new Set(
       dossieCompleto.tags.flatMap((t) => t.formularios.map((f) => f.definicao.tipo)),
@@ -60,50 +92,51 @@ export async function gerarArquivos(
   const arquivos: ArquivoGerado[] = [];
 
   for (const tipo of tiposPresentes) {
+    // TAG sem checklist deste tipo não entra no PDF dele.
+    const tags = dossieCompleto.tags
+      .map((t) => ({ ...t, formularios: t.formularios.filter((f) => f.definicao.tipo === tipo) }))
+      .filter((t) => t.formularios.length > 0);
     const dossie: Dossie = {
       ...dossieCompleto,
-      // TAG sem checklist deste tipo não entra no PDF dele.
-      tags: dossieCompleto.tags
-        .map((t) => ({
-          ...t,
-          formularios: t.formularios.filter((f) => f.definicao.tipo === tipo),
-        }))
-        .filter((t) => t.formularios.length > 0),
+      tags,
+      progressoGeral: somarProgresso(tags.flatMap((t) => t.formularios.map((f) => f.progresso))),
     };
-
-    const pdf = await gerarPdf(dossie, {
-      incluirFotos: opcoes.incluirFotos,
-      tituloTipo: rotuloTipo(tipo),
-    });
-    arquivos.push({
-      nome: nomeArquivoExportacao(
-        dossie.projeto.empresa,
-        dossie.projeto.nomeProjeto,
-        tipo === 'montagem' ? 'MONTAGEM' : 'ROTINA',
-        'pdf',
-        dossie.geradoEm,
-      ),
-      blob: pdf,
-    });
-
-    if (!opcoes.incluirFotos) {
-      const zip = await montarZipFotos(dossie);
-      if (zip) {
-        arquivos.push({
-          nome: nomeArquivoExportacao(
-            dossie.projeto.empresa,
-            dossie.projeto.nomeProjeto,
-            tipo === 'montagem' ? 'MONTAGEM-FOTOS' : 'ROTINA-FOTOS',
-            'zip',
-            dossie.geradoEm,
-          ),
-          blob: zip,
-        });
-      }
-    }
+    arquivos.push(
+      ...(await arquivosDoDossie(dossie, {
+        incluirFotos: opcoes.incluirFotos,
+        titulo: rotuloTipo(tipo),
+        sufixo: sufixoTipo(tipo),
+      })),
+    );
   }
 
   return arquivos;
+}
+
+/** O alvo de um PDF de checklist único: o de uma TAG do projeto ou o de uma solicitação. */
+export type AlvoChecklist =
+  | { projetoId: number; tagId: number; formId: string }
+  | { solicitacaoId: number };
+
+/** PDF de um checklist só — o que a tela de preenchimento tem aberto. */
+export async function gerarArquivosChecklist(
+  alvo: AlvoChecklist,
+  incluirFotos: boolean,
+): Promise<ArquivoGerado[]> {
+  const dossie =
+    'solicitacaoId' in alvo
+      ? await montarDossieSolicitacao(alvo.solicitacaoId)
+      : await montarDossie(alvo.projetoId, { formIds: [alvo.formId], tagIds: [alvo.tagId] });
+  const tag = dossie.tags[0];
+  const formulario = tag?.formularios[0];
+  if (!tag || !formulario) {
+    throw new Error('Este checklist não está mais disponível neste painel.');
+  }
+  return arquivosDoDossie(dossie, {
+    incluirFotos,
+    titulo: formulario.definicao.nome,
+    sufixo: `${tag.nome}-${sufixoTipo(formulario.definicao.tipo)}`,
+  });
 }
 
 /** Implementação de `ExportTarget` da v1: gera e baixa os arquivos localmente. */

@@ -25,7 +25,7 @@ export type TipoResposta = (typeof tiposResposta)[number];
 /** Como cada tipo é oferecido a quem monta o checklist. */
 export const ROTULOS_TIPO_RESPOSTA: Record<TipoResposta, string> = {
   check: 'Apenas conferir',
-  check_com_foto: 'Conferir e exigir foto',
+  check_com_foto: 'Conferir e fotografar',
   foto: 'Somente foto',
   numero: 'Valor numérico',
   texto: 'Texto livre',
@@ -38,7 +38,7 @@ export const ROTULOS_TIPO_RESPOSTA: Record<TipoResposta, string> = {
 export const DESCRICOES_TIPO_RESPOSTA: Record<TipoResposta, string> = {
   check: 'O montador só marca "verificado". Sem foto.',
   check_com_foto:
-    'O montador marca "verificado" e anexa pelo menos uma foto. Sem a foto, a etapa fica pendente.',
+    'O montador marca "verificado" e pode anexar fotos. Com "Foto obrigatória", a etapa só conta com pelo menos uma foto.',
   foto: 'O montador só envia fotos — pelo menos uma. Sem a foto, a etapa fica pendente.',
   numero: 'O montador digita o valor medido, na unidade abaixo.',
   texto: 'O montador escreve a resposta.',
@@ -47,7 +47,7 @@ export const DESCRICOES_TIPO_RESPOSTA: Record<TipoResposta, string> = {
   grade_numerica: 'O montador preenche uma tabela de medições.',
 };
 
-/** Tipos que exigem foto para a etapa contar como respondida. */
+/** Tipos em que o montador anexa fotos na etapa. */
 export const TIPOS_COM_FOTO: readonly TipoResposta[] = ['check_com_foto', 'foto'];
 
 /**
