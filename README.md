@@ -36,6 +36,13 @@ npm run preview      # serve o dist/ gerado
 São dois processos: o `dev` faz proxy de `/api` para o `servidor`. Sem o
 servidor no ar, a tela de login avisa que está sem conexão.
 
+### Testar no GitHub, sem instalar nada (Codespaces)
+
+**Code → Codespaces → Create codespace on main.** O Codespaces instala,
+compila e sobe o servidor na porta 3001 sozinho (`.devcontainer/` e
+`scripts/codespace.sh`), e o aplicativo abre no navegador. O passo a passo e o
+roteiro de teste estão em [docs/testar-no-codespaces.md](docs/testar-no-codespaces.md).
+
 Requer Node 22.5 ou superior — o servidor usa `node:sqlite`, embutido a partir
 dessa versão.
 
