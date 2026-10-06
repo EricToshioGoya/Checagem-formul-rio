@@ -1,0 +1,18 @@
+{
+  "name": "Verificação de Montagem de Painéis",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+  "forwardPorts": [3001],
+  "portsAttributes": {
+    "3001": {
+      "label": "Aplicativo",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "npm ci && npm run build",
+  "postStartCommand": "bash scripts/codespace.sh",
+  "customizations": {
+    "codespaces": {
+      "openFiles": ["docs/testar-no-codespaces.md"]
+    }
+  }
+}
