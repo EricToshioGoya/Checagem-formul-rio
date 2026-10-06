@@ -10,13 +10,21 @@ import {
 } from 'pdf-lib';
 import { quebrarLinhas, sanitizar, truncar } from './texto';
 import { etapaRespondida, etapaVisivel, type Progresso } from '../../forms/progresso';
-import { valorDeCampo, type Dossie, type FormularioDoDossie, type TagDoDossie } from '../dossie';
+import {
+  etapasForaDoChecklist,
+  etapasImpressas,
+  valorDeCampo,
+  type Dossie,
+  type FormularioDoDossie,
+  type TagDoDossie,
+} from '../dossie';
 import type { Midia } from '../../db/tipos';
 import type { Etapa, Resposta, Secao, ValorGrade } from '../../forms/tipos';
 import {
   dataBr,
   dataHoraBr,
   formatarBytes,
+  nomeSemRepetir,
   normalizarParaArquivo,
 } from '../../../shared/utils/texto';
 import { LOGO_ABB } from '../../../shared/marca/logoAbb';
@@ -220,6 +228,8 @@ class Folha {
    * seção e o cabeçalho da tabela de etapas.
    */
   aoQuebrar: (() => void) | null = null;
+  /** Nomes dos PDFs já anexados ao documento: nenhum se repete. */
+  readonly anexosUsados = new Set<string>();
 
   constructor(
     readonly doc: PDFDocument,
@@ -687,11 +697,37 @@ function pendencias(folha: Folha, blocos: readonly Bloco[], reservar: number): v
   folha.y -= 14;
 }
 
+/** Notas do pé da capa: onde estão as fotos, registros à parte e o julgamento. */
+function notasDaCapa(blocos: readonly Bloco[], arquivoFotos?: string): string[] {
+  const fora = blocos.reduce((s, b) => s + etapasForaDoChecklist(b.formulario).length, 0);
+  return [
+    arquivoFotos
+      ? `As fotos não estão neste PDF: seguem no arquivo ${arquivoFotos}, nomeadas TAG_ETAPA_N.`
+      : 'As fotos de cada checklist estão no registro fotográfico, ao final dele.',
+    ...(fora
+      ? [
+          `${plural(fora, 'registro feito em etapa que saiu', 'registros feitos em etapas que saíram')} do checklist depois do preenchimento: ${
+            fora === 1 ? 'aparece' : 'aparecem'
+          } à parte, em "Fora do checklist atual", e não ${fora === 1 ? 'conta' : 'contam'} no andamento.`,
+        ]
+      : []),
+    'O julgamento de conformidade é feito pelo inspetor da ABB, fora deste sistema.',
+  ];
+}
+
+const TAMANHO_NOTA = 7.8;
+
 /** Altura da legenda com as notas: a capa reserva esse espaço no pé. */
-const ALTURA_LEGENDA = 24 + 8 + 2 * 7.8 * 1.35;
+function alturaLegenda(folha: Folha, notas: readonly string[]): number {
+  const linhas = notas.reduce(
+    (s, n) => s + quebrarLinhas(n, folha.fontes.normal, TAMANHO_NOTA, LARGURA_UTIL).length,
+    0,
+  );
+  return 24 + 8 + linhas * TAMANHO_NOTA * 1.35;
+}
 
 /** Legenda dos selos numa faixa só, e as notas do documento. */
-function legenda(folha: Folha, arquivoFotos?: string): void {
+function legenda(folha: Folha, notas: readonly string[]): void {
   const { negrito, normal } = folha.fontes;
   const itens: Array<[Selo, string]> = [
     [SITUACOES.verificado, 'respondida'],
@@ -699,7 +735,7 @@ function legenda(folha: Folha, arquivoFotos?: string): void {
     [SITUACOES.naoVerificado, 'sem resposta'],
   ];
   const altura = 24;
-  folha.garantir(ALTURA_LEGENDA);
+  folha.garantir(alturaLegenda(folha, notas));
   caixa(folha.pagina, MARGEM, folha.y, LARGURA_UTIL, altura, { raio: 5, borda: COR.linha, espessura: 0.7 });
   const topoSelo = folha.y - (altura - ALTURA_SELO) / 2;
   const base = folha.y - altura / 2 - 2.6;
@@ -711,16 +747,7 @@ function legenda(folha: Folha, arquivoFotos?: string): void {
     x += normal.widthOfTextAtSize(sanitizar(texto), 7.5) + 18;
   }
   folha.y -= altura + 8;
-  folha.paragrafo(
-    arquivoFotos
-      ? `As fotos não estão neste PDF: seguem no arquivo ${arquivoFotos}, nomeadas TAG_ETAPA_N.`
-      : 'As fotos de cada checklist estão no registro fotográfico, ao final dele.',
-    { tamanho: 7.8, cor: COR.suave },
-  );
-  folha.paragrafo('O julgamento de conformidade é feito pelo inspetor da ABB, fora deste sistema.', {
-    tamanho: 7.8,
-    cor: COR.suave,
-  });
+  for (const nota of notas) folha.paragrafo(nota, { tamanho: TAMANHO_NOTA, cor: COR.suave });
 }
 
 function desenharCapa(folha: Folha, dossie: Dossie, blocos: readonly Bloco[], opcoes: OpcoesPdf): void {
@@ -753,8 +780,9 @@ function desenharCapa(folha: Folha, dossie: Dossie, blocos: readonly Bloco[], op
     return;
   }
   resumo(folha, blocos);
-  pendencias(folha, blocos, ALTURA_LEGENDA);
-  legenda(folha, opcoes.arquivoFotos);
+  const notas = notasDaCapa(blocos, opcoes.arquivoFotos);
+  pendencias(folha, blocos, alturaLegenda(folha, notas));
+  legenda(folha, notas);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -795,7 +823,8 @@ function valorAferido(etapa: Etapa, resposta: Resposta | undefined, fotos: numbe
       if (!resposta?.valor || typeof resposta.valor !== 'object') return '';
       const valores = Object.values(resposta.valor as ValorGrade).flatMap((l) => Object.values(l ?? {}));
       const preenchidos = valores.filter((v) => typeof v === 'number' && Number.isFinite(v)).length;
-      return preenchidos ? `${plural(preenchidos, 'valor', 'valores')} · tabela abaixo` : '';
+      if (!preenchidos) return '';
+      return `${plural(preenchidos, 'valor', 'valores')}${etapa.grade ? ' · tabela abaixo' : ''}`;
     }
     default:
       return '';
@@ -806,30 +835,42 @@ function cabecalhoTabela(folha: Folha): void {
   cabecalhoEscuro(folha, COLUNAS);
 }
 
-function faixaSecao(folha: Folha, secao: Secao, p: Progresso | null): void {
+/**
+ * Faixa de título da seção. À direita vai a contagem e o selo do andamento
+ * (`direita.p`) ou um texto (`direita.texto`); sem nada, é a continuação da
+ * seção numa página nova.
+ */
+function faixaSecao(
+  folha: Folha,
+  titulo: string,
+  direita: { p: Progresso } | { texto: string } | null,
+  destaque: Color = COR.marca,
+): void {
   const altura = 24;
   const topo = folha.y;
   const { negrito, normal } = folha.fontes;
   caixa(folha.pagina, MARGEM, topo, LARGURA_UTIL, altura, { raio: 3, cor: COR.fundo });
-  folha.pagina.drawRectangle({ x: MARGEM, y: topo - altura, width: 3.5, height: altura, color: COR.marca });
+  folha.pagina.drawRectangle({ x: MARGEM, y: topo - altura, width: 3.5, height: altura, color: destaque });
 
   let reservado = 0;
-  if (p) {
-    const selo = seloDoAndamento(p);
+  if (direita && 'p' in direita) {
+    const selo = seloDoAndamento(direita.p);
     const largura = larguraSelo(folha.fontes, selo);
     desenharSelo(folha, selo, DIREITA - 8 - largura, topo - (altura - ALTURA_SELO) / 2);
-    const contagem = `${p.respondidas}/${p.total}`;
+    const contagem = `${direita.p.respondidas}/${direita.p.total}`;
     folha.textoDireita(contagem, DIREITA - 8 - largura - 8, topo - 15.3, 8.5, negrito, COR.suave);
     reservado = largura + 16 + negrito.widthOfTextAtSize(contagem, 8.5) + 8;
+  } else if (direita) {
+    folha.textoDireita(direita.texto, DIREITA - 8, topo - 15.3, 8.5, negrito, COR.suave);
+    reservado = negrito.widthOfTextAtSize(sanitizar(direita.texto), 8.5) + 16;
   }
-  const titulo = `${secao.id} — ${secao.titulo}${p ? '' : ' (continuação)'}`;
   folha.escrever(
-    truncar(titulo, negrito, 10, LARGURA_UTIL - 22 - reservado),
+    truncar(direita ? titulo : `${titulo} (continuação)`, negrito, 10, LARGURA_UTIL - 22 - reservado),
     MARGEM + 12,
     topo - 15.5,
     10,
-    p ? negrito : normal,
-    p ? COR.texto : COR.suave,
+    direita ? negrito : normal,
+    direita ? COR.texto : COR.suave,
   );
   folha.y -= altura + 4;
 }
@@ -883,6 +924,11 @@ function desenharEtapa(folha: Folha, etapa: Etapa, formulario: FormularioDoDossi
         }))
       : []),
   ];
+
+  // Descrição só de espaços (o schema aceita) não deixa a etapa sem linha.
+  if (!linhas.length) {
+    linhas.push({ texto: '—', tamanho: 8.5, passo: 10.5, fonte: normal, cor: COR.claro });
+  }
 
   const minimoPrimeira = Math.max(
     PAD_TOPO + Math.max(linhasAferido.length, 1) * 10 + PAD_BASE,
@@ -1087,18 +1133,48 @@ function desenharChecklist(folha: Folha, tag: TagDoDossie, formulario: Formulari
   }
 
   for (const { secao, etapas } of secoes) {
-    // A faixa da seção não fica sozinha no pé da página.
-    folha.garantir(28 + 18 + 30);
-    faixaSecao(folha, secao, progressoDe(etapas, formulario));
-    cabecalhoTabela(folha);
-    folha.aoQuebrar = () => {
-      faixaSecao(folha, secao, null);
-      cabecalhoTabela(folha);
-    };
-    etapas.forEach((etapa, i) => desenharEtapa(folha, etapa, formulario, i % 2 === 1));
-    folha.aoQuebrar = null;
-    folha.y -= 14;
+    tabelaDeEtapas(folha, `${secao.id} — ${secao.titulo}`, { p: progressoDe(etapas, formulario) }, etapas, formulario);
   }
+
+  const fora = etapasForaDoChecklist(formulario);
+  if (fora.length) {
+    tabelaDeEtapas(
+      folha,
+      'Fora do checklist atual',
+      { texto: plural(fora.length, 'registro', 'registros') },
+      fora,
+      formulario,
+      'Etapas desativadas ou retiradas do checklist depois do preenchimento. O que foi registrado nelas fica no documento, para rastreabilidade, e não entra no andamento.',
+    );
+  }
+}
+
+/** Faixa da seção, cabeçalho e as etapas — a faixa volta no alto de cada página nova. */
+function tabelaDeEtapas(
+  folha: Folha,
+  titulo: string,
+  direita: { p: Progresso } | { texto: string },
+  etapas: readonly Etapa[],
+  formulario: FormularioDoDossie,
+  nota?: string,
+): void {
+  const destaque = nota ? COR.claro : COR.marca;
+  // Faixa, nota, cabeçalho e a primeira linha da tabela: nunca a faixa sozinha
+  // no pé da página. 42 é a maior altura mínima da primeira parte de uma etapa.
+  folha.garantir(28 + (nota ? 30 : 0) + 18 + 42);
+  faixaSecao(folha, titulo, direita, destaque);
+  if (nota) {
+    folha.paragrafo(nota, { tamanho: 7.8, cor: COR.suave, fonte: folha.fontes.italico });
+    folha.y -= 4;
+  }
+  cabecalhoTabela(folha);
+  folha.aoQuebrar = () => {
+    faixaSecao(folha, titulo, null, destaque);
+    cabecalhoTabela(folha);
+  };
+  etapas.forEach((etapa, i) => desenharEtapa(folha, etapa, formulario, i % 2 === 1));
+  folha.aoQuebrar = null;
+  folha.y -= 14;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -1135,15 +1211,9 @@ const FOTO_ALTURA_MAXIMA = 160;
  * vão dentro do documento, no painel de anexos do leitor.
  */
 async function desenharFotos(folha: Folha, tag: TagDoDossie, formulario: FormularioDoDossie): Promise<void> {
-  const daDefinicao = formulario.definicao.secoes.flatMap((s) => s.etapas);
-  const conhecidas = new Set(daDefinicao.map((e) => e.id));
-  // Etapas com arquivo, na ordem do checklist; a que saiu dele vai no fim.
-  const etapas = [
-    ...daDefinicao.filter((e) => fotosDa(formulario, e.id) > 0).map((e) => ({ id: e.id, descricao: e.descricao })),
-    ...Object.keys(formulario.midiasPorEtapa)
-      .filter((id) => !conhecidas.has(id) && fotosDa(formulario, id) > 0)
-      .map((id) => ({ id, descricao: 'Etapa fora da revisão atual do checklist.' })),
-  ];
+  // As mesmas etapas que o documento imprime, na mesma ordem: a condicional
+  // que não se aplica fica de fora com as fotos dela.
+  const etapas = etapasImpressas(formulario).filter((e) => fotosDa(formulario, e.id) > 0);
   if (!etapas.length) return;
 
   const itens: Array<CartaoFoto | LinhaAnexo> = [];
@@ -1213,19 +1283,29 @@ async function desenharFotos(folha: Folha, tag: TagDoDossie, formulario: Formula
   }
 }
 
+/** Maior largura do selo da etapa: id comprido é cortado, não invade o vizinho. */
+const LARGURA_MAXIMA_SELO_ETAPA = 90;
+
+function textoSeloEtapa(folha: Folha, id: string): string {
+  return truncar(id, folha.fontes.negrito, 7.5, LARGURA_MAXIMA_SELO_ETAPA - 10);
+}
+
+function larguraSeloEtapa(folha: Folha, id: string): number {
+  return folha.fontes.negrito.widthOfTextAtSize(textoSeloEtapa(folha, id), 7.5) + 10;
+}
+
 /** Selo escuro com o id da etapa; devolve a largura. */
 function seloEtapa(folha: Folha, id: string, x: number, topo: number): number {
-  const largura = folha.fontes.negrito.widthOfTextAtSize(sanitizar(id), 7.5) + 10;
+  const largura = larguraSeloEtapa(folha, id);
   caixa(folha.pagina, x, topo, largura, 13, { raio: 3, cor: COR.escuro });
-  folha.escrever(id, x + 5, topo - 9.3, 7.5, folha.fontes.negrito, COR.branco);
+  folha.escrever(textoSeloEtapa(folha, id), x + 5, topo - 9.3, 7.5, folha.fontes.negrito, COR.branco);
   return largura;
 }
 
 function desenharLinhaDeFotos(folha: Folha, tag: TagDoDossie, par: CartaoFoto[]): void {
   const { normal, italico } = folha.fontes;
   const cabecalhos = par.map((c) => {
-    const larguraId = folha.fontes.negrito.widthOfTextAtSize(sanitizar(c.id), 7.5) + 10;
-    const largura = FOTO_LARGURA_CARTAO - 16 - larguraId - 6;
+    const largura = FOTO_LARGURA_CARTAO - 16 - larguraSeloEtapa(folha, c.id) - 6;
     return limitarLinhas(quebrarLinhas(c.descricao, normal, 7.8, largura), 2, normal, 7.8, largura);
   });
   const alturaCabecalho = Math.max(...cabecalhos.map((l) => Math.max(13, l.length * 9.5))) + 14;
@@ -1267,7 +1347,11 @@ function desenharLinhaDeFotos(folha: Folha, tag: TagDoDossie, par: CartaoFoto[])
 async function desenharAnexo(folha: Folha, tag: TagDoDossie, item: LinhaAnexo): Promise<void> {
   const { negrito, normal } = folha.fontes;
   const { midia } = item;
-  const nomeAnexo = `${normalizarParaArquivo(tag.nome)}_${normalizarParaArquivo(item.id)}_${item.numero}.pdf`;
+  const nomeAnexo = nomeSemRepetir(
+    folha.anexosUsados,
+    `${normalizarParaArquivo(tag.nome)}_${normalizarParaArquivo(item.id)}_${item.numero}`,
+    'pdf',
+  );
   let incorporado = true;
   try {
     await folha.doc.attach(new Uint8Array(await midia.blob.arrayBuffer()), nomeAnexo, {

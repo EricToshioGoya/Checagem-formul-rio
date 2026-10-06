@@ -662,6 +662,10 @@ O documento:
 - Status sinalizado por selo colorido: **Verificado** (verde), **Falta foto**
   (âmbar — marcada sem a foto obrigatória) e **Não verificado** (vermelho).
 - Resposta longa e observação saem inteiras, sob a descrição; nada é cortado.
+- Etapa desativada ou retirada do checklist depois do preenchimento não apaga o
+  que foi registrado nela: sai à parte, em **Fora do checklist atual**, sem
+  contar no andamento. Etapa condicional que não se aplica (`exibirSe`) fica
+  de fora do PDF e do ZIP, com as fotos.
 - PDFs anexados pelo montador vão dentro do documento (painel de anexos do
   leitor de PDF).
 - Escolha entre fotos incorporadas ao PDF ou PDF sem fotos acompanhado de um ZIP

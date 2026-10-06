@@ -1,8 +1,19 @@
-import { montarDossie, montarDossieSolicitacao, somarProgresso, type Dossie } from './dossie';
+import {
+  etapasImpressas,
+  montarDossie,
+  montarDossieSolicitacao,
+  somarProgresso,
+  type Dossie,
+} from './dossie';
+import { formulariosDoPainel } from '../forms/catalogo';
 import type { ExportTarget, OpcoesExportacao } from './ExportTarget';
 import type { Projeto } from '../db/tipos';
 import { baixarBlob } from '../../shared/utils/download';
-import { nomeArquivoExportacao, normalizarParaArquivo } from '../../shared/utils/texto';
+import {
+  nomeArquivoExportacao,
+  nomeSemRepetir,
+  normalizarParaArquivo,
+} from '../../shared/utils/texto';
 
 export interface ArquivoGerado {
   nome: string;
@@ -20,24 +31,26 @@ function sufixoTipo(tipo: TipoChecklist): string {
 }
 
 /**
- * ZIP com as fotos do dossiê, nomeadas `TAG_ETAPA_N.jpg`.
+ * ZIP com as fotos do dossiê, nomeadas `TAG_ETAPA_N.jpg` — as mesmas etapas
+ * que o PDF imprime. Nome repetido (duas TAGs que viram o mesmo nome de
+ * arquivo, dois checklists com a mesma numeração) ganha sufixo, em vez de uma
+ * foto sobrescrever a outra.
  * JSZip e pdf-lib entram por importação dinâmica: o primeiro carregamento da
  * aplicação no celular não paga o custo das bibliotecas de exportação.
  */
 async function montarZipFotos(dossie: Dossie): Promise<Blob | null> {
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
+  const usados = new Set<string>();
   let quantidade = 0;
 
   for (const tag of dossie.tags) {
     for (const formulario of tag.formularios) {
-      for (const [etapaId, lista] of Object.entries(formulario.midiasPorEtapa)) {
-        lista.forEach((midia, i) => {
+      for (const etapa of etapasImpressas(formulario)) {
+        (formulario.midiasPorEtapa[etapa.id] ?? []).forEach((midia, i) => {
           const extensao = midia.mime === 'application/pdf' ? 'pdf' : 'jpg';
-          const nome = `${normalizarParaArquivo(tag.nome)}_${normalizarParaArquivo(
-            etapaId,
-          )}_${i + 1}.${extensao}`;
-          zip.file(nome, midia.blob);
+          const base = `${normalizarParaArquivo(tag.nome)}_${normalizarParaArquivo(etapa.id)}_${i + 1}`;
+          zip.file(nomeSemRepetir(usados, base, extensao), midia.blob);
           quantidade += 1;
         });
       }
@@ -132,10 +145,15 @@ export async function gerarArquivosChecklist(
   if (!tag || !formulario) {
     throw new Error('Este checklist não está mais disponível neste painel.');
   }
+  // Painel com mais de um checklist do mesmo tipo: o id do checklist entra no
+  // nome, para os dois PDFs da mesma TAG não saírem com o mesmo arquivo.
+  const doMesmoTipo = (await formulariosDoPainel(dossie.painelSlug)).filter(
+    (e) => e.tipo === formulario.definicao.tipo,
+  ).length;
   return arquivosDoDossie(dossie, {
     incluirFotos,
     titulo: formulario.definicao.nome,
-    sufixo: `${tag.nome}-${sufixoTipo(formulario.definicao.tipo)}`,
+    sufixo: `${tag.nome}-${doMesmoTipo > 1 ? formulario.definicao.id : sufixoTipo(formulario.definicao.tipo)}`,
   });
 }
 

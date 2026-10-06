@@ -6,14 +6,17 @@ import {
 import { painelGuardado } from '../api/acessoLocal';
 import { solicitacaoStore, ROTULO_ESTADO } from '../certificacao';
 import { carregarFormulario, formulariosDoPainel } from '../forms/catalogo';
-import { calcularProgresso, checklistsDaTag, idsPendentes } from '../forms/progresso';
+import { calcularProgresso, checklistsDaTag, etapaVisivel, idsPendentes } from '../forms/progresso';
+import { etapaSchema } from '../../../compartilhado/formulario';
 import type { Progresso } from '../forms/progresso';
 import { camposDoPainel, entradaDoPainel } from '../paineis/catalogo';
 import { CAMPOS_DO_PROJETO } from '../forms/dadosTag';
 import type {
   CampoCabecalho,
   DefinicaoFormulario,
+  Etapa,
   MapaRespostas,
+  ValorGrade,
   ValoresCabecalho,
 } from '../forms/tipos';
 import type { Midia, Preenchimento, Projeto } from '../db/tipos';
@@ -48,6 +51,8 @@ export interface Dossie {
   nomeProjeto: string;
   /** Nome do painel (SEN Plus, System Pro E Energy…), quando conhecido. */
   painel?: string;
+  /** `slug` do painel, para saber quais checklists ele tem. */
+  painelSlug?: string;
   /** Linhas de identificação da capa, na ordem em que são impressas. */
   identificacao: Array<[string, string]>;
   /**
@@ -74,6 +79,82 @@ export function valorDeCampo(campo: CampoCabecalho, bruto: string | undefined): 
     return Number(valor).toLocaleString('pt-BR', { maximumFractionDigits: 4 });
   }
   return valor;
+}
+
+/** A etapa tem algo registrado: valor, observação ou arquivo. */
+function temRegistro(formulario: FormularioDoDossie, etapaId: string): boolean {
+  const resposta = formulario.respostas[etapaId];
+  const valor = resposta?.valor;
+  return (
+    (valor !== undefined && valor !== null && valor !== '' && valor !== false) ||
+    !!resposta?.observacao?.trim() ||
+    (formulario.midiasPorEtapa[etapaId]?.length ?? 0) > 0
+  );
+}
+
+/** Etapa que saiu da definição: o tipo é deduzido do que ficou registrado. */
+function etapaRetirada(formulario: FormularioDoDossie, etapaId: string): Etapa {
+  const valor = formulario.respostas[etapaId]?.valor;
+  const midias = formulario.midiasPorEtapa[etapaId] ?? [];
+  const imagens = midias.filter((m) => m.mime !== 'application/pdf').length;
+  let tipoResposta: Etapa['tipoResposta'] = imagens || !midias.length ? 'foto' : 'anexo_pdf';
+  let grade: Etapa['grade'];
+  if (typeof valor === 'boolean') tipoResposta = imagens ? 'check_com_foto' : 'check';
+  else if (typeof valor === 'number') tipoResposta = 'numero';
+  else if (typeof valor === 'string') tipoResposta = 'texto';
+  else if (valor && typeof valor === 'object') {
+    // A grade sem a definição: linhas e colunas saem dos próprios valores.
+    const linhas = Object.keys(valor as ValorGrade);
+    const colunas = Array.from(new Set(linhas.flatMap((l) => Object.keys((valor as ValorGrade)[l] ?? {}))));
+    if (linhas.length && colunas.length) {
+      tipoResposta = 'grade_numerica';
+      grade = {
+        linhas: linhas.map((id) => ({ id, rotulo: id })),
+        colunas: colunas.map((id) => ({ id, rotulo: id })),
+      };
+    }
+  }
+  return etapaSchema.parse({
+    id: etapaId,
+    descricao: 'Etapa que não existe mais na revisão atual do checklist.',
+    tipoResposta,
+    ativa: false,
+    ...(grade ? { grade } : {}),
+  });
+}
+
+/**
+ * Etapas fora do checklist atual que guardam registro: desativadas pela
+ * administração ou retiradas da definição depois do preenchimento. Apagar o
+ * que já foi registrado é o que um protocolo de qualidade não pode fazer:
+ * elas saem no documento, à parte, sem contar no andamento.
+ *
+ * A etapa condicional escondida pela resposta (`exibirSe`) não entra: ela não
+ * se aplica a este painel.
+ */
+export function etapasForaDoChecklist(formulario: FormularioDoDossie): Etapa[] {
+  const daDefinicao = formulario.definicao.secoes.flatMap((s) => s.etapas);
+  const conhecidas = new Set(daDefinicao.map((e) => e.id));
+  const registradas = new Set([
+    ...Object.keys(formulario.respostas),
+    ...Object.keys(formulario.midiasPorEtapa),
+  ]);
+  return [
+    ...daDefinicao.filter((e) => e.ativa === false && temRegistro(formulario, e.id)),
+    ...Array.from(registradas)
+      .filter((id) => !conhecidas.has(id) && temRegistro(formulario, id))
+      .map((id) => etapaRetirada(formulario, id)),
+  ];
+}
+
+/** Todas as etapas que o documento imprime: as visíveis, na ordem, e as de fora. */
+export function etapasImpressas(formulario: FormularioDoDossie): Etapa[] {
+  return [
+    ...formulario.definicao.secoes.flatMap((s) =>
+      s.etapas.filter((e) => etapaVisivel(e, formulario.respostas)),
+    ),
+    ...etapasForaDoChecklist(formulario),
+  ];
 }
 
 /** Soma o andamento de vários checklists. */
@@ -206,6 +287,7 @@ export async function montarDossie(
     empresa: projeto.empresa,
     nomeProjeto: projeto.nomeProjeto,
     painel,
+    painelSlug: projeto.painelSlug,
     identificacao,
     listarTags: true,
     geradoEm,
@@ -252,6 +334,7 @@ export async function montarDossieSolicitacao(solicitacaoId: number): Promise<Do
     empresa: dados.empresa || dados.montador || 'Empresa',
     nomeProjeto: dados.projeto || 'Projeto',
     painel,
+    painelSlug: solicitacao.tipoPainel,
     identificacao,
     // O painel/quadro já está entre os campos da solicitação.
     listarTags: false,
