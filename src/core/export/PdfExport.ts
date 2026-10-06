@@ -50,8 +50,14 @@ export async function gerarArquivos(
   projetoId: number,
   opcoes: OpcoesExportacao & { incluirFotos: boolean },
 ): Promise<ArquivoGerado[]> {
-  const { gerarPdf } = await import('./pdf/documento');
-  const dossieCompleto = await montarDossie(projetoId, opcoes.formIds);
+  const [{ gerarPdf }, { carregarFontesPdf }] = await Promise.all([
+    import('./pdf/documento'),
+    import('./pdf/carregarFontes'),
+  ]);
+  const [dossieCompleto, fontes] = await Promise.all([
+    montarDossie(projetoId, opcoes.formIds),
+    carregarFontesPdf(),
+  ]);
   const tiposPresentes = Array.from(
     new Set(
       dossieCompleto.tags.flatMap((t) => t.formularios.map((f) => f.definicao.tipo)),
@@ -71,6 +77,7 @@ export async function gerarArquivos(
     const pdf = await gerarPdf(dossie, {
       incluirFotos: opcoes.incluirFotos,
       tituloTipo: rotuloTipo(tipo),
+      fontes,
     });
     arquivos.push({
       nome: nomeArquivoExportacao(

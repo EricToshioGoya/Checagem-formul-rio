@@ -40,10 +40,10 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Formulários e mídias entram no precache: o aplicativo abre offline
-        // já com o conteúdo de apoio disponível.
+        // Formulários, mídias e as fontes do PDF entram no precache: o
+        // aplicativo abre e gera o PDF offline.
         globPatterns: [
-          '**/*.{js,css,html,svg,png,ico,woff2}',
+          '**/*.{js,css,html,svg,png,ico,woff2,ttf}',
           'forms/**/*.json',
           'media/**/*',
         ],

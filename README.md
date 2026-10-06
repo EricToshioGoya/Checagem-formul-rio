@@ -228,6 +228,10 @@ VITE_SENHA_ADMIN='senha-do-cliente' npm run build
 - Escolha entre fotos incorporadas ao PDF ou PDF sem fotos acompanhado de um ZIP
   com as imagens nomeadas `TAG_ETAPA_N.jpg`.
 - Nome do arquivo: `EMPRESA_PROJETO_TIPO-VERIFICACAO_AAAA-MM-DD.pdf`.
+- Tipografia Inter (subconjunto Latin, licença OFL) em `src/core/export/pdf/fontes`,
+  incorporada via `@pdf-lib/fontkit` e incluída no precache. Se a fonte não
+  carregar, o PDF sai em Helvetica com o mesmo leiaute. Cores e medidas ficam em
+  `src/core/export/pdf/tema.ts`.
 
 O envio por e-mail é feito manualmente pelo montador.
 
