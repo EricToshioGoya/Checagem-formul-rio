@@ -64,6 +64,17 @@ export function nomeArquivoExportacao(
   return `${partes.join('_')}.${extensao}`;
 }
 
+/**
+ * Nome de arquivo que ainda não foi usado no mesmo pacote: o repetido ganha
+ * `-2`, `-3`… antes da extensão. Registra o nome devolvido em `usados`.
+ */
+export function nomeSemRepetir(usados: Set<string>, base: string, extensao: string): string {
+  let nome = `${base}.${extensao}`;
+  for (let n = 2; usados.has(nome.toLowerCase()); n += 1) nome = `${base}-${n}.${extensao}`;
+  usados.add(nome.toLowerCase());
+  return nome;
+}
+
 export function formatarBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;

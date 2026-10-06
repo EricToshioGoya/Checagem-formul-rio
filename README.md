@@ -427,12 +427,16 @@ solicitação remove em cascata os preenchimentos e as mídias.
 
 O painel (SEN Plus, MNS…) é o tipo, não uma TAG. **Abrir checagens** leva à
 lista de projetos do montador naquele painel, onde ele cria quantos projetos
-quiser. O cadastro pede, tudo obrigatório: nome do projeto, empresa, quantidade
-de TAGs e, para cada TAG, o nome, os checklists que ela vai preencher
-(`tags.formIds`) e os **dados do painel** — a união dos campos de cabeçalho
-desses checklists. Os dados são gravados no cabeçalho de cada checklist
-escolhido, e alterar um campo num checklist altera o mesmo campo nos outros da
-TAG. Os checklists podem ser trocados depois em **Checklists**; desmarcar não
+quiser. O cadastro pede, tudo obrigatório: nome do projeto, empresa,
+**fabricante do conjunto** e **cliente final** (valem para o projeto inteiro e
+aparecem assim que algum checklist marcado os tiver), quantidade de TAGs e,
+para cada TAG, o nome, os checklists que ela vai preencher (`tags.formIds`) e
+o restante dos **dados do painel** — a união dos campos de cabeçalho desses
+checklists. Os dados são gravados no cabeçalho de cada checklist escolhido, e
+alterar um campo num checklist altera o mesmo campo nos outros da TAG; no caso
+de fabricante e cliente final (`CAMPOS_DO_PROJETO` em
+`src/core/forms/dadosTag.ts`), em todas as TAGs do projeto. TAG adicionada
+depois herda esses dois do projeto. Os checklists podem ser trocados depois em **Checklists**; desmarcar não
 apaga respostas. TAG sem `formIds` — anterior a esta regra — segue com todos.
 
 Cada projeto tem `uid`, que o identifica no servidor (`sync_projetos` e
@@ -490,7 +494,9 @@ declaradas no JSON e não mudam nada em quem não as usa:
   esperados.
 - `fotoObrigatoria: true` — a etapa só conta como respondida com pelo menos um
   arquivo anexado. É o que torna as evidências fotográficas exigidas pelo Anexo 2
-  bloqueantes para o envio.
+  bloqueantes para o envio. Cada checklist decide, etapa a etapa: no construtor
+  da administração, as etapas "Conferir e fotografar" têm a opção **Foto
+  obrigatória**. Desmarcada, basta marcar "verificado".
 
 ---
 
@@ -635,17 +641,41 @@ npm run admin -- promover pessoa@empresa.com
 
 ## Geração do PDF
 
+Onde gerar:
+
+- **Tela de preenchimento** (botão **Gerar PDF** no cabeçalho): o PDF do
+  checklist aberto — de uma TAG do projeto ou de uma solicitação de
+  certificação. Vale para todo checklist de todo painel.
+- **Tela da solicitação**: **Gerar PDF do checklist**.
+- **Tela do projeto**: um PDF por tipo de verificação, com todas as TAGs que
+  têm aquele checklist.
+
+O documento:
+
 - Sempre disponível, independentemente de pendências.
-- Etapas sem resposta são impressas como **“Não verificado”**.
-- Primeira página: capa com dados do projeto e resumo de pendências por TAG.
-- Um PDF por tipo de verificação, com as TAGs que têm aquele checklist,
-  separadas por seção.
-- Colunas `Etapa | Descrição | Aferido | Status | Data | Operador`, cabeçalhos de
-  seção destacados e numeração de páginas no rodapé.
-- Registro da revisão do formulário utilizada.
+- Capa em uma página: andamento (percentual, barra e contagens), identificação
+  (dados do projeto, ou os campos da solicitação que o painel pede), resumo por
+  seção (um checklist) ou por TAG e checklist (o projeto), pendências e legenda.
+- Para cada TAG e checklist: abertura com revisão, andamento e dados do painel;
+  as seções com a tabela `Etapa | Descrição | Aferido | Status | Data | Operador`;
+  grade de medições formatada abaixo da etapa; registro fotográfico em cartões.
+- Status sinalizado por selo colorido: **Verificado** (verde), **Falta foto**
+  (âmbar — marcada sem a foto obrigatória) e **Não verificado** (vermelho).
+- Resposta longa e observação saem inteiras, sob a descrição; nada é cortado.
+- Etapa desativada ou retirada do checklist depois do preenchimento não apaga o
+  que foi registrado nela: sai à parte, em **Fora do checklist atual**, sem
+  contar no andamento. Etapa condicional que não se aplica (`exibirSe`) fica
+  de fora do PDF e do ZIP, com as fotos.
+- PDFs anexados pelo montador vão dentro do documento (painel de anexos do
+  leitor de PDF).
 - Escolha entre fotos incorporadas ao PDF ou PDF sem fotos acompanhado de um ZIP
   com as imagens nomeadas `TAG_ETAPA_N.jpg`.
-- Nome do arquivo: `EMPRESA_PROJETO_TIPO-VERIFICACAO_AAAA-MM-DD.pdf`.
+- Nome do arquivo: `EMPRESA_PROJETO_TIPO-VERIFICACAO_AAAA-MM-DD.pdf`; o de um
+  checklist só leva a TAG: `EMPRESA_PROJETO_TAG-ROTINA_AAAA-MM-DD.pdf`.
+
+Nada no gerador conhece um checklist ou painel específico: seções, etapas,
+tipos de resposta e campos vêm da definição. Um checklist montado depois na
+administração sai no mesmo padrão.
 
 O envio por e-mail é feito manualmente pelo montador.
 

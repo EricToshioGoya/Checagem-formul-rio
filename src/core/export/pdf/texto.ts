@@ -3,7 +3,9 @@ import type { PDFFont } from 'pdf-lib';
 /** Símbolos usados nos protocolos que não existem na codificação WinAnsi. */
 const SUBSTITUICOES: Record<string, string> = {
   'Ω': 'ohm',
+  '\u2126': 'ohm', // sinal de ohm, distinto do ômega
   'ω': 'ohm',
+  'μ': 'µ',
   '≤': '<=',
   '≥': '>=',
   '≈': '~',
@@ -29,6 +31,12 @@ const SUBSTITUICOES: Record<string, string> = {
  */
 const WINANSI_EXTRA = new Set(Array.from('€‚ƒ„…†‡ˆ‰Š‹ŒŽ•–—˜™š›œžŸ'));
 
+/** O caractere tem desenho nas fontes padrão (WinAnsi). */
+function desenhavel(c: string): boolean {
+  const cp = c.codePointAt(0)!;
+  return (cp >= 0x20 && cp < 0x7f) || (cp >= 0xa0 && cp <= 0xff) || WINANSI_EXTRA.has(c);
+}
+
 /**
  * pdf-lib desenha com fontes padrão em WinAnsi. Caracteres fora dessa tabela
  * abortam a geração, então tudo passa por aqui antes de ir para a página.
@@ -43,11 +51,15 @@ export function sanitizar(valor: string): string {
       // colado de outros programas) viram espaço: o WinAnsi não tem desenho
       // para eles e abortaria a geração do PDF inteiro.
       if (cp < 0x20 || cp === 0x7f) return ' ';
-      if (cp < 0x80) return c;
-      if (cp >= 0xa0 && cp <= 0xff) return c;
-      if (WINANSI_EXTRA.has(c)) return c;
-      const semAcento = c.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      return semAcento === c ? '?' : semAcento;
+      if (desenhavel(c)) return c;
+      // Sem o acento (e na forma de compatibilidade: "ﬁ" vira "fi") o
+      // caractere pode ter desenho — mas só vale se tiver mesmo: "й" vira
+      // "и", que continua fora da tabela.
+      const simples = c.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+      const trocaSimples = SUBSTITUICOES[simples];
+      if (trocaSimples !== undefined) return trocaSimples;
+      if (simples && simples !== c && Array.from(simples).every(desenhavel)) return simples;
+      return '?';
     })
     .join('');
 }

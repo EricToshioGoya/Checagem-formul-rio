@@ -23,6 +23,7 @@ import { useSessao } from '../../core/api/SessaoContexto';
 import { AcessoBloqueado } from '../paineis/AcessoBloqueado';
 import { EtiquetaEstado } from './estado';
 import { useAcessoCertificacao } from './acesso';
+import { DialogoPdfChecklist } from '../pdf/DialogoPdfChecklist';
 
 export function DetalheSolicitacao() {
   const { solicitacaoId } = useParams();
@@ -36,6 +37,7 @@ export function DetalheSolicitacao() {
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [confirmandoEnvio, setConfirmandoEnvio] = useState(false);
+  const [pdfAberto, setPdfAberto] = useState(false);
   const [ocupado, setOcupado] = useState(false);
 
   const recarregar = useCallback(async () => {
@@ -174,10 +176,14 @@ export function DetalheSolicitacao() {
             rotulo={`${situacao.progresso.respondidas} de ${situacao.progresso.total} etapas`}
           />
         </div>
-        <div className="mt-4">
+        <div className="mt-4 flex flex-wrap gap-2">
           <Botao variante="primario" onClick={() => navegar(`/solicitacoes/${id}/checklist`)}>
             {editavel ? 'Preencher checklist' : 'Ver checklist'}
             <IconeSeta className="h-5 w-5" />
+          </Botao>
+          <Botao onClick={() => setPdfAberto(true)}>
+            <IconePdf className="h-5 w-5" />
+            Gerar PDF do checklist
           </Botao>
         </div>
       </div>
@@ -247,6 +253,14 @@ export function DetalheSolicitacao() {
         textoConfirmar="Enviar"
         onCancelar={() => setConfirmandoEnvio(false)}
         onConfirmar={enviar}
+      />
+
+      <DialogoPdfChecklist
+        aberto={pdfAberto}
+        alvo={{ solicitacaoId: id }}
+        nome={situacao.definicao.nome}
+        pendentes={situacao.progresso.pendentes}
+        onFechar={() => setPdfAberto(false)}
       />
     </div>
   );

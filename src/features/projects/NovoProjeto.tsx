@@ -4,15 +4,27 @@ import { ProjetoRepository } from '../../core/db/repositorios';
 import { useSessao } from '../../core/api/SessaoContexto';
 import { conferirAcessoPainel, painelGuardado, type Bloqueio } from '../../core/api/acessoLocal';
 import { carregarFormulario, formulariosDoPainel } from '../../core/forms/catalogo';
-import { prepararTag } from '../../core/forms/dadosTag';
-import type { DefinicaoFormulario, EntradaCatalogo } from '../../core/forms/tipos';
+import {
+  CAMPOS_DO_PROJETO,
+  camposDaTag,
+  camposVazios,
+  campoDoProjeto,
+  prepararTag,
+} from '../../core/forms/dadosTag';
+import type {
+  DefinicaoFormulario,
+  EntradaCatalogo,
+  ValoresCabecalho,
+} from '../../core/forms/tipos';
 import { AcessoBloqueado } from '../paineis/AcessoBloqueado';
 import { Botao } from '../../shared/componentes/Botao';
 import { CampoNumero, CampoTexto } from '../../shared/componentes/Campos';
 import { Carregando, Erro } from '../../shared/componentes/Estado';
+import { GradeCampos } from '../../shared/componentes/GradeCampos';
 import { IconeVoltar } from '../../shared/componentes/Icones';
 import {
   CamposTag,
+  definicoesMarcadas,
   pendenciasDaTag,
   rascunhoVazio,
   tagCompleta,
@@ -28,8 +40,10 @@ interface Painel {
 }
 
 /**
- * Cadastro de um projeto no painel: nome, empresa, quantas TAGs e, para cada
- * TAG, o nome, os checklists e os dados do painel. Tudo obrigatório.
+ * Cadastro de um projeto no painel: nome, empresa, os dados do painel que
+ * valem para o projeto inteiro (fabricante e cliente final), quantas TAGs e,
+ * para cada TAG, o nome, os checklists e o restante dos dados do painel.
+ * Tudo obrigatório.
  */
 export function NovoProjeto() {
   const { painelId } = useParams();
@@ -45,6 +59,7 @@ export function NovoProjeto() {
 
   const [nomeProjeto, setNomeProjeto] = useState('');
   const [empresa, setEmpresa] = useState('');
+  const [dadosProjeto, setDadosProjeto] = useState<ValoresCabecalho>({});
   const [quantidade, setQuantidade] = useState<number | null>(1);
   // Guarda mais rascunhos do que a quantidade mostra: diminuir e voltar a
   // aumentar não apaga o que já foi digitado.
@@ -91,10 +106,26 @@ export function NovoProjeto() {
   if (!painel || !checklists || !usuario) return <Carregando mensagem="Preparando o cadastro…" />;
 
   const visiveis = tags.slice(0, quantidade ?? 0);
-  const pendencias = visiveis.map((t) => pendenciasDaTag(t, checklists, definicoes));
+  // Os campos do projeto aparecem conforme os checklists marcados em qualquer TAG.
+  const camposProjeto = camposDaTag(
+    definicoesMarcadas(
+      visiveis.flatMap((t) => t.formIds),
+      checklists,
+      definicoes,
+    ),
+  )
+    .filter((c) => campoDoProjeto(c.id))
+    .map((c) => ({ ...c, obrigatorio: true }));
+  const pendentesProjeto = camposVazios(camposProjeto, dadosProjeto);
+  const pendencias = visiveis.map((t) =>
+    pendenciasDaTag(t, checklists, definicoes, CAMPOS_DO_PROJETO),
+  );
   const faltas: string[] = [];
   if (!nomeProjeto.trim()) faltas.push('Nome do projeto');
   if (!empresa.trim()) faltas.push('Empresa');
+  for (const c of camposProjeto) {
+    if (pendentesProjeto.includes(c.id)) faltas.push(c.rotulo);
+  }
   if (!quantidade) faltas.push('Quantidade de TAGs');
   pendencias.forEach((p, i) => {
     const partes: string[] = [];
@@ -134,7 +165,7 @@ export function NovoProjeto() {
         const formIds = checklists.length
           ? checklists.filter((c) => t.formIds.includes(c.id)).map((c) => c.id)
           : undefined;
-        entradas.push(await prepararTag(t.nome, formIds, t.dados));
+        entradas.push(await prepararTag(t.nome, formIds, { ...t.dados, ...dadosProjeto }));
       }
       const projetoId = await ProjetoRepository.criar({
         empresa,
@@ -188,6 +219,19 @@ export function NovoProjeto() {
             obrigatorio
             invalido={tentou && !empresa.trim()}
           />
+        </div>
+        {camposProjeto.length ? (
+          <GradeCampos
+            campos={camposProjeto}
+            valores={dadosProjeto}
+            onChange={(campoId, valor) =>
+              setDadosProjeto((atual) => ({ ...atual, [campoId]: valor }))
+            }
+            pendentes={tentou ? pendentesProjeto : []}
+            prefixoId="projeto"
+          />
+        ) : null}
+        <div className="grid gap-4 sm:grid-cols-2">
           <CampoNumero
             id="projeto-quantidade"
             rotulo="Quantidade de TAGs"
@@ -214,6 +258,7 @@ export function NovoProjeto() {
             definicoes={definicoes}
             mostrarPendencias={tentou}
             prefixoId={`tag${i + 1}`}
+            ocultar={CAMPOS_DO_PROJETO}
           />
         </section>
       ))}

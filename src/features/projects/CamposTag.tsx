@@ -15,17 +15,31 @@ export function rascunhoVazio(): RascunhoTag {
   return { nome: '', formIds: [], dados: {} };
 }
 
-/** Campos dos dados do painel para os checklists marcados, na ordem do painel. */
+/** Definições dos checklists marcados, na ordem do painel. */
+export function definicoesMarcadas(
+  formIds: readonly string[],
+  checklists: readonly EntradaCatalogo[],
+  definicoes: Readonly<Record<string, DefinicaoFormulario>>,
+): DefinicaoFormulario[] {
+  return checklists
+    .filter((c) => formIds.includes(c.id))
+    .map((c) => definicoes[c.id])
+    .filter((d): d is DefinicaoFormulario => d !== undefined);
+}
+
+/**
+ * Campos dos dados do painel para os checklists marcados, na ordem do painel.
+ * `ocultar` tira os que são informados fora da TAG — os do projeto.
+ */
 function camposDoRascunho(
   rascunho: RascunhoTag,
   checklists: readonly EntradaCatalogo[],
   definicoes: Readonly<Record<string, DefinicaoFormulario>>,
+  ocultar: readonly string[],
 ) {
-  const marcadas = checklists
-    .filter((c) => rascunho.formIds.includes(c.id))
-    .map((c) => definicoes[c.id])
-    .filter((d): d is DefinicaoFormulario => d !== undefined);
-  return camposDaTag(marcadas).map((c) => ({ ...c, obrigatorio: true }));
+  return camposDaTag(definicoesMarcadas(rascunho.formIds, checklists, definicoes))
+    .filter((c) => !ocultar.includes(c.id))
+    .map((c) => ({ ...c, obrigatorio: true }));
 }
 
 export interface PendenciasTag {
@@ -40,11 +54,15 @@ export function pendenciasDaTag(
   rascunho: RascunhoTag,
   checklists: readonly EntradaCatalogo[],
   definicoes: Readonly<Record<string, DefinicaoFormulario>>,
+  ocultar: readonly string[] = [],
 ): PendenciasTag {
   return {
     nome: !rascunho.nome.trim(),
     checklists: checklists.length > 0 && rascunho.formIds.length === 0,
-    campos: camposVazios(camposDoRascunho(rascunho, checklists, definicoes), rascunho.dados),
+    campos: camposVazios(
+      camposDoRascunho(rascunho, checklists, definicoes, ocultar),
+      rascunho.dados,
+    ),
   };
 }
 
@@ -62,6 +80,8 @@ interface Props {
   /** Distingue os ids dos campos quando há várias TAGs na mesma tela. */
   prefixoId: string;
   autoFoco?: boolean;
+  /** Campos informados fora da TAG (os do projeto), que não aparecem aqui. */
+  ocultar?: readonly string[];
 }
 
 /**
@@ -76,9 +96,10 @@ export function CamposTag({
   mostrarPendencias,
   prefixoId,
   autoFoco,
+  ocultar = [],
 }: Props) {
-  const campos = camposDoRascunho(rascunho, checklists, definicoes);
-  const pendencias = pendenciasDaTag(rascunho, checklists, definicoes);
+  const campos = camposDoRascunho(rascunho, checklists, definicoes, ocultar);
+  const pendencias = pendenciasDaTag(rascunho, checklists, definicoes, ocultar);
 
   return (
     <div className="space-y-4">
@@ -115,7 +136,7 @@ export function CamposTag({
             prefixoId={prefixoId}
           />
         </div>
-      ) : checklists.length ? (
+      ) : checklists.length && !rascunho.formIds.length ? (
         <p className="text-sm text-abb-gray">
           Marque os checklists para informar os dados do painel.
         </p>

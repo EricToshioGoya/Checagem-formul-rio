@@ -20,6 +20,18 @@ import type { CampoCabecalho, DefinicaoFormulario, ValoresCabecalho } from './ti
  * na montagem e na rotina são duas perguntas, e cada uma tem o seu campo.
  */
 
+/**
+ * Campos que descrevem o projeto inteiro, e não uma TAG: o fabricante do
+ * conjunto e o cliente final são os mesmos em todos os painéis do projeto.
+ * São informados uma vez, no cadastro do projeto, e valem para o cabeçalho
+ * de todo checklist de toda TAG dele.
+ */
+export const CAMPOS_DO_PROJETO: readonly string[] = ['fabricante', 'clienteFinal'];
+
+export function campoDoProjeto(campoId: string): boolean {
+  return CAMPOS_DO_PROJETO.includes(campoId);
+}
+
 /** Dois campos de checklists diferentes que valem como um só. */
 function compativeis(a: CampoCabecalho, b: CampoCabecalho): boolean {
   if (a.tipo !== b.tipo) return false;
@@ -109,12 +121,12 @@ export async function prepararTag(
   return { nome, formIds, preenchimentos };
 }
 
-/** Preenchimentos da TAG com a definição de cada um; checklist que sumiu fica de fora. */
-async function daTagComDefinicao(
-  tagId: number,
-): Promise<Array<{ preenchimento: Preenchimento; definicao: DefinicaoFormulario }>> {
-  const lista = [];
-  for (const preenchimento of await PreenchimentoRepository.listarPorTags([tagId])) {
+type ComDefinicao = Array<{ preenchimento: Preenchimento; definicao: DefinicaoFormulario }>;
+
+/** Preenchimentos das TAGs com a definição de cada um; checklist que sumiu fica de fora. */
+async function comDefinicao(tagIds: number[]): Promise<ComDefinicao> {
+  const lista: ComDefinicao = [];
+  for (const preenchimento of await PreenchimentoRepository.listarPorTags(tagIds)) {
     try {
       lista.push({ preenchimento, definicao: await carregarFormulario(preenchimento.formId) });
     } catch {
@@ -124,26 +136,53 @@ async function daTagComDefinicao(
   return lista;
 }
 
+/** TAGs do projeto, na ordem do cadastro. */
+async function tagsDoProjeto(projetoId: number): Promise<number[]> {
+  return (await ProjetoRepository.listarTags(projetoId)).map((t) => t.id!);
+}
+
+/** Valor do campo já informado em algum dos preenchimentos, se for compatível. */
+function valorExistente(campo: CampoCabecalho, existentes: ComDefinicao): string | null {
+  for (const { preenchimento, definicao } of existentes) {
+    const igual = definicao.cabecalho.find((c) => c.id === campo.id);
+    const valor = valorAceito(campo, preenchimento.cabecalho?.[campo.id]);
+    if (igual && valor && compativeis(igual, campo)) return valor;
+  }
+  return null;
+}
+
+/**
+ * Campos do projeto já informados em alguma TAG dele — é o que uma TAG nova
+ * herda sem perguntar de novo.
+ */
+export async function valoresDoProjeto(projetoId: number): Promise<ValoresCabecalho> {
+  const valores: ValoresCabecalho = {};
+  for (const { preenchimento } of await comDefinicao(await tagsDoProjeto(projetoId))) {
+    for (const campoId of CAMPOS_DO_PROJETO) {
+      const valor = preenchimento.cabecalho?.[campoId]?.trim();
+      if (valor && !valores[campoId]) valores[campoId] = valor;
+    }
+  }
+  return valores;
+}
+
 /**
  * Troca os checklists da TAG. O checklist que entra herda os dados do painel
- * já informados nos campos iguais dos outros checklists dela.
+ * já informados nos campos iguais dos outros checklists dela — e os campos do
+ * projeto, de qualquer TAG do projeto.
  */
 export async function trocarChecklistsDaTag(tagId: number, formIds: string[]): Promise<void> {
-  const existentes = await daTagComDefinicao(tagId);
+  const existentes = await comDefinicao([tagId]);
+  const tag = await ProjetoRepository.obterTag(tagId);
+  const doProjeto = tag ? await comDefinicao(await tagsDoProjeto(tag.projetoId)) : existentes;
   const novos: NonNullable<NovaTagEntrada['preenchimentos']> = [];
   for (const formId of formIds) {
     if (existentes.some((e) => e.preenchimento.formId === formId)) continue;
     const definicao = await carregarFormulario(formId);
     const cabecalho: ValoresCabecalho = {};
     for (const campo of definicao.cabecalho) {
-      for (const { preenchimento, definicao: outra } of existentes) {
-        const igual = outra.cabecalho.find((c) => c.id === campo.id);
-        const valor = valorAceito(campo, preenchimento.cabecalho?.[campo.id]);
-        if (igual && valor && compativeis(igual, campo)) {
-          cabecalho[campo.id] = valor;
-          break;
-        }
-      }
+      const valor = valorExistente(campo, campoDoProjeto(campo.id) ? doProjeto : existentes);
+      if (valor) cabecalho[campo.id] = valor;
     }
     novos.push({ formId, formRevisao: definicao.revisao, cabecalho });
   }
@@ -153,6 +192,7 @@ export async function trocarChecklistsDaTag(tagId: number, formIds: string[]): P
 /**
  * Os dados do painel são da TAG, não de um checklist: o campo alterado num
  * checklist muda também nos outros checklists da TAG que têm o mesmo campo.
+ * Os campos do projeto mudam em todos os checklists de todas as TAGs dele.
  * Assim os PDFs não saem com o mesmo painel descrito de dois jeitos.
  */
 export async function propagarCabecalho(
@@ -161,14 +201,20 @@ export async function propagarCabecalho(
 ): Promise<void> {
   const origem = await PreenchimentoRepository.obterPorId(preenchimentoId);
   if (origem?.tagId === undefined) return;
-  const daTag = await daTagComDefinicao(origem.tagId);
-  const definicaoOrigem = daTag.find((e) => e.preenchimento.id === preenchimentoId)?.definicao;
+  const tag = await ProjetoRepository.obterTag(origem.tagId);
+  const tocaProjeto = Object.keys(mudancas).some(campoDoProjeto);
+  const alvos = await comDefinicao(
+    tag && tocaProjeto ? await tagsDoProjeto(tag.projetoId) : [origem.tagId],
+  );
+  const definicaoOrigem = alvos.find((e) => e.preenchimento.id === preenchimentoId)?.definicao;
   if (!definicaoOrigem) return;
 
-  for (const { preenchimento, definicao } of daTag) {
+  for (const { preenchimento, definicao } of alvos) {
     if (preenchimento.id === preenchimentoId) continue;
+    const mesmaTag = preenchimento.tagId === origem.tagId;
     const aqui: Record<string, string | null> = {};
     for (const [campoId, valor] of Object.entries(mudancas)) {
+      if (!mesmaTag && !campoDoProjeto(campoId)) continue;
       const de = definicaoOrigem.cabecalho.find((c) => c.id === campoId);
       const para = definicao.cabecalho.find((c) => c.id === campoId);
       if (de && para && compativeis(de, para)) aqui[campoId] = valor;
