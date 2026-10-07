@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
-const MARGEM_RODAPE = 44; // linha do rodapé em `core/export/pdf/documento.ts`
+const MARGEM_RODAPE = 40; // linha do rodapé em `core/export/pdf/documento.ts`
 
 const arquivo = process.argv[2];
 const modoTexto = process.argv.includes('--texto');
@@ -24,8 +24,8 @@ const doc = await getDocument({
 }).promise;
 
 // Início da coluna "Descrição" das tabelas de etapa, em `documento.ts`:
-// MARGEM (30) + largura da coluna "Etapa" (42) + 3 de respiro.
-const X_DESCRICAO = 75;
+// margem (40) + largura da coluna "Etapa" (40) + 7 de respiro.
+const X_DESCRICAO = 87;
 
 let foraDaArea = 0;
 let textoCompleto = '';

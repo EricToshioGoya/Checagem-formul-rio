@@ -660,12 +660,14 @@ Onde gerar:
 O documento:
 
 - Sempre disponível, independentemente de pendências.
-- Capa em uma página: andamento (percentual, barra e contagens), identificação
-  (dados do projeto, ou os campos da solicitação que o painel pede), resumo por
-  seção (um checklist) ou por TAG e checklist (o projeto), pendências e legenda.
-- Para cada TAG e checklist: abertura com revisão, andamento e dados do painel;
-  as seções com a tabela `Etapa | Descrição | Aferido | Status | Data | Operador`;
-  grade de medições formatada abaixo da etapa; registro fotográfico em cartões.
+- Capa em uma página: indicadores (etapas, respondidas, pendentes e conclusão),
+  identificação (dados do projeto, ou os campos da solicitação que o painel
+  pede), resumo por seção (um checklist) ou por TAG e checklist (o projeto),
+  pendências e, no pé, legenda e notas.
+- Para cada TAG e checklist: abertura com revisão, anel de andamento e dados do
+  painel; as seções com a tabela `Etapa | Descrição | Aferido | Status | Data | Operador`;
+  grade de medições formatada abaixo da etapa; registro fotográfico em galeria
+  de três colunas.
 - Status sinalizado por selo colorido: **Verificado** (verde), **Falta foto**
   (âmbar — marcada sem a foto obrigatória) e **Não verificado** (vermelho).
 - Resposta longa e observação saem inteiras, sob a descrição; nada é cortado.
@@ -679,6 +681,10 @@ O documento:
   com as imagens nomeadas `TAG_ETAPA_N.jpg`.
 - Nome do arquivo: `EMPRESA_PROJETO_TIPO-VERIFICACAO_AAAA-MM-DD.pdf`; o de um
   checklist só leva a TAG: `EMPRESA_PROJETO_TAG-ROTINA_AAAA-MM-DD.pdf`.
+- Tipografia Inter (subconjunto Latin, licença OFL) em `src/core/export/pdf/fontes`,
+  incorporada via `@pdf-lib/fontkit` e incluída no precache. Se a fonte não
+  carregar, o PDF sai em Helvetica com o mesmo leiaute. Cores e medidas ficam em
+  `src/core/export/pdf/tema.ts`; as primitivas de desenho em `desenho.ts`.
 
 Nada no gerador conhece um checklist ou painel específico: seções, etapas,
 tipos de resposta e campos vêm da definição. Um checklist montado depois na

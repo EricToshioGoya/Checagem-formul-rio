@@ -69,7 +69,11 @@ async function arquivosDoDossie(
   dossie: Dossie,
   opcoes: { incluirFotos: boolean; titulo: string; sufixo: string },
 ): Promise<ArquivoGerado[]> {
-  const { gerarPdf } = await import('./pdf/documento');
+  const [{ gerarPdf }, { carregarFontesPdf }] = await Promise.all([
+    import('./pdf/documento'),
+    import('./pdf/carregarFontes'),
+  ]);
+  const fontes = await carregarFontesPdf();
   const arquivos: ArquivoGerado[] = [];
   const zip = opcoes.incluirFotos ? null : await montarZipFotos(dossie);
   const nomeZip = zip
@@ -82,6 +86,7 @@ async function arquivosDoDossie(
       incluirFotos: opcoes.incluirFotos,
       titulo: opcoes.titulo,
       arquivoFotos: nomeZip,
+      fontes,
     }),
   });
   if (zip && nomeZip) arquivos.push({ nome: nomeZip, blob: zip });

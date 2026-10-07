@@ -1,6 +1,6 @@
 import type { PDFFont } from 'pdf-lib';
 
-/** Símbolos usados nos protocolos que não existem na codificação WinAnsi. */
+/** Símbolos usados nos protocolos, trocados quando a fonte não os desenha. */
 const SUBSTITUICOES: Record<string, string> = {
   'Ω': 'ohm',
   '\u2126': 'ohm', // sinal de ohm, distinto do ômega
@@ -37,20 +37,37 @@ function desenhavel(c: string): boolean {
   return (cp >= 0x20 && cp < 0x7f) || (cp >= 0xa0 && cp <= 0xff) || WINANSI_EXTRA.has(c);
 }
 
+const caracteresPorFonte = new WeakMap<PDFFont, Set<number>>();
+
+/** Caracteres que a fonte desenha: WinAnsi nas padrão, o cmap nas incorporadas. */
+function suportados(fonte: PDFFont): Set<number> {
+  let conjunto = caracteresPorFonte.get(fonte);
+  if (!conjunto) {
+    conjunto = new Set(fonte.getCharacterSet());
+    caracteresPorFonte.set(fonte, conjunto);
+  }
+  return conjunto;
+}
+
 /**
- * pdf-lib desenha com fontes padrão em WinAnsi. Caracteres fora dessa tabela
- * abortam a geração, então tudo passa por aqui antes de ir para a página.
+ * Caractere fora da fonte aborta a geração (fontes padrão, WinAnsi) ou sai em
+ * branco (fontes incorporadas), então tudo passa por aqui antes de ir para a
+ * página. Com a fonte, o que ela desenha passa direto (MΩ, ≤, ≥ na Inter);
+ * sem ela, o filtro é o WinAnsi.
  */
-export function sanitizar(valor: string): string {
+export function sanitizar(valor: string, fonte?: PDFFont): string {
+  const conjunto = fonte ? suportados(fonte) : undefined;
   return Array.from(valor ?? '')
     .map((c) => {
-      const troca = SUBSTITUICOES[c];
-      if (troca !== undefined) return troca;
       const cp = c.codePointAt(0)!;
       // Quebras de linha e qualquer outro caractere de controle (que chega
-      // colado de outros programas) viram espaço: o WinAnsi não tem desenho
-      // para eles e abortaria a geração do PDF inteiro.
-      if (cp < 0x20 || cp === 0x7f) return ' ';
+      // colado de outros programas) viram espaço: nenhuma fonte tem desenho
+      // para eles e o WinAnsi abortaria a geração do PDF inteiro.
+      if (cp < 0x20 || cp === 0x7f) return c === '\t' ? '  ' : ' ';
+      if (cp === 0xa0 || cp === 0x202f) return ' ';
+      if (conjunto?.has(cp)) return c;
+      const troca = SUBSTITUICOES[c];
+      if (troca !== undefined) return troca;
       if (desenhavel(c)) return c;
       // Sem o acento (e na forma de compatibilidade: "ﬁ" vira "fi") o
       // caractere pode ter desenho — mas só vale se tiver mesmo: "й" vira
@@ -71,7 +88,7 @@ export function quebrarLinhas(
   tamanho: number,
   largura: number,
 ): string[] {
-  const limpo = sanitizar(texto).replace(/\s+/g, ' ').trim();
+  const limpo = sanitizar(texto, fonte).replace(/\s+/g, ' ').trim();
   if (!limpo) return [];
   const palavras = limpo.split(' ');
   const linhas: string[] = [];
@@ -110,11 +127,31 @@ export function truncar(
   tamanho: number,
   largura: number,
 ): string {
-  const limpo = sanitizar(texto);
+  const limpo = sanitizar(texto, fonte);
   if (fonte.widthOfTextAtSize(limpo, tamanho) <= largura) return limpo;
   let corte = limpo;
-  while (corte.length > 1 && fonte.widthOfTextAtSize(`${corte}...`, tamanho) > largura) {
+  while (corte.length > 1 && fonte.widthOfTextAtSize(`${corte}…`, tamanho) > largura) {
     corte = corte.slice(0, -1);
   }
-  return `${corte}...`;
+  return `${corte.trimEnd()}…`;
+}
+
+/** Quebra em linhas e corta o excedente com reticências na última linha. */
+export function quebrarLimitado(
+  texto: string,
+  fonte: PDFFont,
+  tamanho: number,
+  largura: number,
+  maximoLinhas: number,
+): string[] {
+  const linhas = quebrarLinhas(texto, fonte, tamanho, largura);
+  if (linhas.length <= maximoLinhas) return linhas;
+  const visiveis = linhas.slice(0, maximoLinhas);
+  visiveis[maximoLinhas - 1] = truncar(
+    `${visiveis[maximoLinhas - 1]} ${linhas[maximoLinhas]}`,
+    fonte,
+    tamanho,
+    largura,
+  );
+  return visiveis;
 }

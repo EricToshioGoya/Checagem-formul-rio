@@ -44,7 +44,7 @@ export default defineConfig({
         // entram no precache: o aplicativo abre offline já com todo o conteúdo
         // de apoio disponível.
         globPatterns: [
-          '**/*.{js,css,html,svg,png,ico,woff2}',
+          '**/*.{js,css,html,svg,png,ico,woff2,ttf}',
           'forms/**/*.json',
           'paineis/**/*.json',
           'certificados/**/*.json',

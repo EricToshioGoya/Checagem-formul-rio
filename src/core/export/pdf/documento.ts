@@ -1,14 +1,36 @@
 import {
   LineCapStyle,
   PDFDocument,
-  StandardFonts,
-  rgb,
   type Color,
   type PDFFont,
   type PDFImage,
   type PDFPage,
 } from 'pdf-lib';
-import { quebrarLinhas, sanitizar, truncar } from './texto';
+import { quebrarLimitado, quebrarLinhas, truncar } from './texto';
+import {
+  BASE_CONTEUDO,
+  COR,
+  DIREITA,
+  LARGURA_UTIL,
+  MARGEM,
+  PAGINA,
+  TOPO_CONTEUDO,
+  incorporarFontes,
+  type BytesFontes,
+  type Fontes,
+} from './tema';
+import {
+  alturaMaiuscula,
+  anelProgresso,
+  barraProgresso,
+  comRecorte,
+  escrever,
+  escreverDireita,
+  iconeDocumento,
+  larguraTexto,
+  retangulo,
+  type EstiloTexto,
+} from './desenho';
 import { etapaRespondida, etapaVisivel, type Progresso } from '../../forms/progresso';
 import {
   etapasForaDoChecklist,
@@ -35,43 +57,30 @@ import { LOGO_ABB } from '../../../shared/marca/logoAbb';
  * Nada aqui conhece um checklist ou um painel específico: seções, etapas,
  * tipos de resposta, campos do cabeçalho e da identificação vêm do dossiê.
  * Um checklist montado amanhã na administração sai no mesmo padrão.
+ *
+ * Cores, medidas e fontes ficam em `tema.ts`; as primitivas de desenho
+ * (cantos arredondados, recorte, barra e anel de progresso) em `desenho.ts`.
  */
 
-const PAGINA = { largura: 595.28, altura: 841.89 };
-const MARGEM = 36;
-const LARGURA_UTIL = PAGINA.largura - MARGEM * 2;
-const DIREITA = PAGINA.largura - MARGEM;
-/** Onde o corpo da página termina: abaixo daqui é o rodapé. */
-const LIMITE_INFERIOR = MARGEM + 30;
-
-const COR = {
-  marca: rgb(1, 0, 0.06),
-  texto: rgb(0.13, 0.13, 0.13),
-  suave: rgb(0.4, 0.4, 0.4),
-  claro: rgb(0.62, 0.62, 0.62),
-  linha: rgb(0.85, 0.85, 0.85),
-  divisoria: rgb(0.91, 0.91, 0.91),
-  fundo: rgb(0.958, 0.958, 0.958),
-  zebra: rgb(0.978, 0.978, 0.978),
-  escuro: rgb(0.2, 0.2, 0.2),
-  trilho: rgb(0.89, 0.89, 0.89),
-  branco: rgb(1, 1, 1),
-};
-
-const VERDE = { cor: rgb(0.05, 0.5, 0.22), fundo: rgb(0.88, 0.96, 0.9) };
-const AMBAR = { cor: rgb(0.74, 0.42, 0), fundo: rgb(1, 0.94, 0.8) };
-const VERMELHO = { cor: rgb(0.8, 0.06, 0.12), fundo: rgb(0.99, 0.9, 0.9) };
-const NEUTRO = { cor: rgb(0.45, 0.45, 0.45), fundo: rgb(0.92, 0.92, 0.92) };
+const X = MARGEM.x;
 
 type Icone = 'check' | 'x' | 'alerta' | 'traco';
 
-/** Selo colorido de situação: cor, fundo, ícone e rótulo. */
+/** Selo colorido de situação: cores, ícone e rótulo. */
 interface Selo {
   rotulo: string;
+  /** Cor do rótulo. */
   cor: Color;
   fundo: Color;
+  /** Cor do círculo do ícone. */
+  ponto: Color;
   icone: Icone;
 }
+
+const VERDE = { cor: COR.sucesso, fundo: COR.sucessoFundo, ponto: COR.sucessoPonto };
+const AMBAR = { cor: COR.pendente, fundo: COR.pendenteFundo, ponto: COR.pendentePonto };
+const VERMELHO = { cor: COR.erro, fundo: COR.erroFundo, ponto: COR.erroPonto };
+const NEUTRO = { cor: COR.suave, fundo: COR.superficieForte, ponto: COR.apagado };
 
 type Situacao = 'verificado' | 'faltaFoto' | 'naoVerificado';
 
@@ -79,6 +88,13 @@ const SITUACOES: Record<Situacao, Selo> = {
   verificado: { rotulo: 'Verificado', icone: 'check', ...VERDE },
   faltaFoto: { rotulo: 'Falta foto', icone: 'alerta', ...AMBAR },
   naoVerificado: { rotulo: 'Não verificado', icone: 'x', ...VERMELHO },
+};
+
+/** Fundo da linha da etapa: as pendentes se destacam na leitura. */
+const FUNDO_LINHA: Record<Situacao, Color | null> = {
+  verificado: null,
+  faltaFoto: COR.pendenteLinha,
+  naoVerificado: COR.erroLinha,
 };
 
 /** Situação de um conjunto de etapas: checklist, seção ou o documento todo. */
@@ -89,31 +105,24 @@ function seloDoAndamento(p: Progresso): Selo {
   return { rotulo: 'Pendente', icone: 'alerta', ...AMBAR };
 }
 
-/** Colunas do formulário impresso ABB. A soma fecha a largura útil da folha. */
+/** Colunas da tabela de etapas. A soma fecha a largura útil da folha. */
 const COLUNAS = [
-  { titulo: 'Etapa', largura: 44 },
-  { titulo: 'Descrição', largura: 213 },
-  { titulo: 'Aferido', largura: 84 },
-  { titulo: 'Status', largura: 76 },
-  { titulo: 'Data', largura: 50 },
-  { titulo: 'Operador', largura: LARGURA_UTIL - 467 },
+  { titulo: 'Etapa', largura: 40 },
+  { titulo: 'Descrição', largura: 209 },
+  { titulo: 'Aferido', largura: 72 },
+  { titulo: 'Status', largura: 78 },
+  { titulo: 'Data', largura: 54 },
+  { titulo: 'Operador', largura: LARGURA_UTIL - 453 },
 ] as const;
 
 /** Borda esquerda de cada coluna da tabela de etapas. */
-const X_COLUNAS = COLUNAS.map((_, i) =>
-  COLUNAS.slice(0, i).reduce((x, c) => x + c.largura, MARGEM),
-);
+const X_COLUNAS = COLUNAS.map((_, i) => COLUNAS.slice(0, i).reduce((x, c) => x + c.largura, X));
 
-const PAD_X = 5;
-const PAD_TOPO = 6;
-const PAD_BASE = 6;
+const PAD_X = 7;
+const PAD_TOPO = 7;
+const PAD_BASE = 7;
 const ALTURA_SELO = 13;
-
-interface Fontes {
-  normal: PDFFont;
-  negrito: PDFFont;
-  italico: PDFFont;
-}
+const ALTURA_CABECALHO_TABELA = 20;
 
 /** Linha de texto já quebrada, com o passo vertical que ela ocupa. */
 interface Linha {
@@ -122,50 +131,161 @@ interface Linha {
   passo: number;
   fonte: PDFFont;
   cor: Color;
+  /** Recuo a partir da borda da coluna. */
+  recuo?: number;
+  espacamento?: number;
+  /** Faz parte do quadro da observação. */
+  quadro?: boolean;
+}
+
+function plural(n: number, singular: string, pluralTexto: string): string {
+  return `${n} ${n === 1 ? singular : pluralTexto}`;
+}
+
+function maiusculas(valor: string): string {
+  return valor.toLocaleUpperCase('pt-BR');
+}
+
+/** Linha de base que centraliza as maiúsculas do texto na altura `centro`. */
+function baseCentrada(centro: number, tamanho: number): number {
+  return centro - alturaMaiuscula({ tamanho }) / 2;
 }
 
 /* ----------------------------------------------------------------------- */
-/* Primitivas de desenho                                                    */
+/* Folha                                                                    */
 /* ----------------------------------------------------------------------- */
 
-function caminhoArredondado(largura: number, altura: number, raio: number): string {
-  const r = Math.max(0, Math.min(raio, largura / 2, altura / 2));
-  if (r === 0) return `M 0 0 H ${largura} V ${altura} H 0 Z`;
-  return [
-    `M ${r} 0`,
-    `H ${largura - r}`,
-    `A ${r} ${r} 0 0 1 ${largura} ${r}`,
-    `V ${altura - r}`,
-    `A ${r} ${r} 0 0 1 ${largura - r} ${altura}`,
-    `H ${r}`,
-    `A ${r} ${r} 0 0 1 0 ${altura - r}`,
-    `V ${r}`,
-    `A ${r} ${r} 0 0 1 ${r} 0`,
-    'Z',
-  ].join(' ');
+class Folha {
+  pagina!: PDFPage;
+  y = 0;
+  /**
+   * Redesenha, no alto da página nova, o que precisa continuar — o título da
+   * seção e o cabeçalho da tabela.
+   */
+  aoQuebrar: (() => void) | null = null;
+  /** Nomes dos PDFs já anexados ao documento: nenhum se repete. */
+  readonly anexosUsados = new Set<string>();
+  /** Contexto impresso à direita do cabeçalho de cada página. */
+  contexto: string;
+
+  constructor(
+    readonly doc: PDFDocument,
+    readonly fontes: Fontes,
+    private readonly titulo: string,
+    contexto: string,
+  ) {
+    this.contexto = contexto;
+    this.novaPagina();
+  }
+
+  novaPagina(): void {
+    this.pagina = this.doc.addPage([PAGINA.largura, PAGINA.altura]);
+    this.desenharTopo();
+    this.y = TOPO_CONTEUDO;
+  }
+
+  /** Filete vermelho no alto, logotipo, título do documento e contexto. */
+  private desenharTopo(): void {
+    const { pagina, fontes } = this;
+    retangulo(pagina, { x: 0, topo: PAGINA.altura, largura: PAGINA.largura, altura: 4 }, {
+      cor: COR.marca,
+    });
+
+    const alturaLogo = 14;
+    const escala = alturaLogo / LOGO_ABB.altura;
+    const topoLogo = PAGINA.altura - MARGEM.topo - 4;
+    // O logotipo em vetor, e não a palavra "ABB" na fonte do documento.
+    for (const caminho of LOGO_ABB.caminhos) {
+      pagina.drawSvgPath(caminho, { x: X, y: topoLogo, scale: escala, color: COR.marca });
+    }
+    const centro = topoLogo - alturaLogo / 2;
+    const xDivisor = X + LOGO_ABB.largura * escala + 11;
+    pagina.drawLine({
+      start: { x: xDivisor, y: centro - 6.5 },
+      end: { x: xDivisor, y: centro + 6.5 },
+      thickness: 0.75,
+      color: COR.linha,
+    });
+
+    const titulo: EstiloTexto = { fonte: fontes.seminegrito, tamanho: 8, cor: COR.tinta };
+    const espaco = DIREITA - xDivisor - 11;
+    const textoTitulo = truncar(this.titulo, titulo.fonte, 8, espaco * 0.55);
+    const larguraTitulo = escrever(pagina, textoTitulo, xDivisor + 11, baseCentrada(centro, 8), titulo);
+    const contexto: EstiloTexto = { fonte: fontes.regular, tamanho: 7.5, cor: COR.suave };
+    escreverDireita(
+      pagina,
+      truncar(this.contexto, contexto.fonte, 7.5, espaco - larguraTitulo - 20),
+      DIREITA,
+      baseCentrada(centro, 7.5),
+      contexto,
+    );
+
+    pagina.drawLine({
+      start: { x: X, y: topoLogo - alturaLogo - 12 },
+      end: { x: DIREITA, y: topoLogo - alturaLogo - 12 },
+      thickness: 0.75,
+      color: COR.linha,
+    });
+  }
+
+  /** Espaço livre até o rodapé. */
+  get livre(): number {
+    return this.y - BASE_CONTEUDO;
+  }
+
+  /** Garante `altura` livre, quebrando a página se preciso. Diz se quebrou. */
+  garantir(altura: number): boolean {
+    if (this.y - altura >= BASE_CONTEUDO) return false;
+    this.novaPagina();
+    this.aoQuebrar?.();
+    return true;
+  }
+
+  escrever(texto: string, x: number, y: number, tamanho: number, fonte: PDFFont, cor: Color): number {
+    return escrever(this.pagina, texto, x, y, { fonte, tamanho, cor });
+  }
+
+  textoDireita(
+    texto: string,
+    direita: number,
+    y: number,
+    tamanho: number,
+    fonte: PDFFont,
+    cor: Color,
+  ): void {
+    escreverDireita(this.pagina, texto, direita, y, { fonte, tamanho, cor });
+  }
+
+  /** Parágrafo com quebra de linha e de página. */
+  paragrafo(
+    valor: string,
+    estilo: { tamanho?: number; fonte?: PDFFont; cor?: Color; x?: number; largura?: number } = {},
+  ): void {
+    const tamanho = estilo.tamanho ?? 9;
+    const fonte = estilo.fonte ?? this.fontes.regular;
+    const passo = tamanho * 1.4;
+    for (const linha of quebrarLinhas(valor, fonte, tamanho, estilo.largura ?? LARGURA_UTIL)) {
+      this.garantir(passo);
+      this.pagina.drawText(linha, {
+        x: estilo.x ?? X,
+        y: this.y - tamanho,
+        size: tamanho,
+        font: fonte,
+        color: estilo.cor ?? COR.texto,
+      });
+      this.y -= passo;
+    }
+  }
 }
 
-/** Retângulo de cantos arredondados com o canto superior esquerdo em (x, topo). */
-function caixa(
-  pagina: PDFPage,
-  x: number,
-  topo: number,
-  largura: number,
-  altura: number,
-  estilo: { raio?: number; cor?: Color; borda?: Color; espessura?: number },
-): void {
-  pagina.drawSvgPath(caminhoArredondado(largura, altura, estilo.raio ?? 4), {
-    x,
-    y: topo,
-    ...(estilo.cor ? { color: estilo.cor } : {}),
-    ...(estilo.borda ? { borderColor: estilo.borda, borderWidth: estilo.espessura ?? 0.7 } : {}),
-  });
-}
+/* ----------------------------------------------------------------------- */
+/* Componentes                                                              */
+/* ----------------------------------------------------------------------- */
 
 const CAMINHOS_ICONE: Record<Exclude<Icone, 'traco'>, string> = {
   check: 'M 2.7 5.3 L 4.4 7 L 7.5 3.4',
-  x: 'M 3.3 3.3 L 6.7 6.7 M 6.7 3.3 L 3.3 6.7',
-  alerta: 'M 5 2.5 L 5 5.6',
+  x: 'M 3.4 3.4 L 6.6 6.6 M 6.6 3.4 L 3.4 6.6',
+  alerta: 'M 5 2.6 L 5 5.5',
 };
 
 /** Ícone em círculo cheio, com o sinal em branco. `topo` é o alto do círculo. */
@@ -190,234 +310,179 @@ function icone(pagina: PDFPage, tipo: Icone, x: number, topo: number, tamanho: n
     borderLineCap: LineCapStyle.Round,
   });
   if (tipo === 'alerta') {
-    pagina.drawCircle({ x: x + raio, y: topo - tamanho * 0.73, size: tamanho * 0.075, color: COR.branco });
-  }
-}
-
-/** Corta a lista de linhas em `maximo`, marcando com reticências o que sobrou. */
-function limitarLinhas(
-  linhas: string[],
-  maximo: number,
-  fonte: PDFFont,
-  tamanho: number,
-  largura: number,
-): string[] {
-  if (linhas.length <= maximo) return linhas;
-  const mantidas = linhas.slice(0, maximo);
-  let corte = mantidas[maximo - 1];
-  while (corte.length > 1 && fonte.widthOfTextAtSize(`${corte}...`, tamanho) > largura) {
-    corte = corte.slice(0, -1);
-  }
-  mantidas[maximo - 1] = `${corte.trimEnd()}...`;
-  return mantidas;
-}
-
-function plural(n: number, singular: string, pluralTexto: string): string {
-  return `${n} ${n === 1 ? singular : pluralTexto}`;
-}
-
-/* ----------------------------------------------------------------------- */
-/* Folha                                                                    */
-/* ----------------------------------------------------------------------- */
-
-class Folha {
-  pagina!: PDFPage;
-  y = 0;
-  /**
-   * Redesenha, no alto da página nova, o que precisa continuar — o título da
-   * seção e o cabeçalho da tabela de etapas.
-   */
-  aoQuebrar: (() => void) | null = null;
-  /** Nomes dos PDFs já anexados ao documento: nenhum se repete. */
-  readonly anexosUsados = new Set<string>();
-
-  constructor(
-    readonly doc: PDFDocument,
-    readonly fontes: Fontes,
-    private readonly topo: { titulo: string; subtitulo: string },
-  ) {
-    this.novaPagina();
-  }
-
-  novaPagina(): void {
-    this.pagina = this.doc.addPage([PAGINA.largura, PAGINA.altura]);
-    this.y = PAGINA.altura - MARGEM;
-    this.desenharTopo();
-  }
-
-  /** Marca à esquerda, título do documento à direita e o fio vermelho. */
-  private desenharTopo(): void {
-    const alturaLogo = 15;
-    const escala = alturaLogo / LOGO_ABB.altura;
-    // O logotipo em vetor, e não a palavra "ABB" na fonte do documento.
-    for (const caminho of LOGO_ABB.caminhos) {
-      this.pagina.drawSvgPath(caminho, { x: MARGEM, y: this.y, scale: escala, color: COR.marca });
-    }
-    const largura = LARGURA_UTIL - 90;
-    const { negrito, normal } = this.fontes;
-    this.textoDireita(truncar(this.topo.titulo, negrito, 8.5, largura), DIREITA, this.y - 7, 8.5, negrito, COR.texto);
-    this.textoDireita(truncar(this.topo.subtitulo, normal, 7.5, largura), DIREITA, this.y - 16.5, 7.5, normal, COR.suave);
-    this.pagina.drawRectangle({ x: MARGEM, y: this.y - 25, width: LARGURA_UTIL, height: 1.4, color: COR.marca });
-    this.y -= 40;
-  }
-
-  /** Espaço livre até o rodapé. */
-  get livre(): number {
-    return this.y - LIMITE_INFERIOR;
-  }
-
-  /** Garante `altura` livre, quebrando a página se preciso. Diz se quebrou. */
-  garantir(altura: number): boolean {
-    if (this.y - altura >= LIMITE_INFERIOR) return false;
-    this.novaPagina();
-    this.aoQuebrar?.();
-    return true;
-  }
-
-  escrever(texto: string, x: number, y: number, tamanho: number, fonte: PDFFont, cor: Color): void {
-    this.pagina.drawText(sanitizar(texto), { x, y, size: tamanho, font: fonte, color: cor });
-  }
-
-  textoDireita(texto: string, direita: number, y: number, tamanho: number, fonte: PDFFont, cor: Color): void {
-    const limpo = sanitizar(texto);
-    this.pagina.drawText(limpo, {
-      x: direita - fonte.widthOfTextAtSize(limpo, tamanho),
-      y,
-      size: tamanho,
-      font: fonte,
-      color: cor,
+    pagina.drawCircle({
+      x: x + raio,
+      y: topo - tamanho * 0.72,
+      size: tamanho * 0.075,
+      color: COR.branco,
     });
   }
-
-  /** Parágrafo com quebra de linha e de página. */
-  paragrafo(
-    valor: string,
-    estilo: { tamanho?: number; fonte?: PDFFont; cor?: Color; x?: number; largura?: number } = {},
-  ): void {
-    const tamanho = estilo.tamanho ?? 9;
-    const fonte = estilo.fonte ?? this.fontes.normal;
-    const passo = tamanho * 1.35;
-    for (const linha of quebrarLinhas(valor, fonte, tamanho, estilo.largura ?? LARGURA_UTIL)) {
-      this.garantir(passo);
-      this.pagina.drawText(linha, {
-        x: estilo.x ?? MARGEM,
-        y: this.y - tamanho,
-        size: tamanho,
-        font: fonte,
-        color: estilo.cor ?? COR.texto,
-      });
-      this.y -= passo;
-    }
-  }
 }
 
-/* ----------------------------------------------------------------------- */
-/* Componentes                                                              */
-/* ----------------------------------------------------------------------- */
-
-const TAMANHO_SELO = 7;
+const TAMANHO_SELO = 6.8;
+const ICONE_SELO = 7.5;
 
 function larguraSelo(fontes: Fontes, selo: Selo): number {
-  return 3.5 + 8 + 3 + fontes.negrito.widthOfTextAtSize(sanitizar(selo.rotulo), TAMANHO_SELO) + 6;
+  return 4 + ICONE_SELO + 3.5 + larguraTexto(selo.rotulo, { fonte: fontes.seminegrito, tamanho: TAMANHO_SELO }) + 6;
 }
 
-/** Desenha o selo com o alto em `topo`; devolve a largura ocupada. */
+/** Selo de cantos totalmente arredondados com o alto em `topo`; devolve a largura. */
 function desenharSelo(folha: Folha, selo: Selo, x: number, topo: number): number {
   const largura = larguraSelo(folha.fontes, selo);
-  caixa(folha.pagina, x, topo, largura, ALTURA_SELO, { raio: ALTURA_SELO / 2, cor: selo.fundo });
-  icone(folha.pagina, selo.icone, x + 3.5, topo - 2.5, 8, selo.cor);
+  retangulo(folha.pagina, { x, topo, largura, altura: ALTURA_SELO }, {
+    raio: ALTURA_SELO / 2,
+    cor: selo.fundo,
+  });
+  icone(folha.pagina, selo.icone, x + 3, topo - (ALTURA_SELO - ICONE_SELO) / 2, ICONE_SELO, selo.ponto);
   folha.escrever(
     selo.rotulo,
-    x + 3.5 + 8 + 3,
-    topo - ALTURA_SELO / 2 - TAMANHO_SELO * 0.35,
+    x + 4 + ICONE_SELO + 3.5,
+    baseCentrada(topo - ALTURA_SELO / 2, TAMANHO_SELO),
     TAMANHO_SELO,
-    folha.fontes.negrito,
+    folha.fontes.seminegrito,
     selo.cor,
   );
   return largura;
 }
 
-function barra(pagina: PDFPage, x: number, topo: number, largura: number, altura: number, p: Progresso) {
-  caixa(pagina, x, topo, largura, altura, { raio: altura / 2, cor: COR.trilho });
-  const fracao = p.total === 0 ? 0 : p.respondidas / p.total;
-  if (fracao <= 0) return;
-  caixa(pagina, x, topo, Math.max(altura, largura * fracao), altura, {
-    raio: altura / 2,
-    cor: seloDoAndamento(p).cor,
-  });
+function fracao(p: Progresso): number {
+  return p.total === 0 ? 0 : p.respondidas / p.total;
+}
+
+/** Barra de andamento na cor da situação, centrada em `centro`. */
+function barra(pagina: PDFPage, x: number, centro: number, largura: number, p: Progresso, altura = 4) {
+  barraProgresso(pagina, x, centro, largura, fracao(p), seloDoAndamento(p).ponto, COR.superficieForte, altura);
 }
 
 /**
- * Título de bloco: fio vermelho à esquerda e, opcionalmente, um texto à
- * direita. `conteudo` é o mínimo do bloco que precisa caber junto: o título
- * nunca fica sozinho no pé da página.
+ * Título de bloco, com um texto opcional à direita. `conteudo` é o mínimo do
+ * bloco que precisa caber junto: o título nunca fica sozinho no pé da página.
  */
 function tituloBloco(folha: Folha, texto: string, conteudo: number, direita?: string): void {
-  folha.garantir(20 + conteudo);
-  folha.pagina.drawRectangle({ x: MARGEM, y: folha.y - 12, width: 3, height: 12, color: COR.marca });
-  const { negrito, normal } = folha.fontes;
-  const larguraDireita = direita ? normal.widthOfTextAtSize(sanitizar(direita), 8) + 12 : 0;
+  folha.garantir(22 + conteudo);
+  const { seminegrito, regular } = folha.fontes;
+  const base = folha.y - 10;
+  const larguraDireita = direita ? larguraTexto(direita, { fonte: regular, tamanho: 7.5 }) + 12 : 0;
   folha.escrever(
-    truncar(texto, negrito, 10.5, LARGURA_UTIL - 10 - larguraDireita),
-    MARGEM + 9,
-    folha.y - 10,
-    10.5,
-    negrito,
-    COR.texto,
+    truncar(texto, seminegrito, 11, LARGURA_UTIL - larguraDireita),
+    X,
+    base,
+    11,
+    seminegrito,
+    COR.tinta,
   );
-  if (direita) folha.textoDireita(direita, DIREITA, folha.y - 10, 8, normal, COR.suave);
-  folha.y -= 20;
+  if (direita) folha.textoDireita(direita, DIREITA, base, 7.5, regular, COR.suave);
+  folha.y -= 22;
 }
 
 /**
- * Pares rótulo/valor em duas colunas, cada um num ladrilho. Vale para a
- * identificação do documento e para os dados do painel do checklist —
- * quantos campos o painel tiver.
+ * Pares rótulo/valor em grade de três colunas sobre um cartão de fundo suave.
+ * Vale para a identificação do documento e para os dados do painel do
+ * checklist — quantos campos o painel tiver.
  */
-function gradeCampos(folha: Folha, titulo: string, pares: Array<[string, string]>): void {
+function gradeCampos(
+  folha: Folha,
+  titulo: string,
+  pares: Array<[string, string]>,
+  colunas = 3,
+): void {
   if (!pares.length) return;
-  const { negrito, italico } = folha.fontes;
-  const vao = 6;
-  const larguraCelula = (LARGURA_UTIL - vao) / 2;
-  const larguraTexto = larguraCelula - 16;
+  const { regular, medio, italico } = folha.fontes;
+  const recuo = 14;
+  const larguraColuna = (LARGURA_UTIL - recuo * 2) / colunas;
+  const larguraCampo = larguraColuna - 12;
+  const passoValor = 12;
+  const vao = 10;
 
   const celulas = pares.map(([rotulo, valor]) => {
     const preenchido = valor.trim().length > 0;
     return {
-      rotulo: truncar(rotulo.toUpperCase(), negrito, 6.4, larguraTexto),
-      linhas: preenchido
-        ? limitarLinhas(quebrarLinhas(valor, negrito, 9, larguraTexto), 4, negrito, 9, larguraTexto)
-        : ['Não informado'],
+      rotulo: truncar(rotulo, regular, 7, larguraCampo),
+      linhas: preenchido ? quebrarLimitado(valor, medio, 9.5, larguraCampo, 3) : ['Não informado'],
       preenchido,
     };
   });
+  const linhas: (typeof celulas)[] = [];
+  for (let i = 0; i < celulas.length; i += colunas) linhas.push(celulas.slice(i, i + colunas));
+  const alturaLinha = (linha: typeof celulas) =>
+    21 + (Math.max(...linha.map((c) => c.linhas.length)) - 1) * passoValor;
 
-  const alturaDoPar = (i: number) =>
-    Math.max(...celulas.slice(i, i + 2).map((c) => 16 + c.linhas.length * 11));
-  tituloBloco(folha, titulo, alturaDoPar(0) + vao);
+  tituloBloco(folha, titulo, recuo * 2 + alturaLinha(linhas[0]));
 
-  for (let i = 0; i < celulas.length; i += 2) {
-    const par = celulas.slice(i, i + 2);
-    const altura = alturaDoPar(i);
-    folha.garantir(altura + vao);
-    par.forEach((c, j) => {
-      const x = MARGEM + j * (larguraCelula + vao);
-      caixa(folha.pagina, x, folha.y, larguraCelula, altura, { raio: 4, cor: COR.fundo });
-      folha.escrever(c.rotulo, x + 8, folha.y - 9.5, 6.4, negrito, COR.suave);
-      c.linhas.forEach((linha, k) => {
-        folha.escrever(
-          linha,
-          x + 8,
-          folha.y - 20.5 - k * 11,
-          9,
-          c.preenchido ? negrito : italico,
-          c.preenchido ? COR.texto : COR.claro,
-        );
-      });
+  // O cartão se divide nas quebras de página: cada pedaço leva as linhas que cabem.
+  let indice = 0;
+  while (indice < linhas.length) {
+    folha.garantir(recuo * 2 + alturaLinha(linhas[indice]));
+    let altura = recuo * 2;
+    let fim = indice;
+    while (fim < linhas.length) {
+      const extra = alturaLinha(linhas[fim]) + (fim > indice ? vao : 0);
+      if (fim > indice && altura + extra > folha.livre) break;
+      altura += extra;
+      fim += 1;
+    }
+    retangulo(folha.pagina, { x: X, topo: folha.y, largura: LARGURA_UTIL, altura }, {
+      raio: 8,
+      cor: COR.superficie,
     });
-    folha.y -= altura + vao;
+    let topoLinha = folha.y - recuo;
+    for (const linha of linhas.slice(indice, fim)) {
+      linha.forEach((c, j) => {
+        const x = X + recuo + j * larguraColuna;
+        folha.escrever(c.rotulo, x, topoLinha - 5, 7, regular, COR.suave);
+        c.linhas.forEach((texto, k) => {
+          folha.escrever(
+            texto,
+            x,
+            topoLinha - 18 - k * passoValor,
+            9.5,
+            c.preenchido ? medio : italico,
+            c.preenchido ? COR.tinta : COR.apagado,
+          );
+        });
+      });
+      topoLinha -= alturaLinha(linha) + vao;
+    }
+    folha.y -= altura;
+    indice = fim;
+    if (indice < linhas.length) folha.y -= 8;
   }
-  folha.y -= 6;
+  folha.y -= 20;
+}
+
+/** Faixa de cabeçalho de tabela: fundo suave e rótulos em versalete. */
+function cabecalhoTabela(
+  folha: Folha,
+  colunas: ReadonlyArray<{ titulo: string; largura: number; direita?: boolean }>,
+): void {
+  retangulo(folha.pagina, { x: X, topo: folha.y, largura: LARGURA_UTIL, altura: ALTURA_CABECALHO_TABELA }, {
+    raio: 5,
+    cor: COR.superficie,
+  });
+  const estilo: EstiloTexto = {
+    fonte: folha.fontes.seminegrito,
+    tamanho: 6.3,
+    cor: COR.suave,
+    espacamento: 0.5,
+  };
+  const base = baseCentrada(folha.y - ALTURA_CABECALHO_TABELA / 2, estilo.tamanho);
+  let x = X;
+  for (const coluna of colunas) {
+    const rotulo = maiusculas(coluna.titulo);
+    if (coluna.direita) escreverDireita(folha.pagina, rotulo, x + coluna.largura - PAD_X, base, estilo);
+    else escrever(folha.pagina, rotulo, x + PAD_X, base, estilo);
+    x += coluna.largura;
+  }
+  folha.y -= ALTURA_CABECALHO_TABELA;
+}
+
+function filete(folha: Folha, y: number): void {
+  folha.pagina.drawLine({
+    start: { x: X, y },
+    end: { x: DIREITA, y },
+    thickness: 0.6,
+    color: COR.linhaSuave,
+  });
 }
 
 /* ----------------------------------------------------------------------- */
@@ -451,90 +516,78 @@ function progressoDe(etapas: readonly Etapa[], formulario: FormularioDoDossie): 
   };
 }
 
-/** Cartão do andamento: percentual grande, selo, barra e contagens. */
-function cartaoAndamento(folha: Folha, p: Progresso, ultimaAlteracao?: number): void {
-  const altura = 78;
-  folha.garantir(altura + 14);
-  const topo = folha.y;
-  const { negrito, normal } = folha.fontes;
-  const selo = seloDoAndamento(p);
-
-  caixa(folha.pagina, MARGEM, topo, LARGURA_UTIL, altura, { raio: 6, cor: COR.branco, borda: COR.linha, espessura: 0.8 });
-  folha.escrever(`${p.percentual}%`, MARGEM + 18, topo - 44, 30, negrito, selo.cor);
-  folha.escrever('das etapas respondidas', MARGEM + 18, topo - 60, 7.5, normal, COR.suave);
-
-  const xDivisoria = MARGEM + 150;
-  folha.pagina.drawLine({
-    start: { x: xDivisoria, y: topo - 14 },
-    end: { x: xDivisoria, y: topo - altura + 14 },
-    thickness: 0.7,
-    color: COR.divisoria,
-  });
-
-  const x = xDivisoria + 16;
-  const largura = DIREITA - 16 - x;
-  desenharSelo(folha, { ...selo, rotulo: selo.rotulo.toUpperCase() }, x, topo - 12);
-  if (ultimaAlteracao) {
-    folha.textoDireita(`Última alteração em ${dataHoraBr(ultimaAlteracao)}`, x + largura, topo - 21.5, 7.5, normal, COR.suave);
-  }
-  barra(folha.pagina, x, topo - 33, largura, 8, p);
-
-  const contagens: Array<[number, string]> = [
-    [p.respondidas, p.respondidas === 1 ? 'respondida' : 'respondidas'],
-    [p.pendentes, p.pendentes === 1 ? 'pendente' : 'pendentes'],
-    [p.total, p.total === 1 ? 'etapa no total' : 'etapas no total'],
-  ];
-  contagens.forEach(([numero, rotulo], i) => {
-    const xi = x + (largura / 3) * i;
-    const texto = String(numero);
-    folha.escrever(texto, xi, topo - 62, 14, negrito, i === 1 && numero > 0 ? AMBAR.cor : COR.texto);
-    folha.escrever(rotulo, xi + negrito.widthOfTextAtSize(texto, 14) + 4, topo - 62, 8, normal, COR.suave);
-  });
-
-  folha.y -= altura + 16;
-}
-
 interface Bloco {
   tag: TagDoDossie;
   formulario: FormularioDoDossie;
 }
 
+/** Quatro indicadores da capa: etapas, respondidas, pendentes e conclusão. */
+function indicadores(folha: Folha, p: Progresso, blocos: readonly Bloco[]) {
+  const { negrito, seminegrito, regular } = folha.fontes;
+  const altura = 60;
+  folha.garantir(altura);
+  const vao = 10;
+  const largura = (LARGURA_UTIL - vao * 3) / 4;
+  const tags = new Set(blocos.map((b) => b.tag.nome)).size;
+  const cartoes: Array<{ rotulo: string; valor: string; nota?: string; cor?: Color; barra?: boolean }> = [
+    {
+      rotulo: 'Etapas',
+      valor: String(p.total),
+      nota:
+        blocos.length > 1
+          ? `em ${plural(blocos.length, 'checklist', 'checklists')}${tags > 1 ? ` · ${plural(tags, 'TAG', 'TAGs')}` : ''}`
+          : 'no checklist',
+    },
+    {
+      rotulo: 'Respondidas',
+      valor: String(p.respondidas),
+      nota: `${p.percentual}% do total`,
+      cor: p.respondidas ? COR.sucesso : COR.tinta,
+    },
+    {
+      rotulo: 'Pendentes',
+      valor: String(p.pendentes),
+      nota: p.pendentes ? 'aguardando registro' : 'nenhuma pendência',
+      cor: p.pendentes ? COR.pendente : COR.tinta,
+    },
+    { rotulo: 'Conclusão', valor: `${p.percentual}%`, barra: true },
+  ];
+  const topo = folha.y;
+  cartoes.forEach((c, i) => {
+    const x = X + i * (largura + vao);
+    retangulo(folha.pagina, { x, topo, largura, altura }, { raio: 8, cor: COR.branco, borda: COR.linha });
+    escrever(folha.pagina, maiusculas(c.rotulo), x + 12, topo - 16, {
+      fonte: seminegrito,
+      tamanho: 6.3,
+      cor: COR.suave,
+      espacamento: 0.55,
+    });
+    folha.escrever(c.valor, x + 12, topo - 38, 20, negrito, c.cor ?? COR.tinta);
+    if (c.barra) barra(folha.pagina, x + 12, topo - 48, largura - 24, p);
+    else if (c.nota) {
+      folha.escrever(truncar(c.nota, regular, 7.2, largura - 24), x + 12, topo - 50, 7.2, regular, COR.suave);
+    }
+  });
+  folha.y -= altura + 20;
+}
+
 interface ColunaResumo {
   titulo: string;
   largura: number;
-}
-
-/** Cabeçalho escuro de tabela, com os títulos em branco. */
-function cabecalhoEscuro(folha: Folha, colunas: readonly ColunaResumo[]): void {
-  const altura = 18;
-  folha.pagina.drawRectangle({ x: MARGEM, y: folha.y - altura, width: LARGURA_UTIL, height: altura, color: COR.escuro });
-  let x = MARGEM;
-  for (const coluna of colunas) {
-    folha.escrever(coluna.titulo, x + PAD_X, folha.y - 12, 7.5, folha.fontes.negrito, COR.branco);
-    x += coluna.largura;
-  }
-  folha.y -= altura;
-}
-
-/** Linha de tabela de resumo: fundo alternado e fio inferior. */
-function fundoLinha(folha: Folha, altura: number, zebra: boolean): void {
-  if (zebra) {
-    folha.pagina.drawRectangle({ x: MARGEM, y: folha.y - altura, width: LARGURA_UTIL, height: altura, color: COR.zebra });
-  }
-  folha.pagina.drawLine({
-    start: { x: MARGEM, y: folha.y - altura },
-    end: { x: DIREITA, y: folha.y - altura },
-    thickness: 0.5,
-    color: COR.linha,
-  });
+  direita?: boolean;
 }
 
 /** Barra curta com o percentual ao lado, dentro de uma célula. */
-function celulaAndamento(folha: Folha, x: number, largura: number, topoLinha: number, alturaLinha: number, p: Progresso) {
-  const texto = `${p.percentual}%`;
-  const larguraTexto = 26;
-  barra(folha.pagina, x + PAD_X, topoLinha - alturaLinha / 2 + 3, largura - PAD_X * 2 - larguraTexto, 6, p);
-  folha.textoDireita(texto, x + largura - PAD_X, topoLinha - alturaLinha / 2 - 2.6, 7.5, folha.fontes.negrito, COR.texto);
+function celulaAndamento(folha: Folha, x: number, largura: number, centro: number, p: Progresso) {
+  barra(folha.pagina, x + PAD_X, centro, largura - PAD_X * 2 - 30, p);
+  folha.textoDireita(
+    `${p.percentual}%`,
+    x + largura - PAD_X,
+    baseCentrada(centro, 7.5),
+    7.5,
+    folha.fontes.seminegrito,
+    COR.tinta,
+  );
 }
 
 /**
@@ -542,8 +595,7 @@ function celulaAndamento(folha: Folha, x: number, largura: number, topoLinha: nu
  * inteiro): uma linha por TAG e checklist.
  */
 function resumo(folha: Folha, blocos: readonly Bloco[]): void {
-  const { negrito, normal } = folha.fontes;
-  const alturaLinha = 22;
+  const { seminegrito, regular } = folha.fontes;
 
   if (blocos.length === 1) {
     const { formulario } = blocos[0];
@@ -551,56 +603,112 @@ function resumo(folha: Folha, blocos: readonly Bloco[]): void {
       .map((secao) => ({ secao, p: progressoDe(etapasVisiveis(secao, formulario), formulario) }))
       .filter((l) => l.p.total > 0);
     if (!linhas.length) return;
-    const colunas = [
-      { titulo: 'Seção', largura: 243.28 },
-      { titulo: 'Andamento', largura: 120 },
-      { titulo: 'Respondidas', largura: 70 },
-      { titulo: 'Situação', largura: 90 },
+    const alturaLinha = 20;
+    const colunas: ColunaResumo[] = [
+      { titulo: 'Seção', largura: 230.28 },
+      { titulo: 'Andamento', largura: 125 },
+      { titulo: 'Respondidas', largura: 72, direita: true },
+      { titulo: 'Situação', largura: 88 },
     ];
-    tituloBloco(folha, 'Resumo por seção', 18 + alturaLinha, plural(linhas.length, 'seção', 'seções'));
-    cabecalhoEscuro(folha, colunas);
-    linhas.forEach(({ secao, p }, i) => {
-      if (folha.garantir(alturaLinha)) cabecalhoEscuro(folha, colunas);
-      fundoLinha(folha, alturaLinha, i % 2 === 1);
-      const base = folha.y - alturaLinha / 2 - 2.8;
-      folha.escrever(truncar(`${secao.id} — ${secao.titulo}`, normal, 8, colunas[0].largura - PAD_X * 2), MARGEM + PAD_X, base, 8, normal, COR.texto);
-      celulaAndamento(folha, MARGEM + colunas[0].largura, colunas[1].largura, folha.y, alturaLinha, p);
-      folha.escrever(`${p.respondidas}/${p.total}`, MARGEM + colunas[0].largura + colunas[1].largura + PAD_X, base, 8, negrito, COR.texto);
-      const xSituacao = MARGEM + colunas[0].largura + colunas[1].largura + colunas[2].largura;
-      desenharSelo(folha, seloDoAndamento(p), xSituacao + PAD_X, folha.y - (alturaLinha - ALTURA_SELO) / 2);
+    tituloBloco(
+      folha,
+      'Resumo por seção',
+      ALTURA_CABECALHO_TABELA + alturaLinha,
+      plural(linhas.length, 'seção', 'seções'),
+    );
+    cabecalhoTabela(folha, colunas);
+    folha.aoQuebrar = () => cabecalhoTabela(folha, colunas);
+    for (const { secao, p } of linhas) {
+      folha.garantir(alturaLinha);
+      const centro = folha.y - alturaLinha / 2;
+      const base = baseCentrada(centro, 8.5);
+      const larguraId = folha.escrever(
+        truncar(secao.id, seminegrito, 8.5, 40),
+        X + PAD_X,
+        base,
+        8.5,
+        seminegrito,
+        COR.tinta,
+      );
+      folha.escrever(
+        truncar(secao.titulo, regular, 8.5, colunas[0].largura - PAD_X * 2 - larguraId - 8),
+        X + PAD_X + larguraId + 8,
+        base,
+        8.5,
+        regular,
+        COR.texto,
+      );
+      let x = X + colunas[0].largura;
+      celulaAndamento(folha, x, colunas[1].largura, centro, p);
+      x += colunas[1].largura;
+      folha.textoDireita(`${p.respondidas}/${p.total}`, x + colunas[2].largura - PAD_X, base, 8.5, regular, COR.tinta);
+      x += colunas[2].largura;
+      desenharSelo(folha, seloDoAndamento(p), x + PAD_X, centro + ALTURA_SELO / 2);
+      filete(folha, folha.y - alturaLinha);
       folha.y -= alturaLinha;
-    });
-    folha.y -= 16;
+    }
+    folha.aoQuebrar = null;
+    folha.y -= 20;
     return;
   }
 
-  const colunas = [
-    { titulo: 'TAG', largura: 110 },
-    { titulo: 'Checklist', largura: 163.28 },
-    { titulo: 'Andamento', largura: 110 },
-    { titulo: 'Respondidas', largura: 60 },
-    { titulo: 'Situação', largura: 80 },
+  const larguraNome = 150;
+  const colunas: ColunaResumo[] = [
+    { titulo: 'TAG', largura: 90 },
+    { titulo: 'Checklist', largura: larguraNome },
+    { titulo: 'Andamento', largura: 115.28 },
+    { titulo: 'Respondidas', largura: 72, direita: true },
+    { titulo: 'Situação', largura: 88 },
   ];
-  tituloBloco(folha, 'Resumo por TAG e checklist', 18 + alturaLinha, plural(blocos.length, 'checklist', 'checklists'));
-  cabecalhoEscuro(folha, colunas);
+  const nomes = blocos.map(({ formulario }) =>
+    quebrarLimitado(formulario.definicao.nome, regular, 8, larguraNome - PAD_X * 2, 2),
+  );
+  const alturaDe = (i: number) => Math.max(24, 12 + nomes[i].length * 10.5);
+  tituloBloco(
+    folha,
+    'Resumo por TAG e checklist',
+    ALTURA_CABECALHO_TABELA + alturaDe(0),
+    plural(blocos.length, 'checklist', 'checklists'),
+  );
+  cabecalhoTabela(folha, colunas);
+  folha.aoQuebrar = () => cabecalhoTabela(folha, colunas);
   blocos.forEach(({ tag, formulario }, i) => {
-    if (folha.garantir(alturaLinha)) cabecalhoEscuro(folha, colunas);
-    fundoLinha(folha, alturaLinha, i % 2 === 1);
+    const alturaLinha = alturaDe(i);
+    folha.garantir(alturaLinha);
     const p = formulario.progresso;
-    const base = folha.y - alturaLinha / 2 - 2.8;
-    let x = MARGEM;
-    folha.escrever(truncar(tag.nome, negrito, 8, colunas[0].largura - PAD_X * 2), x + PAD_X, base, 8, negrito, COR.texto);
+    const centro = folha.y - alturaLinha / 2;
+    let x = X;
+    folha.escrever(
+      truncar(tag.nome, seminegrito, 8.5, colunas[0].largura - PAD_X * 2),
+      x + PAD_X,
+      baseCentrada(centro, 8.5),
+      8.5,
+      seminegrito,
+      COR.tinta,
+    );
     x += colunas[0].largura;
-    folha.escrever(truncar(formulario.definicao.nome, normal, 8, colunas[1].largura - PAD_X * 2), x + PAD_X, base, 8, normal, COR.texto);
+    const primeira = centro + ((nomes[i].length - 1) * 10.5) / 2;
+    nomes[i].forEach((linha, k) => {
+      folha.escrever(linha, x + PAD_X, baseCentrada(primeira - k * 10.5, 8), 8, regular, COR.texto);
+    });
     x += colunas[1].largura;
-    celulaAndamento(folha, x, colunas[2].largura, folha.y, alturaLinha, p);
+    celulaAndamento(folha, x, colunas[2].largura, centro, p);
     x += colunas[2].largura;
-    folha.escrever(`${p.respondidas}/${p.total}`, x + PAD_X, base, 8, negrito, COR.texto);
+    folha.textoDireita(
+      `${p.respondidas}/${p.total}`,
+      x + colunas[3].largura - PAD_X,
+      baseCentrada(centro, 8.5),
+      8.5,
+      regular,
+      COR.tinta,
+    );
     x += colunas[3].largura;
-    desenharSelo(folha, seloDoAndamento(p), x + PAD_X, folha.y - (alturaLinha - ALTURA_SELO) / 2);
+    desenharSelo(folha, seloDoAndamento(p), x + PAD_X, centro + ALTURA_SELO / 2);
+    filete(folha, folha.y - alturaLinha);
     folha.y -= alturaLinha;
   });
-  folha.y -= 16;
+  folha.aoQuebrar = null;
+  folha.y -= 20;
 }
 
 /** Até onde a lista de pendências vai na capa; o resto está nas tabelas. */
@@ -616,7 +724,7 @@ type Pendencia =
  * que vem depois (a legenda): a lista encurta para a capa caber numa página.
  */
 function pendencias(folha: Folha, blocos: readonly Bloco[], reservar: number): void {
-  const { negrito, normal } = folha.fontes;
+  const { seminegrito, regular, italico } = folha.fontes;
   const varios = blocos.length > 1;
   // Checklist sem nenhuma resposta vira uma linha só: listar todas as etapas
   // dele esconderia as pendências dos que estão quase prontos.
@@ -634,35 +742,40 @@ function pendencias(folha: Folha, blocos: readonly Bloco[], reservar: number): v
 
   if (!lista.length) {
     if (total === 0) return;
-    folha.garantir(40);
-    caixa(folha.pagina, MARGEM, folha.y, LARGURA_UTIL, 30, { raio: 5, cor: VERDE.fundo });
-    icone(folha.pagina, 'check', MARGEM + 10, folha.y - 8, 14, VERDE.cor);
+    const altura = 30;
+    folha.garantir(altura + 20);
+    retangulo(folha.pagina, { x: X, topo: folha.y, largura: LARGURA_UTIL, altura }, {
+      raio: 8,
+      cor: COR.sucessoFundo,
+    });
+    icone(folha.pagina, 'check', X + 12, folha.y - (altura - 13) / 2, 13, COR.sucessoPonto);
     folha.escrever(
       total === 1 ? 'A única etapa foi respondida.' : `Todas as ${total} etapas foram respondidas.`,
-      MARGEM + 32,
-      folha.y - 19,
-      10,
-      negrito,
-      VERDE.cor,
+      X + 33,
+      baseCentrada(folha.y - altura / 2, 9.5),
+      9.5,
+      seminegrito,
+      COR.sucesso,
     );
-    folha.y -= 44;
+    folha.y -= altura + 20;
     return;
   }
 
-  const alturaLinha = 17;
+  const alturaLinha = 18;
   tituloBloco(folha, 'Pendências', alturaLinha, plural(pendentes, 'etapa pendente', 'etapas pendentes'));
-  const cabem = Math.floor((folha.livre - reservar - 18) / alturaLinha);
-  const limite = Math.max(5, Math.min(MAXIMO_PENDENCIAS_NA_CAPA, cabem));
-  const mostradas = lista.length > limite ? lista.slice(0, limite - 1) : lista;
-  mostradas.forEach((item, i) => {
+  // Quantas linhas cabem antes do quadro do pé, contando a linha "… e mais".
+  const espaco = folha.livre - reservar - 20;
+  let cabem = Math.floor(espaco / alturaLinha);
+  if (lista.length > cabem) cabem = Math.floor((espaco - 18) / alturaLinha);
+  const limite = Math.max(3, Math.min(MAXIMO_PENDENCIAS_NA_CAPA, cabem));
+  const mostradas = lista.slice(0, limite);
+  for (const item of mostradas) {
     folha.garantir(alturaLinha);
-    fundoLinha(folha, alturaLinha, i % 2 === 1);
     const selo =
-      item.tipo === 'etapa'
-        ? SITUACOES[item.situacao]
-        : seloDoAndamento(item.formulario.progresso);
+      item.tipo === 'etapa' ? SITUACOES[item.situacao] : seloDoAndamento(item.formulario.progresso);
     const larguraDoSelo = larguraSelo(folha.fontes, selo);
-    const base = folha.y - alturaLinha / 2 - 2.8;
+    const centro = folha.y - alturaLinha / 2;
+    const base = baseCentrada(centro, 8);
     const id =
       item.tipo === 'etapa'
         ? varios
@@ -670,31 +783,32 @@ function pendencias(folha: Folha, blocos: readonly Bloco[], reservar: number): v
           : item.etapa.id
         : `${item.tag.nome} · ${item.formulario.definicao.nome}`;
     const larguraMaximaId = item.tipo === 'etapa' ? 150 : 260;
-    const larguraId = Math.min(negrito.widthOfTextAtSize(sanitizar(id), 8), larguraMaximaId);
+    const textoId = truncar(id, seminegrito, 8, larguraMaximaId);
+    const larguraId = folha.escrever(textoId, X + PAD_X, base, 8, seminegrito, COR.tinta);
     const descricao =
       item.tipo === 'etapa'
         ? item.etapa.descricao
         : `nenhuma etapa respondida (${plural(item.formulario.progresso.total, 'etapa', 'etapas')})`;
-    folha.escrever(truncar(id, negrito, 8, larguraMaximaId), MARGEM + PAD_X, base, 8, negrito, COR.texto);
     folha.escrever(
-      truncar(descricao, normal, 8, LARGURA_UTIL - larguraId - larguraDoSelo - PAD_X * 4 - 8),
-      MARGEM + PAD_X + larguraId + 8,
+      truncar(descricao, regular, 8, LARGURA_UTIL - larguraId - larguraDoSelo - PAD_X * 4 - 10),
+      X + PAD_X + larguraId + 10,
       base,
       8,
-      normal,
+      regular,
       COR.suave,
     );
-    desenharSelo(folha, selo, DIREITA - PAD_X - larguraDoSelo, folha.y - (alturaLinha - ALTURA_SELO) / 2);
+    desenharSelo(folha, selo, DIREITA - PAD_X - larguraDoSelo, centro + ALTURA_SELO / 2);
+    filete(folha, folha.y - alturaLinha);
     folha.y -= alturaLinha;
-  });
+  }
   if (lista.length > mostradas.length) {
-    folha.y -= 4;
+    folha.y -= 6;
     folha.paragrafo(
       `… e mais ${plural(lista.length - mostradas.length, 'pendência', 'pendências')}. A situação de cada etapa está nas tabelas a seguir.`,
-      { tamanho: 8, cor: COR.suave, fonte: folha.fontes.italico },
+      { tamanho: 7.8, cor: COR.suave, fonte: italico },
     );
   }
-  folha.y -= 14;
+  folha.y -= 20;
 }
 
 /** Notas do pé da capa: onde estão as fotos, registros à parte e o julgamento. */
@@ -715,57 +829,99 @@ function notasDaCapa(blocos: readonly Bloco[], arquivoFotos?: string): string[] 
   ];
 }
 
-const TAMANHO_NOTA = 7.8;
+const TAMANHO_NOTA = 7.5;
+const PASSO_NOTA = 10.5;
+const RECUO_LEGENDA = 12;
 
-/** Altura da legenda com as notas: a capa reserva esse espaço no pé. */
-function alturaLegenda(folha: Folha, notas: readonly string[]): number {
-  const linhas = notas.reduce(
-    (s, n) => s + quebrarLinhas(n, folha.fontes.normal, TAMANHO_NOTA, LARGURA_UTIL).length,
-    0,
+function linhasDasNotas(folha: Folha, notas: readonly string[]): string[][] {
+  return notas.map((n) =>
+    quebrarLinhas(n, folha.fontes.regular, TAMANHO_NOTA, LARGURA_UTIL - RECUO_LEGENDA * 2),
   );
-  return 24 + 8 + linhas * TAMANHO_NOTA * 1.35;
 }
 
-/** Legenda dos selos numa faixa só, e as notas do documento. */
+/** Altura do quadro da legenda com as notas: a capa reserva esse espaço no pé. */
+function alturaLegenda(folha: Folha, notas: readonly string[]): number {
+  const linhas = linhasDasNotas(folha, notas).reduce((s, l) => s + l.length, 0);
+  return RECUO_LEGENDA * 2 + ALTURA_SELO + 10 + linhas * PASSO_NOTA;
+}
+
+/** Quadro no pé da capa: legenda dos selos numa linha e, abaixo, as notas. */
 function legenda(folha: Folha, notas: readonly string[]): void {
-  const { negrito, normal } = folha.fontes;
+  const { seminegrito, regular } = folha.fontes;
   const itens: Array<[Selo, string]> = [
     [SITUACOES.verificado, 'respondida'],
     [SITUACOES.faltaFoto, 'marcada sem a foto obrigatória'],
     [SITUACOES.naoVerificado, 'sem resposta'],
   ];
-  const altura = 24;
-  folha.garantir(alturaLegenda(folha, notas));
-  caixa(folha.pagina, MARGEM, folha.y, LARGURA_UTIL, altura, { raio: 5, borda: COR.linha, espessura: 0.7 });
-  const topoSelo = folha.y - (altura - ALTURA_SELO) / 2;
-  const base = folha.y - altura / 2 - 2.6;
-  folha.escrever('Legenda', MARGEM + 10, base, 8, negrito, COR.texto);
-  let x = MARGEM + 10 + negrito.widthOfTextAtSize('Legenda', 8) + 16;
+  const altura = alturaLegenda(folha, notas);
+  folha.garantir(altura);
+  // Na capa, o quadro assenta no pé da página.
+  folha.y = Math.min(folha.y, BASE_CONTEUDO + altura);
+
+  retangulo(folha.pagina, { x: X, topo: folha.y, largura: LARGURA_UTIL, altura }, {
+    raio: 8,
+    cor: COR.superficie,
+  });
+  const centro = folha.y - RECUO_LEGENDA - ALTURA_SELO / 2;
+  let x = X + RECUO_LEGENDA;
+  x += folha.escrever('Legenda', x, baseCentrada(centro, 8), 8, seminegrito, COR.tinta) + 14;
   for (const [selo, texto] of itens) {
-    x += desenharSelo(folha, selo, x, topoSelo) + 5;
-    folha.escrever(texto, x, base, 7.5, normal, COR.suave);
-    x += normal.widthOfTextAtSize(sanitizar(texto), 7.5) + 18;
+    x += desenharSelo(folha, selo, x, centro + ALTURA_SELO / 2) + 6;
+    x += folha.escrever(texto, x, baseCentrada(centro, 7.5), 7.5, regular, COR.suave) + 16;
   }
-  folha.y -= altura + 8;
-  for (const nota of notas) folha.paragrafo(nota, { tamanho: TAMANHO_NOTA, cor: COR.suave });
+  let y = folha.y - RECUO_LEGENDA - ALTURA_SELO - 10;
+  folha.pagina.drawLine({
+    start: { x: X + RECUO_LEGENDA, y: y + 5 },
+    end: { x: DIREITA - RECUO_LEGENDA, y: y + 5 },
+    thickness: 0.6,
+    color: COR.linha,
+  });
+  for (const linha of linhasDasNotas(folha, notas).flat()) {
+    folha.pagina.drawText(linha, {
+      x: X + RECUO_LEGENDA,
+      y: baseCentrada(y - PASSO_NOTA / 2, TAMANHO_NOTA),
+      size: TAMANHO_NOTA,
+      font: regular,
+      color: COR.texto,
+    });
+    y -= PASSO_NOTA;
+  }
+  folha.y -= altura;
 }
 
 function desenharCapa(folha: Folha, dossie: Dossie, blocos: readonly Bloco[], opcoes: OpcoesPdf): void {
-  const { negrito, normal } = folha.fontes;
-  folha.escrever('PROTOCOLO DE VERIFICAÇÃO', MARGEM, folha.y - 8, 8.5, negrito, COR.marca);
-  folha.y -= 16;
-  for (const linha of limitarLinhas(quebrarLinhas(opcoes.titulo, negrito, 20, LARGURA_UTIL), 3, negrito, 20, LARGURA_UTIL)) {
-    folha.escrever(linha, MARGEM, folha.y - 19, 20, negrito, COR.texto);
-    folha.y -= 24;
-  }
-  const subtitulo = [dossie.painel, dossie.empresa, dossie.nomeProjeto].filter(Boolean).join('  •  ');
-  folha.escrever(truncar(subtitulo, normal, 10, LARGURA_UTIL), MARGEM, folha.y - 10, 10, normal, COR.suave);
-  folha.y -= 26;
-
+  const { negrito, regular } = folha.fontes;
+  let base = folha.y - 14;
+  escrever(folha.pagina, 'PROTOCOLO DE VERIFICAÇÃO', X, base, {
+    fonte: folha.fontes.seminegrito,
+    tamanho: 7.2,
+    cor: COR.marca,
+    espacamento: 1.1,
+  });
   const alteracoes = blocos
     .map((b) => b.formulario.atualizadoEm)
     .filter((v): v is number => v !== undefined && v > 0);
-  cartaoAndamento(folha, dossie.progressoGeral, alteracoes.length ? Math.max(...alteracoes) : undefined);
+  if (alteracoes.length) {
+    folha.textoDireita(
+      `Última alteração em ${dataHoraBr(Math.max(...alteracoes))}`,
+      DIREITA,
+      base,
+      7.5,
+      regular,
+      COR.suave,
+    );
+  }
+  base -= 30;
+  for (const linha of quebrarLimitado(opcoes.titulo, negrito, 26, LARGURA_UTIL, 3)) {
+    folha.escrever(linha, X, base, 26, negrito, COR.tinta);
+    base -= 30;
+  }
+  base += 9;
+  const subtitulo = [dossie.painel, dossie.empresa, dossie.nomeProjeto].filter(Boolean).join('  ·  ');
+  folha.escrever(truncar(subtitulo, regular, 11.5, LARGURA_UTIL), X, base, 11.5, regular, COR.texto);
+  folha.y = base - 24;
+
+  indicadores(folha, dossie.progressoGeral, blocos);
 
   gradeCampos(folha, 'Identificação', [
     ...dossie.identificacao,
@@ -773,7 +929,7 @@ function desenharCapa(folha: Folha, dossie: Dossie, blocos: readonly Bloco[], op
       ? [[dossie.tags.length === 1 ? 'TAG' : 'TAGs', dossie.tags.map((t) => t.nome).join(', ')] as [string, string]]
       : []),
     ['Documento gerado em', dataHoraBr(dossie.geradoEm.getTime())],
-  ]);
+  ], 4);
 
   if (!blocos.length) {
     folha.paragrafo('Nenhum checklist foi escolhido para este documento.', { cor: COR.suave });
@@ -824,64 +980,98 @@ function valorAferido(etapa: Etapa, resposta: Resposta | undefined, fotos: numbe
       const valores = Object.values(resposta.valor as ValorGrade).flatMap((l) => Object.values(l ?? {}));
       const preenchidos = valores.filter((v) => typeof v === 'number' && Number.isFinite(v)).length;
       if (!preenchidos) return '';
-      return `${plural(preenchidos, 'valor', 'valores')}${etapa.grade ? ' · tabela abaixo' : ''}`;
+      return etapa.grade ? 'Ver tabela' : plural(preenchidos, 'valor', 'valores');
     }
     default:
       return '';
   }
 }
 
-function cabecalhoTabela(folha: Folha): void {
-  cabecalhoEscuro(folha, COLUNAS);
+function cabecalhoEtapas(folha: Folha): void {
+  cabecalhoTabela(folha, COLUNAS);
 }
 
+const ALTURA_TITULO_SECAO = 17;
+
 /**
- * Faixa de título da seção. À direita vai a contagem e o selo do andamento
- * (`direita.p`) ou um texto (`direita.texto`); sem nada, é a continuação da
- * seção numa página nova.
+ * Título da seção: selo vermelho com o código e o nome ao lado. À direita vai a
+ * contagem do andamento (`direita.p`) ou um texto (`direita.texto`); sem nada,
+ * é a continuação da seção numa página nova.
  */
 function faixaSecao(
   folha: Folha,
-  titulo: string,
+  secao: { id?: string; titulo: string },
   direita: { p: Progresso } | { texto: string } | null,
-  destaque: Color = COR.marca,
 ): void {
-  const altura = 24;
+  const { negrito, seminegrito, medio, regular } = folha.fontes;
   const topo = folha.y;
-  const { negrito, normal } = folha.fontes;
-  caixa(folha.pagina, MARGEM, topo, LARGURA_UTIL, altura, { raio: 3, cor: COR.fundo });
-  folha.pagina.drawRectangle({ x: MARGEM, y: topo - altura, width: 3.5, height: altura, color: destaque });
+  const centro = topo - ALTURA_TITULO_SECAO / 2;
+
+  let xTitulo = X;
+  if (secao.id) {
+    const larguraId = Math.max(larguraTexto(secao.id, { fonte: negrito, tamanho: 8 }) + 12, ALTURA_TITULO_SECAO + 4);
+    retangulo(folha.pagina, { x: X, topo, largura: larguraId, altura: ALTURA_TITULO_SECAO }, {
+      raio: 4.5,
+      cor: COR.marca,
+    });
+    const texto = truncar(secao.id, negrito, 8, 80);
+    folha.escrever(
+      texto,
+      X + (larguraId - larguraTexto(texto, { fonte: negrito, tamanho: 8 })) / 2,
+      baseCentrada(centro, 8),
+      8,
+      negrito,
+      COR.branco,
+    );
+    xTitulo += larguraId + 9;
+  } else {
+    // Registros fora do checklist: fio cinza no lugar do selo da seção.
+    retangulo(folha.pagina, { x: X, topo, largura: 3.5, altura: ALTURA_TITULO_SECAO }, {
+      raio: 1.75,
+      cor: COR.apagado,
+    });
+    xTitulo += 11;
+  }
 
   let reservado = 0;
   if (direita && 'p' in direita) {
-    const selo = seloDoAndamento(direita.p);
-    const largura = larguraSelo(folha.fontes, selo);
-    desenharSelo(folha, selo, DIREITA - 8 - largura, topo - (altura - ALTURA_SELO) / 2);
-    const contagem = `${direita.p.respondidas}/${direita.p.total}`;
-    folha.textoDireita(contagem, DIREITA - 8 - largura - 8, topo - 15.3, 8.5, negrito, COR.suave);
-    reservado = largura + 16 + negrito.widthOfTextAtSize(contagem, 8.5) + 8;
+    const p = direita.p;
+    const contador = `${p.respondidas} de ${p.total} ${p.total === 1 ? 'respondida' : 'respondidas'}`;
+    const largura = larguraTexto(contador, { fonte: medio, tamanho: 7.5 });
+    folha.textoDireita(contador, DIREITA, baseCentrada(centro, 7.5), 7.5, medio, COR.suave);
+    folha.pagina.drawCircle({ x: DIREITA - largura - 7, y: centro, size: 2.6, color: seloDoAndamento(p).ponto });
+    reservado = largura + 24;
   } else if (direita) {
-    folha.textoDireita(direita.texto, DIREITA - 8, topo - 15.3, 8.5, negrito, COR.suave);
-    reservado = negrito.widthOfTextAtSize(sanitizar(direita.texto), 8.5) + 16;
+    folha.textoDireita(direita.texto, DIREITA, baseCentrada(centro, 7.5), 7.5, medio, COR.suave);
+    reservado = larguraTexto(direita.texto, { fonte: medio, tamanho: 7.5 }) + 16;
   }
-  folha.escrever(
-    truncar(direita ? titulo : `${titulo} (continuação)`, negrito, 10, LARGURA_UTIL - 22 - reservado),
-    MARGEM + 12,
-    topo - 15.5,
-    10,
-    direita ? negrito : normal,
-    direita ? COR.texto : COR.suave,
+
+  const espaco = DIREITA - reservado - xTitulo;
+  const larguraTitulo = folha.escrever(
+    truncar(secao.titulo, seminegrito, 11.5, espaco - (direita ? 0 : 70)),
+    xTitulo,
+    baseCentrada(centro, 11.5),
+    11.5,
+    seminegrito,
+    COR.tinta,
   );
-  folha.y -= altura + 4;
+  if (!direita) {
+    folha.escrever('(continuação)', xTitulo + larguraTitulo + 6, baseCentrada(centro, 11.5), 8.5, regular, COR.apagado);
+  }
+  folha.y -= ALTURA_TITULO_SECAO + 10;
 }
+
+const PASSO_DESCRICAO = 12;
+/** Até esta altura a etapa não se divide entre páginas. */
+const ALTURA_MAXIMA_SEM_DIVIDIR = 140;
 
 /**
  * Desenha a etapa, continuando na página seguinte quando o conteúdo não cabe.
  * O texto nunca passa do limite do rodapé: o que não couber segue, inteiro,
  * na próxima página, com "(cont.)" na coluna da etapa.
  */
-function desenharEtapa(folha: Folha, etapa: Etapa, formulario: FormularioDoDossie, zebra: boolean): void {
-  const { normal, negrito, italico } = folha.fontes;
+function desenharEtapa(folha: Folha, etapa: Etapa, formulario: FormularioDoDossie): void {
+  const { regular, medio, seminegrito, italico } = folha.fontes;
   const resposta = formulario.respostas[etapa.id];
   const fotos = fotosDa(formulario, etapa.id);
   const situacao = situacaoDaEtapa(etapa, formulario);
@@ -892,7 +1082,7 @@ function desenharEtapa(folha: Folha, etapa: Etapa, formulario: FormularioDoDossi
   // Resposta curta fica na coluna "Aferido"; a longa vai, inteira, para baixo
   // da descrição — nada é cortado.
   const aferido = valorAferido(etapa, resposta, fotos);
-  let linhasAferido = aferido ? quebrarLinhas(aferido, negrito, 8, larguraAferido) : [];
+  let linhasAferido = aferido ? quebrarLinhas(aferido, medio, 8, larguraAferido) : [];
   let respostaLonga: string | null = null;
   if (linhasAferido.length > 3) {
     respostaLonga = aferido;
@@ -901,46 +1091,74 @@ function desenharEtapa(folha: Folha, etapa: Etapa, formulario: FormularioDoDossi
   const larguraOperador = COLUNAS[5].largura - PAD_X * 2;
   const linhasOperador =
     respondida && formulario.operador
-      ? limitarLinhas(quebrarLinhas(formulario.operador, normal, 7.2, larguraOperador), 2, normal, 7.2, larguraOperador)
+      ? quebrarLimitado(formulario.operador, regular, 8, larguraOperador, 2)
       : [];
 
+  const larguraQuadro = larguraDescricao - 16;
+  const observacao = resposta?.observacao?.trim()
+    ? quebrarLinhas(resposta.observacao, regular, 7.5, larguraQuadro)
+    : [];
   const linhas: Linha[] = [
-    ...quebrarLinhas(etapa.descricao, normal, 8.5, larguraDescricao).map((texto) => ({
-      texto, tamanho: 8.5, passo: 10.5, fonte: normal, cor: COR.texto,
+    ...quebrarLinhas(etapa.descricao, regular, 8.5, larguraDescricao).map((texto) => ({
+      texto, tamanho: 8.5, passo: PASSO_DESCRICAO, fonte: regular, cor: COR.tinta,
     })),
     ...(etapa.detalhes ?? []).flatMap((d) =>
-      quebrarLinhas(`• ${d}`, normal, 7.2, larguraDescricao).map((texto) => ({
-        texto, tamanho: 7.2, passo: 9, fonte: normal, cor: COR.suave,
+      quebrarLinhas(`• ${d}`, regular, 7.5, larguraDescricao - 2).map((texto) => ({
+        texto, tamanho: 7.5, passo: 10.5, fonte: regular, cor: COR.suave, recuo: 2,
       })),
     ),
     ...(respostaLonga
-      ? quebrarLinhas(`Resposta: ${respostaLonga}`, negrito, 8, larguraDescricao).map((texto) => ({
-          texto, tamanho: 8, passo: 10, fonte: negrito, cor: COR.texto,
-        }))
+      ? [
+          { texto: '', tamanho: 4, passo: 3, fonte: regular, cor: COR.tinta },
+          ...quebrarLinhas(`Resposta: ${respostaLonga}`, seminegrito, 8, larguraDescricao).map((texto) => ({
+            texto, tamanho: 8, passo: 11, fonte: seminegrito, cor: COR.tinta,
+          })),
+        ]
       : []),
-    ...(resposta?.observacao?.trim()
-      ? quebrarLinhas(`Obs.: ${resposta.observacao}`, italico, 7.6, larguraDescricao).map((texto) => ({
-          texto, tamanho: 7.6, passo: 9.6, fonte: italico, cor: COR.texto,
-        }))
+    // Observação num quadro de fundo suave: rótulo em versalete e o texto.
+    ...(observacao.length
+      ? [
+          { texto: '', tamanho: 4, passo: 5, fonte: regular, cor: COR.tinta },
+          { texto: '', tamanho: 4, passo: 5, fonte: regular, cor: COR.tinta, quadro: true },
+          {
+            texto: 'OBSERVAÇÃO', tamanho: 5.8, passo: 9, fonte: seminegrito, cor: COR.suave,
+            recuo: 9, espacamento: 0.55, quadro: true,
+          },
+          ...observacao.map((texto) => ({
+            texto, tamanho: 7.5, passo: 10.5, fonte: regular, cor: COR.texto, recuo: 9, quadro: true,
+          })),
+          { texto: '', tamanho: 4, passo: 5, fonte: regular, cor: COR.tinta, quadro: true },
+        ]
       : []),
   ];
 
   // Descrição só de espaços (o schema aceita) não deixa a etapa sem linha.
   if (!linhas.length) {
-    linhas.push({ texto: '—', tamanho: 8.5, passo: 10.5, fonte: normal, cor: COR.claro });
+    linhas.push({ texto: '—', tamanho: 8.5, passo: PASSO_DESCRICAO, fonte: regular, cor: COR.apagado });
   }
 
   const minimoPrimeira = Math.max(
-    PAD_TOPO + Math.max(linhasAferido.length, 1) * 10 + PAD_BASE,
-    PAD_TOPO + Math.max(linhasOperador.length, 1) * 9 + PAD_BASE,
+    PAD_TOPO + Math.max(linhasAferido.length, 1) * PASSO_DESCRICAO + PAD_BASE,
+    PAD_TOPO + Math.max(linhasOperador.length, 1) * PASSO_DESCRICAO + PAD_BASE,
     PAD_TOPO + ALTURA_SELO + PAD_BASE,
     PAD_TOPO + linhas[0].passo + PAD_BASE,
-    24,
+    26,
   );
+  const temGrade =
+    etapa.tipoResposta === 'grade_numerica' &&
+    !!etapa.grade &&
+    !!resposta?.valor &&
+    typeof resposta.valor === 'object';
 
+  // Etapa curta vai inteira para a página seguinte; só a longa se divide.
+  const alturaInteira = Math.max(
+    minimoPrimeira,
+    PAD_TOPO + linhas.reduce((s, l) => s + l.passo, 0) + PAD_BASE,
+  );
   let indice = 0;
   let primeira = true;
   do {
+    if (primeira && alturaInteira <= ALTURA_MAXIMA_SEM_DIVIDIR) folha.garantir(alturaInteira);
     folha.garantir(primeira ? minimoPrimeira : PAD_TOPO + linhas[indice].passo + PAD_BASE);
     const disponivel = folha.livre;
     let usado = PAD_TOPO + PAD_BASE;
@@ -956,29 +1174,46 @@ function desenharEtapa(folha: Folha, etapa: Etapa, formulario: FormularioDoDossi
     const altura = Math.max(usado, primeira ? minimoPrimeira : 0);
     const topo = folha.y;
     const pagina = folha.pagina;
+    const fundo = FUNDO_LINHA[situacao];
+    if (fundo) {
+      retangulo(pagina, { x: X, topo, largura: LARGURA_UTIL, altura }, { cor: fundo });
+    }
 
-    if (zebra) {
-      pagina.drawRectangle({ x: MARGEM, y: topo - altura, width: LARGURA_UTIL, height: altura, color: COR.zebra });
-    }
-    for (const xColuna of X_COLUNAS.slice(1)) {
-      pagina.drawLine({ start: { x: xColuna, y: topo }, end: { x: xColuna, y: topo - altura }, thickness: 0.4, color: COR.divisoria });
-    }
-    for (const x of [MARGEM, DIREITA]) {
-      pagina.drawLine({ start: { x, y: topo }, end: { x, y: topo - altura }, thickness: 0.6, color: COR.linha });
-    }
-    pagina.drawLine({ start: { x: MARGEM, y: topo - altura }, end: { x: DIREITA, y: topo - altura }, thickness: 0.6, color: COR.linha });
-
-    const base = topo - PAD_TOPO - 7.2;
+    // Centro da primeira linha: referência das colunas laterais.
+    const centro = topo - PAD_TOPO - PASSO_DESCRICAO / 2;
+    const base = baseCentrada(centro, 8);
     if (primeira) {
-      folha.escrever(truncar(etapa.id, negrito, 8.5, COLUNAS[0].largura - PAD_X * 2), MARGEM + PAD_X, base, 8.5, negrito, COR.texto);
+      folha.escrever(
+        truncar(etapa.id, seminegrito, 8, COLUNAS[0].largura - PAD_X - 2),
+        X + PAD_X,
+        base,
+        8,
+        seminegrito,
+        COR.tinta,
+      );
     } else {
-      folha.escrever('(cont.)', MARGEM + PAD_X, base, 7, italico, COR.claro);
+      folha.escrever('(cont.)', X + PAD_X, base, 7, italico, COR.apagado);
     }
 
     let yLinha = topo - PAD_TOPO;
     const xDescricao = X_COLUNAS[1] + PAD_X;
     for (const linha of linhas.slice(indice, fim)) {
-      pagina.drawText(linha.texto, { x: xDescricao, y: yLinha - linha.tamanho * 0.85, size: linha.tamanho, font: linha.fonte, color: linha.cor });
+      if (linha.quadro) {
+        retangulo(pagina, { x: xDescricao, topo: yLinha, largura: larguraDescricao, altura: linha.passo }, {
+          cor: COR.superficie,
+        });
+        retangulo(pagina, { x: xDescricao, topo: yLinha, largura: 2.2, altura: linha.passo }, {
+          cor: COR.apagado,
+        });
+      }
+      if (linha.texto) {
+        escrever(pagina, linha.texto, xDescricao + (linha.recuo ?? 0), baseCentrada(yLinha - linha.passo / 2, linha.tamanho), {
+          fonte: linha.fonte,
+          tamanho: linha.tamanho,
+          cor: linha.cor,
+          espacamento: linha.espacamento,
+        });
+      }
       yLinha -= linha.passo;
     }
 
@@ -986,129 +1221,196 @@ function desenharEtapa(folha: Folha, etapa: Etapa, formulario: FormularioDoDossi
     if (primeira) {
       const xAferido = X_COLUNAS[2] + PAD_X;
       if (linhasAferido.length) {
-        const fonteAferido = respostaLonga ? italico : negrito;
         linhasAferido.forEach((linha, i) => {
-          folha.escrever(linha, xAferido, base - i * 10, respostaLonga ? 7.5 : 8, fonteAferido, respostaLonga ? COR.suave : COR.texto);
+          folha.escrever(
+            linha,
+            xAferido,
+            base - i * PASSO_DESCRICAO,
+            respostaLonga ? 7.5 : 8,
+            respostaLonga ? italico : medio,
+            respostaLonga ? COR.suave : COR.tinta,
+          );
         });
       } else {
-        folha.escrever('—', xAferido, base, 8, normal, COR.claro);
+        folha.escrever('—', xAferido, base, 8, regular, COR.apagado);
       }
 
-      desenharSelo(folha, SITUACOES[situacao], X_COLUNAS[3] + PAD_X, base + 9.4);
+      desenharSelo(folha, SITUACOES[situacao], X_COLUNAS[3] + PAD_X, centro + ALTURA_SELO / 2);
 
       const xData = X_COLUNAS[4] + PAD_X;
-      folha.escrever(respondida ? dataBr(formulario.atualizadoEm) : '—', xData, base, 7.5, normal, respondida ? COR.texto : COR.claro);
+      folha.escrever(
+        respondida ? dataBr(formulario.atualizadoEm) : '—',
+        xData,
+        base,
+        8,
+        regular,
+        respondida ? COR.texto : COR.apagado,
+      );
 
       const xOperador = X_COLUNAS[5] + PAD_X;
       if (linhasOperador.length) {
         linhasOperador.forEach((linha, i) => {
-          folha.escrever(linha, xOperador, base - i * 9, 7.2, normal, COR.texto);
+          folha.escrever(linha, xOperador, base - i * PASSO_DESCRICAO, 8, regular, COR.texto);
         });
       } else {
-        folha.escrever('—', xOperador, base, 7.5, normal, COR.claro);
+        folha.escrever('—', xOperador, base, 8, regular, COR.apagado);
       }
     }
 
     folha.y -= altura;
     indice = fim;
     primeira = false;
+    // A tabela de medições fica junto da etapa, antes do filete.
+    if (indice < linhas.length || !temGrade) filete(folha, folha.y);
   } while (indice < linhas.length);
 
-  if (etapa.tipoResposta === 'grade_numerica' && etapa.grade && resposta?.valor && typeof resposta.valor === 'object') {
-    desenharGrade(folha, etapa, resposta.valor as ValorGrade);
+  if (temGrade) {
+    desenharGrade(folha, etapa, resposta!.valor as ValorGrade, FUNDO_LINHA[situacao]);
+    filete(folha, folha.y);
   }
 }
 
-/** Tabela de medições da etapa `grade_numerica`, logo abaixo da linha dela. */
-function desenharGrade(folha: Folha, etapa: Etapa, valor: ValorGrade): void {
+/** Tabela de medições da etapa `grade_numerica`, logo abaixo da descrição dela. */
+function desenharGrade(folha: Folha, etapa: Etapa, valor: ValorGrade, fundo: Color | null): void {
   const grade = etapa.grade;
   if (!grade) return;
-  const { negrito, normal } = folha.fontes;
-  const x0 = X_COLUNAS[1];
-  const larguraTotal = DIREITA - x0;
-  const larguraRotulo = Math.min(150, larguraTotal * 0.34);
-  const larguraColuna = (larguraTotal - larguraRotulo) / grade.colunas.length;
+  const { seminegrito, medio, regular } = folha.fontes;
+  const x0 = X_COLUNAS[1] + PAD_X;
+  const disponivel = DIREITA - PAD_X - x0;
+  const larguraRotulo = Math.min(120, disponivel * 0.34);
+  const larguraColuna = Math.min(104, (disponivel - larguraRotulo) / grade.colunas.length);
+  const larguraTotal = larguraRotulo + larguraColuna * grade.colunas.length;
+  const alturaCabecalho = 20;
   const alturaLinha = 15;
 
-  const linhaVertical = (altura: number) => {
-    for (const x of [MARGEM, DIREITA]) {
-      folha.pagina.drawLine({ start: { x, y: folha.y }, end: { x, y: folha.y - altura }, thickness: 0.6, color: COR.linha });
-    }
+  // A faixa da linha da etapa continua por trás da tabela.
+  const faixa = (altura: number) => {
+    if (fundo) retangulo(folha.pagina, { x: X, topo: folha.y, largura: LARGURA_UTIL, altura }, { cor: fundo });
   };
 
   const cabecalho = () => {
-    linhaVertical(alturaLinha);
-    folha.pagina.drawRectangle({ x: x0, y: folha.y - alturaLinha, width: larguraTotal, height: alturaLinha, color: COR.fundo });
-    folha.escrever('Ponto', x0 + PAD_X, folha.y - 10.3, 7.2, negrito, COR.texto);
+    faixa(alturaCabecalho);
+    retangulo(folha.pagina, { x: x0, topo: folha.y, largura: larguraTotal, altura: alturaCabecalho }, {
+      raio: [6, 6, 0, 0],
+      cor: COR.superficie,
+    });
+    const base = baseCentrada(folha.y - alturaCabecalho / 2, 6.8);
+    folha.escrever('Ponto', x0 + 9, base, 6.8, seminegrito, COR.suave);
     grade.colunas.forEach((coluna, i) => {
       const titulo = `${coluna.rotulo}${coluna.unidade ? ` (${coluna.unidade})` : ''}`;
-      const direita = x0 + larguraRotulo + larguraColuna * (i + 1) - PAD_X;
-      folha.textoDireita(truncar(titulo, negrito, 7.2, larguraColuna - PAD_X * 2), direita, folha.y - 10.3, 7.2, negrito, COR.texto);
+      const direita = x0 + larguraRotulo + larguraColuna * (i + 1) - 9;
+      folha.textoDireita(truncar(titulo, seminegrito, 6.8, larguraColuna - 14), direita, base, 6.8, seminegrito, COR.suave);
     });
-    folha.y -= alturaLinha;
+    folha.y -= alturaCabecalho;
   };
 
-  folha.garantir(alturaLinha * 2);
+  folha.garantir(alturaCabecalho + alturaLinha + 8);
   cabecalho();
   grade.linhas.forEach((linha, i) => {
-    if (folha.garantir(alturaLinha)) cabecalho();
-    linhaVertical(alturaLinha);
-    if (i % 2 === 1) {
-      folha.pagina.drawRectangle({ x: x0, y: folha.y - alturaLinha, width: larguraTotal, height: alturaLinha, color: COR.zebra });
+    if (folha.garantir(alturaLinha + 8)) cabecalho();
+    faixa(alturaLinha);
+    const ultima = i === grade.linhas.length - 1;
+    retangulo(folha.pagina, { x: x0, topo: folha.y, largura: larguraTotal, altura: alturaLinha }, {
+      raio: ultima ? [0, 0, 6, 6] : 0,
+      cor: i % 2 === 1 ? COR.zebra : COR.branco,
+    });
+    if (!ultima) {
+      folha.pagina.drawLine({
+        start: { x: x0, y: folha.y - alturaLinha },
+        end: { x: x0 + larguraTotal, y: folha.y - alturaLinha },
+        thickness: 0.4,
+        color: COR.linhaSuave,
+      });
     }
-    folha.pagina.drawLine({ start: { x: x0, y: folha.y - alturaLinha }, end: { x: DIREITA, y: folha.y - alturaLinha }, thickness: 0.4, color: COR.divisoria });
-    folha.escrever(truncar(linha.rotulo, normal, 7.2, larguraRotulo - PAD_X * 2), x0 + PAD_X, folha.y - 10.3, 7.2, normal, COR.texto);
+    const centro = folha.y - alturaLinha / 2;
+    folha.escrever(
+      truncar(linha.rotulo, medio, 7.5, larguraRotulo - 14),
+      x0 + 9,
+      baseCentrada(centro, 7.5),
+      7.5,
+      medio,
+      COR.texto,
+    );
     grade.colunas.forEach((coluna, j) => {
       const v = valor[linha.id]?.[coluna.id];
       const preenchido = typeof v === 'number' && Number.isFinite(v);
-      const direita = x0 + larguraRotulo + larguraColuna * (j + 1) - PAD_X;
       folha.textoDireita(
-        truncar(preenchido ? formatarNumero(v) : '—', normal, 7.5, larguraColuna - PAD_X * 2),
-        direita,
-        folha.y - 10.3,
-        7.5,
-        preenchido ? negrito : normal,
-        preenchido ? COR.texto : COR.claro,
+        truncar(preenchido ? formatarNumero(v) : '—', regular, 7.8, larguraColuna - 14),
+        x0 + larguraRotulo + larguraColuna * (j + 1) - 9,
+        baseCentrada(centro, 7.8),
+        7.8,
+        preenchido ? medio : regular,
+        preenchido ? COR.tinta : COR.apagado,
       );
     });
     folha.y -= alturaLinha;
   });
-  folha.pagina.drawLine({ start: { x: MARGEM, y: folha.y }, end: { x: DIREITA, y: folha.y }, thickness: 0.6, color: COR.linha });
+  faixa(8);
+  folha.y -= 8;
 }
 
-/** Página de abertura do checklist: TAG, nome, revisão, andamento e dados do painel. */
+/** Abertura do checklist: TAG, nome, revisão, anel de andamento e dados do painel. */
 function aberturaChecklist(folha: Folha, tag: TagDoDossie, formulario: FormularioDoDossie): void {
-  const { negrito, normal } = folha.fontes;
+  const { negrito, seminegrito, regular } = folha.fontes;
   const definicao = formulario.definicao;
-  folha.escrever('TAG', MARGEM, folha.y - 8, 8.5, negrito, COR.marca);
-  folha.y -= 14;
-  for (const linha of limitarLinhas(quebrarLinhas(tag.nome, negrito, 18, LARGURA_UTIL), 2, negrito, 18, LARGURA_UTIL)) {
-    folha.escrever(linha, MARGEM, folha.y - 17, 18, negrito, COR.texto);
-    folha.y -= 22;
+  const p = formulario.progresso;
+  const larguraBloco = LARGURA_UTIL - 175;
+
+  let base = folha.y - 12;
+  escrever(folha.pagina, 'TAG', X, base, {
+    fonte: seminegrito,
+    tamanho: 7.2,
+    cor: COR.marca,
+    espacamento: 1.1,
+  });
+  base -= 28;
+  const centroAnel = base + 9;
+  for (const linha of quebrarLimitado(tag.nome, negrito, 24, larguraBloco, 2)) {
+    folha.escrever(linha, X, base, 24, negrito, COR.tinta);
+    base -= 28;
   }
-  for (const linha of limitarLinhas(quebrarLinhas(definicao.nome, negrito, 11, LARGURA_UTIL), 2, negrito, 11, LARGURA_UTIL)) {
-    folha.escrever(linha, MARGEM, folha.y - 11, 11, negrito, COR.suave);
-    folha.y -= 15;
+  base += 9;
+  for (const linha of quebrarLimitado(definicao.nome, regular, 10.5, larguraBloco, 2)) {
+    folha.escrever(linha, X, base, 10.5, regular, COR.texto);
+    base -= 14;
   }
   const meta = [
     `Revisão ${formulario.formRevisao}${definicao.dataRevisao ? ` de ${dataLegivel(definicao.dataRevisao)}` : ''}`,
     definicao.linhaProduto,
     definicao.emitidoPor ? `Emitido por ${definicao.emitidoPor}` : '',
-  ].filter(Boolean).join('  •  ');
-  folha.escrever(truncar(meta, normal, 8, LARGURA_UTIL), MARGEM, folha.y - 9, 8, normal, COR.suave);
-  folha.y -= 20;
+  ]
+    .filter(Boolean)
+    .join('  ·  ');
+  base -= 2;
+  folha.escrever(truncar(meta, regular, 8, larguraBloco), X, base, 8, regular, COR.suave);
 
-  // Andamento do checklist numa linha: barra, números e selo.
-  const p = formulario.progresso;
+  // Andamento: anel à direita, com a contagem e o selo ao lado.
+  const raio = 26;
+  const cx = DIREITA - raio - 3;
+  anelProgresso(folha.pagina, cx, centroAnel, raio, 5.5, fracao(p), seloDoAndamento(p).ponto, COR.superficieForte);
+  const pct = `${p.percentual}%`;
+  folha.escrever(
+    pct,
+    cx - larguraTexto(pct, { fonte: negrito, tamanho: 11 }) / 2,
+    baseCentrada(centroAnel, 11),
+    11,
+    negrito,
+    COR.tinta,
+  );
+  const xLegenda = cx - raio - 14;
+  folha.textoDireita(`${p.respondidas} de ${p.total}`, xLegenda, centroAnel + 6, 11, seminegrito, COR.tinta);
+  folha.textoDireita(
+    p.total === 1 ? 'etapa respondida' : 'etapas respondidas',
+    xLegenda,
+    centroAnel - 6,
+    7.5,
+    regular,
+    COR.suave,
+  );
   const selo = seloDoAndamento(p);
-  const larguraDoSelo = larguraSelo(folha.fontes, selo);
-  const texto = `${p.respondidas} de ${plural(p.total, 'etapa respondida', 'etapas respondidas')} (${p.percentual}%)`;
-  const larguraTexto = normal.widthOfTextAtSize(sanitizar(texto), 8.5);
-  const larguraBarra = LARGURA_UTIL - larguraTexto - larguraDoSelo - 24;
-  barra(folha.pagina, MARGEM, folha.y - 3, larguraBarra, 7, p);
-  folha.escrever(texto, MARGEM + larguraBarra + 12, folha.y - 9.2, 8.5, normal, COR.texto);
-  desenharSelo(folha, selo, DIREITA - larguraDoSelo, folha.y);
-  folha.y -= 28;
+  desenharSelo(folha, selo, xLegenda - larguraSelo(folha.fontes, selo), centroAnel - 12);
+
+  folha.y = Math.min(base, centroAnel - raio - 6) - 24;
 
   gradeCampos(
     folha,
@@ -1133,14 +1435,14 @@ function desenharChecklist(folha: Folha, tag: TagDoDossie, formulario: Formulari
   }
 
   for (const { secao, etapas } of secoes) {
-    tabelaDeEtapas(folha, `${secao.id} — ${secao.titulo}`, { p: progressoDe(etapas, formulario) }, etapas, formulario);
+    tabelaDeEtapas(folha, secao, { p: progressoDe(etapas, formulario) }, etapas, formulario);
   }
 
   const fora = etapasForaDoChecklist(formulario);
   if (fora.length) {
     tabelaDeEtapas(
       folha,
-      'Fora do checklist atual',
+      { titulo: 'Fora do checklist atual' },
       { texto: plural(fora.length, 'registro', 'registros') },
       fora,
       formulario,
@@ -1149,32 +1451,31 @@ function desenharChecklist(folha: Folha, tag: TagDoDossie, formulario: Formulari
   }
 }
 
-/** Faixa da seção, cabeçalho e as etapas — a faixa volta no alto de cada página nova. */
+/** Título da seção, cabeçalho e as etapas — o título volta no alto de cada página nova. */
 function tabelaDeEtapas(
   folha: Folha,
-  titulo: string,
+  secao: { id?: string; titulo: string },
   direita: { p: Progresso } | { texto: string },
   etapas: readonly Etapa[],
   formulario: FormularioDoDossie,
   nota?: string,
 ): void {
-  const destaque = nota ? COR.claro : COR.marca;
-  // Faixa, nota, cabeçalho e a primeira linha da tabela: nunca a faixa sozinha
-  // no pé da página. 42 é a maior altura mínima da primeira parte de uma etapa.
-  folha.garantir(28 + (nota ? 30 : 0) + 18 + 42);
-  faixaSecao(folha, titulo, direita, destaque);
+  // Título, nota, cabeçalho e a primeira linha da tabela: nunca o título
+  // sozinho no pé da página. 44 é a maior altura mínima da primeira parte.
+  folha.garantir(ALTURA_TITULO_SECAO + 10 + (nota ? 30 : 0) + ALTURA_CABECALHO_TABELA + 44);
+  faixaSecao(folha, secao, direita);
   if (nota) {
     folha.paragrafo(nota, { tamanho: 7.8, cor: COR.suave, fonte: folha.fontes.italico });
     folha.y -= 4;
   }
-  cabecalhoTabela(folha);
+  cabecalhoEtapas(folha);
   folha.aoQuebrar = () => {
-    faixaSecao(folha, titulo, null, destaque);
-    cabecalhoTabela(folha);
+    faixaSecao(folha, secao, null);
+    cabecalhoEtapas(folha);
   };
-  etapas.forEach((etapa, i) => desenharEtapa(folha, etapa, formulario, i % 2 === 1));
+  for (const etapa of etapas) desenharEtapa(folha, etapa, formulario);
   folha.aoQuebrar = null;
-  folha.y -= 14;
+  folha.y -= 26;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -1187,8 +1488,6 @@ interface CartaoFoto {
   id: string;
   descricao: string;
   imagem: PDFImage | null;
-  largura: number;
-  altura: number;
   numero: number;
   total: number;
 }
@@ -1202,11 +1501,17 @@ interface LinhaAnexo {
   numero: number;
 }
 
-const FOTO_LARGURA_CARTAO = (LARGURA_UTIL - 12) / 2;
-const FOTO_ALTURA_MAXIMA = 160;
+const FOTOS_POR_LINHA = 3;
+const FOTO_VAO = 12;
+const FOTO_LARGURA_CARTAO = (LARGURA_UTIL - FOTO_VAO * (FOTOS_POR_LINHA - 1)) / FOTOS_POR_LINHA;
+const FOTO_RECUO = 5;
+const FOTO_ALTURA_IMAGEM = 158;
+const FOTO_ALTURA_LEGENDA = 42;
+const FOTO_ALTURA_CARTAO = FOTO_RECUO + FOTO_ALTURA_IMAGEM + FOTO_ALTURA_LEGENDA;
+const ALTURA_ANEXO = 44;
 
 /**
- * Registro fotográfico do checklist: as fotos em cartões, duas por linha, na
+ * Registro fotográfico do checklist: as fotos numa galeria de três colunas, na
  * ordem das etapas — cada cartão diz de que etapa é a foto. Os PDFs anexados
  * vão dentro do documento, no painel de anexos do leitor.
  */
@@ -1231,43 +1536,39 @@ async function desenharFotos(folha: Folha, tag: TagDoDossie, formulario: Formula
       } catch {
         imagem = null;
       }
-      const escala = imagem
-        ? Math.min((FOTO_LARGURA_CARTAO - 16) / imagem.width, FOTO_ALTURA_MAXIMA / imagem.height, 1)
-        : 0;
-      itens.push({
-        tipo: 'foto',
-        id,
-        descricao,
-        imagem,
-        largura: imagem ? imagem.width * escala : 0,
-        altura: imagem ? imagem.height * escala : 60,
-        numero: i + 1,
-        total: imagens.length,
-      });
+      itens.push({ tipo: 'foto', id, descricao, imagem, numero: i + 1, total: imagens.length });
     }
   }
 
-  const { negrito, normal } = folha.fontes;
-  folha.novaPagina();
-  folha.escrever('REGISTRO FOTOGRÁFICO', MARGEM, folha.y - 8, 8.5, negrito, COR.marca);
-  folha.y -= 14;
-  folha.escrever(truncar(`TAG ${tag.nome}`, negrito, 16, LARGURA_UTIL), MARGEM, folha.y - 15, 16, negrito, COR.texto);
-  folha.y -= 20;
+  const { negrito, seminegrito, medio, regular } = folha.fontes;
+  const alturaAbertura = 84;
+  const primeiro = itens[0].tipo === 'foto' ? FOTO_ALTURA_CARTAO : ALTURA_ANEXO;
+  // Continua na mesma página quando cabem a abertura e a primeira linha.
+  if (folha.livre < 12 + alturaAbertura + primeiro) folha.novaPagina();
+  else folha.y -= 12;
+
+  let base = folha.y - 12;
+  escrever(folha.pagina, 'REGISTRO FOTOGRÁFICO', X, base, {
+    fonte: seminegrito,
+    tamanho: 7.2,
+    cor: COR.marca,
+    espacamento: 1.1,
+  });
+  base -= 26;
   const fotos = itens.filter((i) => i.tipo === 'foto').length;
   const anexos = itens.length - fotos;
   const resumoFotos = [
     fotos ? plural(fotos, 'foto', 'fotos') : '',
     anexos ? plural(anexos, 'anexo em PDF', 'anexos em PDF') : '',
-  ].filter(Boolean).join(' e ');
-  folha.escrever(
-    truncar(`${formulario.definicao.nome}  •  ${resumoFotos}`, normal, 9, LARGURA_UTIL),
-    MARGEM,
-    folha.y - 9,
-    9,
-    normal,
-    COR.suave,
-  );
-  folha.y -= 22;
+  ]
+    .filter(Boolean)
+    .join(' e ');
+  const larguraResumo = larguraTexto(resumoFotos, { fonte: medio, tamanho: 8 });
+  folha.escrever(truncar(`TAG ${tag.nome}`, negrito, 20, LARGURA_UTIL - larguraResumo - 20), X, base, 20, negrito, COR.tinta);
+  folha.textoDireita(resumoFotos, DIREITA, base, 8, medio, COR.suave);
+  base -= 17;
+  folha.escrever(truncar(formulario.definicao.nome, regular, 9.5, LARGURA_UTIL), X, base, 9.5, regular, COR.texto);
+  folha.y = base - 22;
 
   for (let i = 0; i < itens.length; ) {
     const item = itens[i];
@@ -1276,76 +1577,79 @@ async function desenharFotos(folha: Folha, tag: TagDoDossie, formulario: Formula
       i += 1;
       continue;
     }
-    const proximo = itens[i + 1];
-    const par: CartaoFoto[] = proximo?.tipo === 'foto' ? [item, proximo] : [item];
-    desenharLinhaDeFotos(folha, tag, par);
-    i += par.length;
+    const linha: CartaoFoto[] = [];
+    while (linha.length < FOTOS_POR_LINHA && itens[i]?.tipo === 'foto') {
+      linha.push(itens[i] as CartaoFoto);
+      i += 1;
+    }
+    desenharLinhaDeFotos(folha, linha);
   }
 }
 
-/** Maior largura do selo da etapa: id comprido é cortado, não invade o vizinho. */
-const LARGURA_MAXIMA_SELO_ETAPA = 90;
-
-function textoSeloEtapa(folha: Folha, id: string): string {
-  return truncar(id, folha.fontes.negrito, 7.5, LARGURA_MAXIMA_SELO_ETAPA - 10);
-}
-
-function larguraSeloEtapa(folha: Folha, id: string): number {
-  return folha.fontes.negrito.widthOfTextAtSize(textoSeloEtapa(folha, id), 7.5) + 10;
-}
-
-/** Selo escuro com o id da etapa; devolve a largura. */
+/** Selo claro com o id da etapa; devolve a largura. */
 function seloEtapa(folha: Folha, id: string, x: number, topo: number): number {
-  const largura = larguraSeloEtapa(folha, id);
-  caixa(folha.pagina, x, topo, largura, 13, { raio: 3, cor: COR.escuro });
-  folha.escrever(textoSeloEtapa(folha, id), x + 5, topo - 9.3, 7.5, folha.fontes.negrito, COR.branco);
+  const { seminegrito } = folha.fontes;
+  const texto = truncar(id, seminegrito, 7.5, 80);
+  const largura = larguraTexto(texto, { fonte: seminegrito, tamanho: 7.5 }) + 12;
+  retangulo(folha.pagina, { x, topo, largura, altura: 14 }, { raio: 4, cor: COR.superficieForte });
+  folha.escrever(texto, x + 6, baseCentrada(topo - 7, 7.5), 7.5, seminegrito, COR.tinta);
   return largura;
 }
 
-function desenharLinhaDeFotos(folha: Folha, tag: TagDoDossie, par: CartaoFoto[]): void {
-  const { normal, italico } = folha.fontes;
-  const cabecalhos = par.map((c) => {
-    const largura = FOTO_LARGURA_CARTAO - 16 - larguraSeloEtapa(folha, c.id) - 6;
-    return limitarLinhas(quebrarLinhas(c.descricao, normal, 7.8, largura), 2, normal, 7.8, largura);
-  });
-  const alturaCabecalho = Math.max(...cabecalhos.map((l) => Math.max(13, l.length * 9.5))) + 14;
-  const alturaFoto = Math.max(...par.map((c) => c.altura)) + 8;
-  const alturaCartao = alturaCabecalho + alturaFoto + 16;
-  folha.garantir(alturaCartao + 10);
+function desenharLinhaDeFotos(folha: Folha, linha: CartaoFoto[]): void {
+  const { seminegrito, regular, italico } = folha.fontes;
+  folha.garantir(FOTO_ALTURA_CARTAO + FOTO_VAO);
+  const topo = folha.y;
+  const pagina = folha.pagina;
 
-  par.forEach((cartao, j) => {
-    const x = MARGEM + j * (FOTO_LARGURA_CARTAO + 12);
-    const topo = folha.y;
-    caixa(folha.pagina, x, topo, FOTO_LARGURA_CARTAO, alturaCartao, { raio: 5, cor: COR.branco, borda: COR.linha, espessura: 0.7 });
-    const larguraId = seloEtapa(folha, cartao.id, x + 8, topo - 8);
-    cabecalhos[j].forEach((linha, k) => {
-      folha.escrever(linha, x + 8 + larguraId + 6, topo - 17.3 - k * 9.5, 7.8, normal, COR.texto);
+  linha.forEach((cartao, j) => {
+    const x = X + j * (FOTO_LARGURA_CARTAO + FOTO_VAO);
+    retangulo(pagina, { x, topo, largura: FOTO_LARGURA_CARTAO, altura: FOTO_ALTURA_CARTAO }, {
+      raio: 8,
+      cor: COR.branco,
+      borda: COR.linha,
     });
-    const topoFoto = topo - alturaCabecalho;
-    if (cartao.imagem) {
-      folha.pagina.drawImage(cartao.imagem, {
-        x: x + (FOTO_LARGURA_CARTAO - cartao.largura) / 2,
-        y: topoFoto - (alturaFoto + cartao.altura) / 2,
-        width: cartao.largura,
-        height: cartao.altura,
+    const area = {
+      x: x + FOTO_RECUO,
+      topo: topo - FOTO_RECUO,
+      largura: FOTO_LARGURA_CARTAO - FOTO_RECUO * 2,
+      altura: FOTO_ALTURA_IMAGEM,
+    };
+    retangulo(pagina, area, { raio: 5, cor: COR.superficie });
+    const imagem = cartao.imagem;
+    if (imagem) {
+      const escala = Math.min(area.largura / imagem.width, area.altura / imagem.height);
+      const largura = imagem.width * escala;
+      const altura = imagem.height * escala;
+      const caixa = {
+        x: area.x + (area.largura - largura) / 2,
+        topo: area.topo - (area.altura - altura) / 2,
+        largura,
+        altura,
+      };
+      comRecorte(pagina, caixa, 5, () => {
+        pagina.drawImage(imagem, { x: caixa.x, y: caixa.topo - altura, width: largura, height: altura });
       });
     } else {
-      folha.escrever('Foto não pôde ser incorporada.', x + 10, topoFoto - alturaFoto / 2, 8, italico, COR.suave);
+      const aviso = 'Foto não pôde ser incorporada.';
+      const larguraAviso = larguraTexto(aviso, { fonte: italico, tamanho: 7.5 });
+      folha.escrever(aviso, area.x + (area.largura - larguraAviso) / 2, area.topo - area.altura / 2, 7.5, italico, COR.suave);
     }
-    folha.escrever(
-      `Foto ${cartao.numero} de ${cartao.total}  •  ${tag.nome}  •  ${cartao.id}`,
-      x + 8,
-      topo - alturaCartao + 6,
-      7,
-      normal,
-      COR.suave,
-    );
+
+    const base = topo - FOTO_RECUO - FOTO_ALTURA_IMAGEM - 14;
+    const larguraId = folha.escrever(truncar(cartao.id, seminegrito, 8, 90), x + 9, base, 8, seminegrito, COR.tinta);
+    if (cartao.total > 1) {
+      folha.escrever(`  ·  foto ${cartao.numero} de ${cartao.total}`, x + 9 + larguraId, base, 7.5, regular, COR.suave);
+    }
+    quebrarLimitado(cartao.descricao, regular, 7, FOTO_LARGURA_CARTAO - 18, 2).forEach((texto, k) => {
+      folha.escrever(texto, x + 9, base - 12 - k * 9, 7, regular, COR.suave);
+    });
   });
-  folha.y -= alturaCartao + 10;
+  folha.y -= FOTO_ALTURA_CARTAO + FOTO_VAO;
 }
 
 async function desenharAnexo(folha: Folha, tag: TagDoDossie, item: LinhaAnexo): Promise<void> {
-  const { negrito, normal } = folha.fontes;
+  const { seminegrito, regular } = folha.fontes;
   const { midia } = item;
   const nomeAnexo = nomeSemRepetir(
     folha.anexosUsados,
@@ -1364,37 +1668,45 @@ async function desenharAnexo(folha: Folha, tag: TagDoDossie, item: LinhaAnexo): 
     incorporado = false;
   }
 
-  const altura = 36;
-  folha.garantir(altura + 10);
+  folha.garantir(ALTURA_ANEXO + FOTO_VAO);
   const topo = folha.y;
-  caixa(folha.pagina, MARGEM, topo, LARGURA_UTIL, altura, { raio: 5, cor: COR.fundo });
-  const larguraId = seloEtapa(folha, item.id, MARGEM + 8, topo - 6);
+  retangulo(folha.pagina, { x: X, topo, largura: LARGURA_UTIL, altura: ALTURA_ANEXO }, {
+    raio: 8,
+    cor: COR.branco,
+    borda: COR.linha,
+  });
+  const larguraIcone = 18;
+  const topoIcone = topo - (ALTURA_ANEXO - larguraIcone * 1.3) / 2;
+  iconeDocumento(folha.pagina, X + 12, topoIcone, larguraIcone, COR.apagado, COR.superficie);
+  const rotuloPdf = larguraTexto('PDF', { fonte: folha.fontes.negrito, tamanho: 5 });
+  folha.escrever('PDF', X + 12 + (larguraIcone - rotuloPdf) / 2, topoIcone - 17, 5, folha.fontes.negrito, COR.marca);
+
+  const xTexto = X + 12 + larguraIcone + 12;
+  const larguraId = seloEtapa(folha, item.id, xTexto, topo - 8);
   folha.escrever(
-    truncar(item.descricao, normal, 7.8, LARGURA_UTIL - larguraId - 30),
-    MARGEM + 8 + larguraId + 6,
-    topo - 14.3,
-    7.8,
-    normal,
+    truncar(item.descricao, regular, 8, DIREITA - 12 - xTexto - larguraId - 8),
+    xTexto + larguraId + 8,
+    baseCentrada(topo - 15, 8),
+    8,
+    regular,
     COR.texto,
   );
-  caixa(folha.pagina, MARGEM + 8, topo - 21, 9, 11, { raio: 1.5, borda: COR.suave, espessura: 0.8 });
-  folha.escrever('PDF', MARGEM + 21, topo - 29.5, 7, negrito, COR.marca);
   folha.escrever(
     truncar(
-      `${midia.nomeOriginal ?? 'documento.pdf'}  •  ${formatarBytes(midia.tamanho)}  •  ${
+      `${midia.nomeOriginal ?? 'documento.pdf'}  ·  ${formatarBytes(midia.tamanho)}  ·  ${
         incorporado ? `anexado a este PDF como ${nomeAnexo}` : 'não pôde ser anexado a este PDF'
       }`,
-      normal,
-      7.8,
-      LARGURA_UTIL - 50,
+      regular,
+      7.5,
+      DIREITA - 12 - xTexto,
     ),
-    MARGEM + 40,
-    topo - 29.5,
-    7.8,
-    normal,
-    incorporado ? COR.texto : VERMELHO.cor,
+    xTexto,
+    baseCentrada(topo - 32, 7.5),
+    7.5,
+    incorporado ? seminegrito : regular,
+    incorporado ? COR.suave : COR.erro,
   );
-  folha.y -= altura + 10;
+  folha.y -= ALTURA_ANEXO + FOTO_VAO;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -1403,27 +1715,23 @@ async function desenharAnexo(folha: Folha, tag: TagDoDossie, item: LinhaAnexo): 
 
 function rodape(doc: PDFDocument, fontes: Fontes, texto: string): void {
   const paginas = doc.getPages();
+  const base = MARGEM.base - 12;
   paginas.forEach((pagina, i) => {
     pagina.drawLine({
-      start: { x: MARGEM, y: MARGEM + 13 },
-      end: { x: DIREITA, y: MARGEM + 13 },
-      thickness: 0.6,
+      start: { x: X, y: MARGEM.base },
+      end: { x: DIREITA, y: MARGEM.base },
+      thickness: 0.75,
       color: COR.linha,
     });
-    pagina.drawText(truncar(texto, fontes.normal, 7, LARGURA_UTIL - 80), {
-      x: MARGEM,
-      y: MARGEM + 3,
-      size: 7,
-      font: fontes.normal,
-      color: COR.suave,
+    escrever(pagina, truncar(texto, fontes.regular, 7, LARGURA_UTIL - 90), X, base, {
+      fonte: fontes.regular,
+      tamanho: 7,
+      cor: COR.suave,
     });
-    const numero = `Página ${i + 1} de ${paginas.length}`;
-    pagina.drawText(numero, {
-      x: DIREITA - fontes.negrito.widthOfTextAtSize(numero, 7),
-      y: MARGEM + 3,
-      size: 7,
-      font: fontes.negrito,
-      color: COR.texto,
+    escreverDireita(pagina, `Página ${i + 1} de ${paginas.length}`, DIREITA, base, {
+      fonte: fontes.seminegrito,
+      tamanho: 7,
+      cor: COR.texto,
     });
   });
 }
@@ -1434,20 +1742,18 @@ export interface OpcoesPdf {
   titulo: string;
   /** ZIP que leva as fotos quando elas não vão embutidas. */
   arquivoFotos?: string;
+  /** Família tipográfica do documento. Sem ela, o PDF sai em Helvetica. */
+  fontes?: BytesFontes;
 }
 
 /**
- * Monta um PDF com a capa (andamento, identificação, resumo e pendências) e,
+ * Monta um PDF com a capa (indicadores, identificação, resumo e pendências) e,
  * para cada TAG e checklist, a abertura, as seções com as etapas e o registro
  * fotográfico.
  */
 export async function gerarPdf(dossie: Dossie, opcoes: OpcoesPdf): Promise<Blob> {
   const doc = await PDFDocument.create();
-  const fontes: Fontes = {
-    normal: await doc.embedFont(StandardFonts.Helvetica),
-    negrito: await doc.embedFont(StandardFonts.HelveticaBold),
-    italico: await doc.embedFont(StandardFonts.HelveticaOblique),
-  };
+  const fontes = await incorporarFontes(doc, opcoes.fontes);
 
   doc.setTitle(`${opcoes.titulo} — ${dossie.empresa} — ${dossie.nomeProjeto}`);
   doc.setSubject(opcoes.titulo);
@@ -1461,13 +1767,12 @@ export async function gerarPdf(dossie: Dossie, opcoes: OpcoesPdf): Promise<Blob>
     tag.formularios.map((formulario) => ({ tag, formulario })),
   );
 
-  const folha = new Folha(doc, fontes, {
-    titulo: opcoes.titulo,
-    subtitulo: [dossie.painel, dossie.empresa, dossie.nomeProjeto].filter(Boolean).join(' • '),
-  });
+  const contexto = [dossie.painel, dossie.empresa, dossie.nomeProjeto].filter(Boolean).join(' · ');
+  const folha = new Folha(doc, fontes, opcoes.titulo, `Gerado em ${dataBr(dossie.geradoEm)}`);
   desenharCapa(folha, dossie, blocos, opcoes);
 
   for (const { tag, formulario } of blocos) {
+    folha.contexto = `${contexto} · ${tag.nome}`;
     desenharChecklist(folha, tag, formulario);
     if (opcoes.incluirFotos) await desenharFotos(folha, tag, formulario);
   }
@@ -1475,7 +1780,7 @@ export async function gerarPdf(dossie: Dossie, opcoes: OpcoesPdf): Promise<Blob>
   rodape(
     doc,
     fontes,
-    `${dossie.empresa} • ${dossie.nomeProjeto} • gerado em ${dataHoraBr(dossie.geradoEm.getTime())}`,
+    `${dossie.empresa} · ${dossie.nomeProjeto} · gerado em ${dataHoraBr(dossie.geradoEm.getTime())}`,
   );
 
   const bytes = await doc.save();
