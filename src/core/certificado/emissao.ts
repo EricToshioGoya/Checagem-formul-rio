@@ -37,8 +37,15 @@ export async function gerarPdfCertificado(
   }
 
   const template = await carregarTemplateCertificado(painel.certificado);
-  const { gerarCertificado } = await import('./documento');
-  const blob = await gerarCertificado(template, montarContexto(certificado, painel));
+  const [{ gerarCertificado }, { carregarFontesPdf }] = await Promise.all([
+    import('./documento'),
+    import('../export/pdf/carregarFontes'),
+  ]);
+  const blob = await gerarCertificado(
+    template,
+    montarContexto(certificado, painel),
+    await carregarFontesPdf(),
+  );
 
   const nome = [
     'CERTIFICADO',
