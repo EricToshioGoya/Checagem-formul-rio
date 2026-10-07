@@ -1,55 +1,70 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import {
-  MidiaRepository,
-  PreenchimentoRepository,
-  ProjetoRepository,
-} from '../../core/db/repositorios';
-import { carregarFormulario } from '../../core/forms/catalogo';
-import { calcularProgresso, etapaRespondida } from '../../core/forms/progresso';
+import { MidiaRepository, PreenchimentoRepository } from '../../core/db/repositorios';
+import { propagarCabecalho } from '../../core/forms/dadosTag';
+import { useSessao } from '../../core/api/SessaoContexto';
+import type { Bloqueio } from '../../core/api/acessoLocal';
+import { AcessoBloqueado } from '../paineis/AcessoBloqueado';
+import { calcularProgresso, etapaRespondida, etapaVisivel } from '../../core/forms/progresso';
 import type {
-  DefinicaoFormulario,
   Etapa,
   MapaRespostas,
+  TipoResposta,
   ValorResposta,
   ValoresCabecalho,
 } from '../../core/forms/tipos';
-import type { Projeto, Tag } from '../../core/db/tipos';
 import { useSalvamentoAutomatico } from '../../shared/hooks/useSalvamentoAutomatico';
 import { useDesktop } from '../../shared/hooks/useMediaQuery';
 import { Botao } from '../../shared/componentes/Botao';
 import { BarraProgresso } from '../../shared/componentes/BarraProgresso';
-import { Carregando, Erro } from '../../shared/componentes/Estado';
+import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
 import { Modal } from '../../shared/componentes/Modal';
-import { IconeCheck, IconeVoltar } from '../../shared/componentes/Icones';
+import { IconeCheck, IconePdf, IconeVoltar } from '../../shared/componentes/Icones';
+import { DialogoPdfChecklist } from '../pdf/DialogoPdfChecklist';
 import { EtapaCard } from './EtapaCard';
 import { ModalApoio } from './ModalApoio';
 import { CabecalhoFormulario } from './CabecalhoFormulario';
+import { adotarExterno, aplicarMudancas, mudancasDeCabecalho, mudancasDeRespostas } from './mudancas';
+import {
+  contextoDaSolicitacao,
+  contextoDoProjeto,
+  type ContextoPreenchimento,
+} from './contexto';
 
 const ID_CABECALHO = '__cabecalho__';
 type Filtro = 'todas' | 'respondidas' | 'pendentes';
 
-interface Contexto {
-  projeto: Projeto;
-  tag: Tag;
-  definicao: DefinicaoFormulario;
-  preenchimentoId: number;
-}
+/**
+ * Tipos que se respondem com um toque, e não digitando. A resposta vai para o
+ * banco na hora: não há texto em curso para esperar, e o montador pode sair da
+ * tela no instante seguinte.
+ */
+const TIPOS_DISCRETOS = new Set<TipoResposta>([
+  'check',
+  'check_com_foto',
+  'selecao',
+  'foto',
+  'anexo_pdf',
+]);
 
 export function Preenchimento() {
-  const { projetoId, tagId, formId } = useParams();
+  const { projetoId, tagId, formId, solicitacaoId } = useParams();
   const navegar = useNavigate();
   const desktop = useDesktop();
+  const { usuario } = useSessao();
 
-  const [contexto, setContexto] = useState<Contexto | null>(null);
+  const [contexto, setContexto] = useState<ContextoPreenchimento | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [bloqueio, setBloqueio] = useState<Bloqueio | null>(null);
   const [respostas, setRespostas] = useState<MapaRespostas>({});
   const [cabecalho, setCabecalho] = useState<ValoresCabecalho>({});
   const [filtro, setFiltro] = useState<Filtro>('todas');
   const [selecionada, setSelecionada] = useState<string>(ID_CABECALHO);
+  const temCabecalho = (contexto?.definicao.cabecalho.length ?? 0) > 0;
   const [ajuda, setAjuda] = useState<Etapa | null>(null);
   const [indiceAberto, setIndiceAberto] = useState(false);
+  const [pdfAberto, setPdfAberto] = useState(false);
 
   /** Trocar de etapa recomeça a leitura pelo topo do cartão. */
   const selecionar = useCallback((id: string) => {
@@ -57,7 +72,7 @@ export function Preenchimento() {
     window.scrollTo({ top: 0 });
   }, []);
 
-  const preenchimentoId = contexto?.preenchimentoId ?? 0;
+  const preenchimentoId = contexto?.preenchimento.id ?? 0;
 
   const fotos = useLiveQuery(
     async (): Promise<Record<string, number>> =>
@@ -66,43 +81,83 @@ export function Preenchimento() {
     {} as Record<string, number>,
   );
 
+  // O que está gravado no aparelho, como a tela o conhece. Serve para gravar
+  // só o que a pessoa mudou — ver ./mudancas.ts.
+  const baseRespostas = useRef<MapaRespostas>({});
+  const baseCabecalho = useRef<ValoresCabecalho>({});
+
+  // Em somente leitura nada é gravado: a solicitação já saiu das mãos do
+  // montador.
   const salvamentoRespostas = useSalvamentoAutomatico<MapaRespostas>(async (valor) => {
-    if (!contexto) return;
-    await PreenchimentoRepository.substituirRespostas(contexto.preenchimentoId, valor);
-    await ProjetoRepository.marcarAlteracao(contexto.projeto.id!);
+    if (!contexto || contexto.somenteLeitura) return;
+    const mudancas = mudancasDeRespostas(baseRespostas.current, valor);
+    if (Object.keys(mudancas).length === 0) return;
+    await PreenchimentoRepository.aplicarMudancasRespostas(contexto.preenchimento.id, mudancas);
+    baseRespostas.current = aplicarMudancas(baseRespostas.current, mudancas);
+    await contexto.marcarAlteracao();
   });
 
   const salvamentoCabecalho = useSalvamentoAutomatico<ValoresCabecalho>(async (valor) => {
-    if (!contexto) return;
-    await PreenchimentoRepository.salvarCabecalho(contexto.preenchimentoId, valor);
-    await ProjetoRepository.marcarAlteracao(contexto.projeto.id!);
+    if (!contexto || contexto.somenteLeitura) return;
+    const mudancas = mudancasDeCabecalho(baseCabecalho.current, valor);
+    if (Object.keys(mudancas).length === 0) return;
+    await PreenchimentoRepository.aplicarMudancasCabecalho(contexto.preenchimento.id, mudancas);
+    await propagarCabecalho(contexto.preenchimento.id, mudancas);
+    baseCabecalho.current = aplicarMudancas(baseCabecalho.current, mudancas);
+    await contexto.marcarAlteracao();
   });
+
+  // O que a sincronização trouxe de outro aparelho com a tela aberta entra
+  // nela; o que a pessoa está mexendo aqui fica como está.
+  const gravado = useLiveQuery(
+    () => (preenchimentoId ? PreenchimentoRepository.obterPorId(preenchimentoId) : undefined),
+    [preenchimentoId],
+  );
+  useEffect(() => {
+    if (!gravado || gravado.id !== preenchimentoId) return;
+    const respostasGravadas = gravado.respostas ?? {};
+    const respostasAntes = baseRespostas.current;
+    baseRespostas.current = respostasGravadas;
+    setRespostas((tela) => adotarExterno(respostasAntes, tela, respostasGravadas));
+    const cabecalhoGravado = gravado.cabecalho ?? {};
+    const cabecalhoAntes = baseCabecalho.current;
+    baseCabecalho.current = cabecalhoGravado;
+    setCabecalho((tela) => adotarExterno(cabecalhoAntes, tela, cabecalhoGravado));
+  }, [gravado, preenchimentoId]);
 
   useEffect(() => {
     let ativo = true;
     (async () => {
       try {
-        const idProjeto = Number(projetoId);
-        const idTag = Number(tagId);
-        const [projeto, tag] = await Promise.all([
-          ProjetoRepository.obter(idProjeto),
-          ProjetoRepository.obterTag(idTag),
-        ]);
-        if (!projeto || !tag) throw new Error('Projeto ou TAG não encontrados.');
-        const definicao = await carregarFormulario(String(formId));
-        const preenchimento = await PreenchimentoRepository.obterOuCriar(
-          idTag,
-          definicao.id,
-          definicao.revisao,
-        );
+        if (!usuario) return;
+        const resultado = solicitacaoId
+          ? await contextoDaSolicitacao(usuario.id, Number(solicitacaoId))
+          : await contextoDoProjeto(
+              usuario.id,
+              Number(projetoId),
+              Number(tagId),
+              String(formId),
+            );
         if (!ativo) return;
-        setContexto({ projeto, tag, definicao, preenchimentoId: preenchimento.id });
+        if (resultado.bloqueio) {
+          setBloqueio(resultado.bloqueio);
+          return;
+        }
+        const resolvido = resultado.contexto;
+        const { preenchimento } = resolvido;
+        setContexto(resolvido);
+        baseRespostas.current = preenchimento.respostas ?? {};
+        baseCabecalho.current = preenchimento.cabecalho ?? {};
         setRespostas(preenchimento.respostas ?? {});
-        // O cabeçalho começa com os dados já conhecidos do projeto.
-        setCabecalho({
-          numeroPedido: projeto.numeroPedido ?? '',
-          ...(preenchimento.cabecalho ?? {}),
-        });
+        setCabecalho(resolvido.cabecalhoInicial);
+        // Sem campos de cabeçalho (checklist de solicitação), a tela abre
+        // direto na primeira etapa em vez de uma aba vazia.
+        if (resolvido.definicao.cabecalho.length === 0) {
+          const primeira = resolvido.definicao.secoes
+            .flatMap((sec) => sec.etapas)
+            .find((e) => e.ativa !== false && !e.exibirSe);
+          if (primeira) setSelecionada(primeira.id);
+        }
       } catch (e) {
         if (ativo) setErro(e instanceof Error ? e.message : 'Falha ao abrir o formulário.');
       }
@@ -110,16 +165,19 @@ export function Preenchimento() {
     return () => {
       ativo = false;
     };
-  }, [projetoId, tagId, formId]);
+  }, [projetoId, tagId, formId, solicitacaoId, usuario]);
 
+  // As etapas condicionais entram e saem conforme a resposta que as governa.
   const etapas = useMemo(
     () =>
       contexto
         ? contexto.definicao.secoes.flatMap((s) =>
-            s.etapas.filter((e) => e.ativa !== false).map((e) => ({ etapa: e, secao: s })),
+            s.etapas
+              .filter((e) => etapaVisivel(e, respostas))
+              .map((e) => ({ etapa: e, secao: s })),
           )
         : [],
-    [contexto],
+    [contexto, respostas],
   );
 
   const estaRespondida = useCallback(
@@ -127,14 +185,17 @@ export function Preenchimento() {
     [respostas, fotos],
   );
 
+  // A etapa aberta fica na lista mesmo fora do filtro: ao responder uma etapa
+  // no filtro "pendentes" ou trocar de filtro, a tela não esvazia por baixo da
+  // pessoa — a etapa só sai da lista quando ela vai para outra.
   const visiveis = useMemo(
     () =>
       etapas.filter(({ etapa }) => {
-        if (filtro === 'todas') return true;
+        if (filtro === 'todas' || etapa.id === selecionada) return true;
         const ok = estaRespondida(etapa);
         return filtro === 'respondidas' ? ok : !ok;
       }),
-    [etapas, filtro, estaRespondida],
+    [etapas, filtro, estaRespondida, selecionada],
   );
 
   const progresso = useMemo(
@@ -146,12 +207,17 @@ export function Preenchimento() {
   );
 
   const alterarValor = (etapaId: string, valor: ValorResposta | null) => {
+    const tipo = etapas.find((e) => e.etapa.id === etapaId)?.etapa.tipoResposta;
     setRespostas((atual) => {
       const proximo = { ...atual };
       const anterior = proximo[etapaId];
       if (valor === null && !anterior?.observacao) delete proximo[etapaId];
       else proximo[etapaId] = { ...anterior, valor: valor as ValorResposta };
       salvamentoRespostas.agendar(proximo);
+      // Um toque no botão de confirmação não é digitação: grava na hora, para
+      // que recarregar ou sair do aplicativo logo em seguida não descarte o
+      // registro. A espera de 500 ms fica para os campos que se digitam.
+      if (tipo && TIPOS_DISCRETOS.has(tipo)) void salvamentoRespostas.descarregar();
       return proximo;
     });
   };
@@ -175,12 +241,18 @@ export function Preenchimento() {
     });
   };
 
-  const sair = async () => {
+  /** Leva ao banco o que ainda está agendado: sair e gerar o PDF partem dele. */
+  const descarregar = async () => {
     await Promise.all([salvamentoRespostas.descarregar(), salvamentoCabecalho.descarregar()]);
-    navegar(`/projetos/${projetoId}`);
+  };
+
+  const sair = async () => {
+    await descarregar();
+    navegar(contexto?.voltarPara ?? '/');
   };
 
   if (erro) return <div className="p-4"><Erro detalhe={erro} /></div>;
+  if (bloqueio) return <div className="p-4"><AcessoBloqueado bloqueio={bloqueio} /></div>;
   if (!contexto) return <Carregando mensagem="Abrindo o formulário…" />;
 
   const indiceAtual = visiveis.findIndex((v) => v.etapa.id === selecionada);
@@ -197,21 +269,23 @@ export function Preenchimento() {
 
   const indice = (
     <nav aria-label="Etapas do formulário" className="space-y-4">
-      <button
-        type="button"
-        onClick={() => {
-          selecionar(ID_CABECALHO);
-          setIndiceAberto(false);
-        }}
-        className={[
-          'flex min-h-12 w-full items-center rounded-md border-2 px-3 text-left text-base font-semibold',
-          selecionada === ID_CABECALHO
-            ? 'border-abb-red bg-red-50'
-            : 'border-abb-line bg-white',
-        ].join(' ')}
-      >
-        Dados do painel
-      </button>
+      {temCabecalho ? (
+        <button
+          type="button"
+          onClick={() => {
+            selecionar(ID_CABECALHO);
+            setIndiceAberto(false);
+          }}
+          className={[
+            'flex min-h-12 w-full items-center rounded-md border-2 px-3 text-left text-base font-semibold',
+            selecionada === ID_CABECALHO
+              ? 'border-abb-red bg-red-50'
+              : 'border-abb-line-botao bg-abb-offwhite hover:bg-abb-offwhite-hover',
+          ].join(' ')}
+        >
+          Dados do painel
+        </button>
+      ) : null}
 
       {contexto.definicao.secoes.map((secao) => {
         const daSecao = visiveis.filter((v) => v.secao.id === secao.id);
@@ -236,7 +310,7 @@ export function Preenchimento() {
                         'flex min-h-12 w-full items-start gap-2 rounded-md border px-3 py-2 text-left',
                         selecionada === etapa.id
                           ? 'border-abb-red bg-red-50'
-                          : 'border-abb-line bg-white',
+                          : 'border-abb-line-botao bg-abb-offwhite hover:bg-abb-offwhite-hover',
                       ].join(' ')}
                     >
                       <span
@@ -267,23 +341,24 @@ export function Preenchimento() {
     </nav>
   );
 
-  const painel =
-    selecionada === ID_CABECALHO ? (
+  const conteudo =
+    selecionada === ID_CABECALHO && temCabecalho ? (
       <CabecalhoFormulario
         definicao={contexto.definicao}
         valores={cabecalho}
         onChange={alterarCabecalho}
+        daTag={contexto.preenchimento.tagId !== undefined}
       />
     ) : etapaAtual ? (
       <EtapaCard
         etapa={etapaAtual.etapa}
         resposta={respostas[etapaAtual.etapa.id]}
         respondida={estaRespondida(etapaAtual.etapa)}
-        preenchimentoId={contexto.preenchimentoId}
+        preenchimentoId={contexto.preenchimento.id}
         onAlterarValor={(v) => alterarValor(etapaAtual.etapa.id, v)}
         onAlterarObservacao={(t) => alterarObservacao(etapaAtual.etapa.id, t)}
         onAbrirAjuda={() => setAjuda(etapaAtual.etapa)}
-        onFotosAlteradas={() => ProjetoRepository.marcarAlteracao(contexto.projeto.id!)}
+        onFotosAlteradas={() => void contexto.marcarAlteracao()}
       />
     ) : (
       <p className="rounded-lg border border-abb-line bg-white p-6 text-center text-base text-abb-gray">
@@ -291,39 +366,61 @@ export function Preenchimento() {
       </p>
     );
 
+  // `fieldset disabled` desliga todos os controles de uma vez, inclusive os
+  // botões de foto, sem duplicar a lógica em cada tipo de campo.
+  const painel = (
+    <fieldset disabled={contexto.somenteLeitura} className="min-w-0 border-0 p-0">
+      {conteudo}
+    </fieldset>
+  );
+
   return (
     <div className="min-h-dvh bg-abb-bg">
       <header className="sticky top-0 z-30 border-b border-abb-line bg-white shadow-sm">
         <div className="mx-auto max-w-6xl space-y-2 px-3 py-2">
           <div className="flex items-center gap-2">
-            <Botao variante="texto" onClick={sair} aria-label="Voltar ao projeto">
+            <Botao variante="texto" onClick={sair} aria-label={contexto.rotuloVoltar}>
               <IconeVoltar />
             </Botao>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-base font-bold">
-                {contexto.tag.nome} — {contexto.definicao.tipo === 'montagem' ? 'Montagem' : 'Rotina'}
-              </p>
+              <p className="truncate text-base font-bold">{contexto.titulo}</p>
               <p className="hidden truncate text-sm text-abb-gray sm:block">
-                {contexto.definicao.nome} • {contexto.definicao.revisao}
+                {contexto.subtitulo}
               </p>
             </div>
             <span
               className={[
                 'shrink-0 rounded px-2 py-1 text-sm font-semibold',
-                estadoSalvamento === 'erro'
-                  ? 'bg-red-100 text-abb-red'
-                  : estadoSalvamento === 'salvo'
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-neutral-100 text-abb-gray',
+                contexto.somenteLeitura
+                  ? 'bg-neutral-100 text-abb-gray'
+                  : estadoSalvamento === 'erro'
+                    ? 'bg-red-100 text-abb-red'
+                    : estadoSalvamento === 'salvo'
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-neutral-100 text-abb-gray',
               ].join(' ')}
               role="status"
             >
-              {estadoSalvamento === 'erro'
-                ? 'Falha ao salvar'
-                : estadoSalvamento === 'salvo'
-                  ? 'Salvo'
-                  : 'Salvando…'}
+              {contexto.somenteLeitura
+                ? 'Somente leitura'
+                : estadoSalvamento === 'erro'
+                  ? 'Falha ao salvar'
+                  : estadoSalvamento === 'salvo'
+                    ? 'Salvo'
+                    : 'Salvando…'}
             </span>
+            {/* Sempre disponível: com pendências, o PDF sai com elas sinalizadas. */}
+            <Botao
+              tamanho="compacto"
+              variante={progresso.total > 0 && progresso.pendentes === 0 ? 'primario' : 'secundario'}
+              className="shrink-0"
+              onClick={() => setPdfAberto(true)}
+              aria-label="Gerar PDF deste checklist"
+            >
+              <IconePdf className="h-5 w-5" />
+              <span className="hidden sm:inline">Gerar PDF</span>
+              <span className="sm:hidden">PDF</span>
+            </Botao>
           </div>
 
           <BarraProgresso
@@ -346,7 +443,7 @@ export function Preenchimento() {
                     'min-h-10 shrink-0 rounded-full border px-3 text-sm font-semibold capitalize sm:px-4',
                     filtro === f
                       ? 'border-abb-red bg-abb-red text-white'
-                      : 'border-abb-line bg-white text-abb-black',
+                      : 'border-abb-line-botao bg-abb-offwhite text-abb-black hover:bg-abb-offwhite-hover',
                   ].join(' ')}
                 >
                   {f}
@@ -362,7 +459,8 @@ export function Preenchimento() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-3 py-4">
+      <div className="mx-auto max-w-6xl space-y-4 px-3 py-4">
+        {contexto.avisoBloqueio ? <Aviso>{contexto.avisoBloqueio}</Aviso> : null}
         {desktop ? (
           <div className="grid grid-cols-[20rem_1fr] gap-4">
             <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto pr-1">{indice}</div>
@@ -391,7 +489,7 @@ export function Preenchimento() {
                 </Botao>
               </div>
             ) : null}
-            {selecionada === ID_CABECALHO && visiveis.length > 0 ? (
+            {selecionada === ID_CABECALHO && temCabecalho && visiveis.length > 0 ? (
               <Botao
                 variante="primario"
                 larguraTotal
@@ -413,6 +511,19 @@ export function Preenchimento() {
       </Modal>
 
       <ModalApoio etapa={ajuda} onFechar={() => setAjuda(null)} />
+
+      <DialogoPdfChecklist
+        aberto={pdfAberto}
+        alvo={
+          solicitacaoId
+            ? { solicitacaoId: Number(solicitacaoId) }
+            : { projetoId: Number(projetoId), tagId: Number(tagId), formId: contexto.definicao.id }
+        }
+        nome={contexto.definicao.nome}
+        pendentes={progresso.pendentes}
+        antesDeGerar={descarregar}
+        onFechar={() => setPdfAberto(false)}
+      />
     </div>
   );
 }

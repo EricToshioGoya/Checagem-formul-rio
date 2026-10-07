@@ -26,11 +26,16 @@ export const COR = {
   pendenteFundo: hex('#FEF3E2'),
   pendentePonto: hex('#F59E0B'),
   pendenteLinha: hex('#FFFBF5'),
+  erro: hex('#B42318'),
+  erroFundo: hex('#FDECEA'),
+  erroPonto: hex('#E5484D'),
+  erroLinha: hex('#FFF8F7'),
 } as const;
 
 export const PAGINA = { largura: 595.28, altura: 841.89 };
 export const MARGEM = { x: 40, topo: 36, base: 40 };
 export const LARGURA_UTIL = PAGINA.largura - MARGEM.x * 2;
+export const DIREITA = MARGEM.x + LARGURA_UTIL;
 /** Topo da área de conteúdo, abaixo do cabeçalho de página. */
 export const TOPO_CONTEUDO = PAGINA.altura - 84;
 /** Limite inferior da área de conteúdo, acima do rodapé. */
@@ -41,6 +46,7 @@ export interface Fontes {
   medio: PDFFont;
   seminegrito: PDFFont;
   negrito: PDFFont;
+  italico: PDFFont;
 }
 
 /** Arquivos TTF da família tipográfica do documento. */
@@ -49,6 +55,7 @@ export interface BytesFontes {
   medio: Uint8Array;
   seminegrito: Uint8Array;
   negrito: Uint8Array;
+  italico: Uint8Array;
 }
 
 /**
@@ -61,18 +68,20 @@ export async function incorporarFontes(doc: PDFDocument, bytes?: BytesFontes): P
       const { default: fontkit } = await import('@pdf-lib/fontkit');
       doc.registerFontkit(fontkit);
       const opcoes = { subset: true };
-      const [regular, medio, seminegrito, negrito] = await Promise.all([
+      const [regular, medio, seminegrito, negrito, italico] = await Promise.all([
         doc.embedFont(bytes.regular, opcoes),
         doc.embedFont(bytes.medio, opcoes),
         doc.embedFont(bytes.seminegrito, opcoes),
         doc.embedFont(bytes.negrito, opcoes),
+        doc.embedFont(bytes.italico, opcoes),
       ]);
-      return { regular, medio, seminegrito, negrito };
+      return { regular, medio, seminegrito, negrito, italico };
     } catch {
       // Segue para as fontes padrão.
     }
   }
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const negrito = await doc.embedFont(StandardFonts.HelveticaBold);
-  return { regular, medio: regular, seminegrito: negrito, negrito };
+  const italico = await doc.embedFont(StandardFonts.HelveticaOblique);
+  return { regular, medio: regular, seminegrito: negrito, negrito, italico };
 }

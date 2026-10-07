@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Modal } from '../../shared/componentes/Modal';
 import { Aviso } from '../../shared/componentes/Estado';
 import type { Etapa } from '../../core/forms/tipos';
+import { ehApoioDoServidor } from '../../core/media/apoio';
+import { ImagemApoio } from '../../shared/componentes/ImagemApoio';
 
 interface Props {
   etapa: Etapa | null;
@@ -10,9 +12,14 @@ interface Props {
 
 const base = import.meta.env.BASE_URL;
 
+/**
+ * Resolve o caminho do arquivo de apoio dentro da aplicação.
+ *
+ * Nada aqui sai para a rede externa: o schema já recusa esquema e `//`, e esta
+ * função só monta o caminho relativo à base da publicação.
+ */
 function caminho(src: string): string {
-  if (/^(https?:)?\/\//.test(src)) return src;
-  return `${base}${src.replace(/^\//, '')}`;
+  return `${base}${src.replace(/^\/+/, '')}`;
 }
 
 /**
@@ -50,18 +57,23 @@ export function ModalApoio({ etapa, onFechar }: Props) {
             const falhou = falhas[m.src];
             return (
               <figure key={i} className="space-y-2">
-                {falhou ? (
+                {falhou && ehApoioDoServidor(m.src) ? (
+                  <Aviso>
+                    Imagem ainda não baixada neste aparelho. Abra a lista de
+                    painéis com conexão para baixá-la.
+                  </Aviso>
+                ) : falhou ? (
                   <Aviso>
                     Arquivo de apoio ainda não disponível neste aparelho.
                     <br />
                     Caminho esperado: <code className="break-all">{m.src}</code>
                   </Aviso>
                 ) : m.tipo === 'imagem' ? (
-                  <img
-                    src={url}
+                  <ImagemApoio
+                    src={m.src}
                     alt={m.legenda ?? `Referência da etapa ${etapa.id}`}
                     className="w-full rounded-md border border-abb-line bg-white"
-                    onError={() => setFalhas((f) => ({ ...f, [m.src]: true }))}
+                    onFalha={() => setFalhas((f) => (f[m.src] ? f : { ...f, [m.src]: true }))}
                   />
                 ) : m.tipo === 'video' ? (
                   <video
@@ -76,7 +88,7 @@ export function ModalApoio({ etapa, onFechar }: Props) {
                     href={url}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex min-h-12 items-center rounded-md border border-abb-line bg-white px-4 font-semibold text-abb-red"
+                    className="inline-flex min-h-12 items-center rounded-md border border-abb-line-botao bg-abb-offwhite px-4 font-semibold text-abb-red hover:bg-abb-offwhite-hover"
                   >
                     Abrir manual em PDF
                   </a>

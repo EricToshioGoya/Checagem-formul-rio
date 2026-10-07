@@ -24,7 +24,7 @@ function Confirmacao({ valor, onChange }: PropsCampo) {
         'flex min-h-14 w-full items-center gap-3 rounded-md border-2 px-4 text-left text-base font-bold',
         marcado
           ? 'border-green-700 bg-green-50 text-green-800'
-          : 'border-abb-line bg-white text-abb-black',
+          : 'border-abb-line-botao bg-abb-offwhite text-abb-black hover:bg-abb-offwhite-hover',
       ].join(' ')}
     >
       <span
@@ -152,15 +152,11 @@ function GradeNumerica({ etapa, valor, onChange }: PropsCampo) {
                 const v = atual[linha.id]?.[c.id];
                 return (
                   <td key={c.id} className="border border-abb-line p-1">
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      aria-label={`${linha.rotulo} — ${c.rotulo}`}
-                      className="min-h-12 w-full rounded border border-abb-line px-2 text-base"
-                      value={typeof v === 'number' && Number.isFinite(v) ? v : ''}
-                      onChange={(e) =>
-                        alterar(linha.id, c.id, e.target.value === '' ? null : Number(e.target.value))
-                      }
+                    <CampoNumero
+                      compacto
+                      rotuloAcessivel={`${linha.rotulo} — ${c.rotulo}`}
+                      valor={typeof v === 'number' && Number.isFinite(v) ? v : null}
+                      onChange={(novo) => alterar(linha.id, c.id, novo)}
                     />
                   </td>
                 );

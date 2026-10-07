@@ -18,7 +18,7 @@ import {
   type PDFFont,
   type PDFOperator,
   type PDFPage,
-  type RGB,
+  type Color,
 } from 'pdf-lib';
 import { sanitizar } from './texto';
 
@@ -74,7 +74,7 @@ function caminhoRetangulo({ x, topo, largura, altura }: Caixa, raios: Raios): PD
 export function retangulo(
   pagina: PDFPage,
   caixa: Caixa,
-  estilo: { raio?: Raios; cor?: RGB; borda?: RGB; espessura?: number },
+  estilo: { raio?: Raios; cor?: Color; borda?: Color; espessura?: number },
 ): void {
   const { raio = 0, cor, borda, espessura = 0.75 } = estilo;
   if (!cor && !borda) return;
@@ -99,7 +99,7 @@ export function comRecorte(pagina: PDFPage, caixa: Caixa, raio: Raios, desenhar:
 export interface EstiloTexto {
   fonte: PDFFont;
   tamanho: number;
-  cor: RGB;
+  cor: Color;
   /** Espaçamento adicional entre letras, em pontos. */
   espacamento?: number;
 }
@@ -152,10 +152,10 @@ export function alturaMaiuscula(estilo: Pick<EstiloTexto, 'tamanho'>): number {
 }
 
 export interface EstiloSelo {
-  fundo: RGB;
-  texto: RGB;
-  ponto?: RGB;
-  borda?: RGB;
+  fundo: Color;
+  texto: Color;
+  ponto?: Color;
+  borda?: Color;
 }
 
 /** Selo de cantos totalmente arredondados (status). Devolve a largura. */
@@ -216,8 +216,8 @@ export function barraProgresso(
   yCentro: number,
   largura: number,
   fracao: number,
-  cor: RGB,
-  trilho: RGB,
+  cor: Color,
+  trilho: Color,
   altura = 4,
 ): void {
   const topo = yCentro + altura / 2;
@@ -243,8 +243,8 @@ export function anelProgresso(
   raio: number,
   espessura: number,
   fracao: number,
-  cor: RGB,
-  trilho: RGB,
+  cor: Color,
+  trilho: Color,
 ): void {
   pagina.drawCircle({ x: cx, y: cy, size: raio, borderColor: trilho, borderWidth: espessura });
   const f = Math.max(0, Math.min(1, fracao));
@@ -289,8 +289,8 @@ export function iconeDocumento(
   x: number,
   topo: number,
   largura: number,
-  cor: RGB,
-  fundo: RGB,
+  cor: Color,
+  fundo: Color,
 ): void {
   const altura = largura * 1.3;
   const dobra = largura * 0.3;

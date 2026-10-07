@@ -32,6 +32,18 @@ export function dataHoraBr(valor: number | undefined): string {
   });
 }
 
+/** Duração legível e curta: "2 d 4 h", "3 h 10 min", "45 min". */
+export function duracaoCurta(ms: number): string {
+  const minutos = Math.floor(ms / 60_000);
+  if (minutos < 1) return 'menos de 1 min';
+  const d = Math.floor(minutos / 1440);
+  const h = Math.floor((minutos % 1440) / 60);
+  const m = minutos % 60;
+  if (d > 0) return h ? `${d} d ${h} h` : `${d} d`;
+  if (h > 0) return m ? `${h} h ${m} min` : `${h} h`;
+  return `${m} min`;
+}
+
 /**
  * Nome do arquivo exportado:
  * `EMPRESA_PROJETO_TIPO-VERIFICACAO_AAAA-MM-DD`.
@@ -50,6 +62,17 @@ export function nomeArquivoExportacao(
     dataIso(data),
   ];
   return `${partes.join('_')}.${extensao}`;
+}
+
+/**
+ * Nome de arquivo que ainda não foi usado no mesmo pacote: o repetido ganha
+ * `-2`, `-3`… antes da extensão. Registra o nome devolvido em `usados`.
+ */
+export function nomeSemRepetir(usados: Set<string>, base: string, extensao: string): string {
+  let nome = `${base}.${extensao}`;
+  for (let n = 2; usados.has(nome.toLowerCase()); n += 1) nome = `${base}-${n}.${extensao}`;
+  usados.add(nome.toLowerCase());
+  return nome;
 }
 
 export function formatarBytes(bytes: number): string {

@@ -2,6 +2,7 @@ import regular from './fontes/Inter-Regular.ttf?url';
 import medio from './fontes/Inter-Medium.ttf?url';
 import seminegrito from './fontes/Inter-SemiBold.ttf?url';
 import negrito from './fontes/Inter-Bold.ttf?url';
+import italico from './fontes/Inter-Italic.ttf?url';
 import type { BytesFontes } from './tema';
 
 async function baixar(url: string): Promise<Uint8Array> {
@@ -16,8 +17,10 @@ async function baixar(url: string): Promise<Uint8Array> {
  */
 export async function carregarFontesPdf(): Promise<BytesFontes | undefined> {
   try {
-    const [r, m, s, n] = await Promise.all([regular, medio, seminegrito, negrito].map(baixar));
-    return { regular: r, medio: m, seminegrito: s, negrito: n };
+    const [r, m, s, n, i] = await Promise.all(
+      [regular, medio, seminegrito, negrito, italico].map(baixar),
+    );
+    return { regular: r, medio: m, seminegrito: s, negrito: n, italico: i };
   } catch {
     return undefined;
   }

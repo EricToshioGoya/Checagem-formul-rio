@@ -1,10 +1,11 @@
 import type { PDFFont } from 'pdf-lib';
 
-/** Símbolos usados nos protocolos, trocados quando a fonte não os possui. */
+/** Símbolos usados nos protocolos, trocados quando a fonte não os desenha. */
 const SUBSTITUICOES: Record<string, string> = {
-  '\u03a9': 'ohm', // letra grega ômega
-  '\u2126': 'ohm', // símbolo de ohm
+  'Ω': 'ohm',
+  '\u2126': 'ohm', // sinal de ohm, distinto do ômega
   'ω': 'ohm',
+  'μ': 'µ',
   '≤': '<=',
   '≥': '>=',
   '≈': '~',
@@ -20,6 +21,8 @@ const SUBSTITUICOES: Record<string, string> = {
   '”': '"',
   '‘': "'",
   '’': "'",
+  ' ': ' ',
+  '\t': '  ',
 };
 
 /**
@@ -28,8 +31,15 @@ const SUBSTITUICOES: Record<string, string> = {
  */
 const WINANSI_EXTRA = new Set(Array.from('€‚ƒ„…†‡ˆ‰Š‹ŒŽ•–—˜™š›œžŸ'));
 
+/** O caractere tem desenho nas fontes padrão (WinAnsi). */
+function desenhavel(c: string): boolean {
+  const cp = c.codePointAt(0)!;
+  return (cp >= 0x20 && cp < 0x7f) || (cp >= 0xa0 && cp <= 0xff) || WINANSI_EXTRA.has(c);
+}
+
 const caracteresPorFonte = new WeakMap<PDFFont, Set<number>>();
 
+/** Caracteres que a fonte desenha: WinAnsi nas padrão, o cmap nas incorporadas. */
 function suportados(fonte: PDFFont): Set<number> {
   let conjunto = caracteresPorFonte.get(fonte);
   if (!conjunto) {
@@ -40,26 +50,33 @@ function suportados(fonte: PDFFont): Set<number> {
 }
 
 /**
- * Caractere fora da fonte aborta a geração (fontes padrão, WinAnsi) ou sai
- * em branco (fontes incorporadas), então todo texto passa por aqui antes de ir
- * para a página. Sem fonte, o filtro é o WinAnsi.
+ * Caractere fora da fonte aborta a geração (fontes padrão, WinAnsi) ou sai em
+ * branco (fontes incorporadas), então tudo passa por aqui antes de ir para a
+ * página. Com a fonte, o que ela desenha passa direto (MΩ, ≤, ≥ na Inter);
+ * sem ela, o filtro é o WinAnsi.
  */
 export function sanitizar(valor: string, fonte?: PDFFont): string {
   const conjunto = fonte ? suportados(fonte) : undefined;
   return Array.from(valor ?? '')
     .map((c) => {
       const cp = c.codePointAt(0)!;
-      if (cp === 10 || cp === 13) return ' ';
-      if (cp === 9) return '  ';
+      // Quebras de linha e qualquer outro caractere de controle (que chega
+      // colado de outros programas) viram espaço: nenhuma fonte tem desenho
+      // para eles e o WinAnsi abortaria a geração do PDF inteiro.
+      if (cp < 0x20 || cp === 0x7f) return c === '\t' ? '  ' : ' ';
       if (cp === 0xa0 || cp === 0x202f) return ' ';
       if (conjunto?.has(cp)) return c;
       const troca = SUBSTITUICOES[c];
       if (troca !== undefined) return troca;
-      if (cp < 0x80) return c;
-      if (!conjunto && cp >= 0xa0 && cp <= 0xff) return c;
-      if (!conjunto && WINANSI_EXTRA.has(c)) return c;
-      const semAcento = c.normalize('NFD').replace(/[̀-ͯ]/g, '');
-      return semAcento === c ? '?' : semAcento;
+      if (desenhavel(c)) return c;
+      // Sem o acento (e na forma de compatibilidade: "ﬁ" vira "fi") o
+      // caractere pode ter desenho — mas só vale se tiver mesmo: "й" vira
+      // "и", que continua fora da tabela.
+      const simples = c.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+      const trocaSimples = SUBSTITUICOES[simples];
+      if (trocaSimples !== undefined) return trocaSimples;
+      if (simples && simples !== c && Array.from(simples).every(desenhavel)) return simples;
+      return '?';
     })
     .join('');
 }
@@ -104,7 +121,12 @@ export function quebrarLinhas(
   return linhas;
 }
 
-export function truncar(texto: string, fonte: PDFFont, tamanho: number, largura: number): string {
+export function truncar(
+  texto: string,
+  fonte: PDFFont,
+  tamanho: number,
+  largura: number,
+): string {
   const limpo = sanitizar(texto, fonte);
   if (fonte.widthOfTextAtSize(limpo, tamanho) <= largura) return limpo;
   let corte = limpo;

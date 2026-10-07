@@ -1,19 +1,22 @@
 import { useEffect, useState } from 'react';
-import { formulariosAtivos } from '../../core/forms/catalogo';
+import { formulariosDoPainel } from '../../core/forms/catalogo';
 import { progressoDoProjeto } from '../../core/forms/progressoProjeto';
 import type { EntradaCatalogo } from '../../core/forms/tipos';
 import { baixarBlob } from '../../shared/utils/download';
 import { Botao } from '../../shared/componentes/Botao';
 import { Modal } from '../../shared/componentes/Modal';
 import { Aviso, Erro } from '../../shared/componentes/Estado';
+import { ArquivosGerados, EscolhaFotos } from './PartesDialogoPdf';
 
 interface Props {
   aberto: boolean;
   projetoId: number;
+  /** Painel do projeto: limita o PDF aos checklists daquela linha. */
+  painelSlug?: string;
   onFechar: () => void;
 }
 
-export function DialogoGerarPdf({ aberto, projetoId, onFechar }: Props) {
+export function DialogoGerarPdf({ aberto, projetoId, painelSlug, onFechar }: Props) {
   const [entradas, setEntradas] = useState<EntradaCatalogo[]>([]);
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [incluirFotos, setIncluirFotos] = useState(true);
@@ -28,15 +31,17 @@ export function DialogoGerarPdf({ aberto, projetoId, onFechar }: Props) {
     setConcluido(null);
     (async () => {
       try {
-        const lista = await formulariosAtivos();
+        const lista = await formulariosDoPainel(painelSlug);
         setEntradas(lista);
         setSelecionados(lista.map((e) => e.id));
-        setPendentes((await progressoDoProjeto(projetoId)).progresso.pendentes);
+        setPendentes(
+          (await progressoDoProjeto(projetoId, painelSlug)).progresso.pendentes,
+        );
       } catch (e) {
         setErro(e instanceof Error ? e.message : 'Falha ao preparar a geração.');
       }
     })();
-  }, [aberto, projetoId]);
+  }, [aberto, projetoId, painelSlug]);
 
   const gerar = async () => {
     setGerando(true);
@@ -78,7 +83,7 @@ export function DialogoGerarPdf({ aberto, projetoId, onFechar }: Props) {
         {pendentes !== null && pendentes > 0 ? (
           <Aviso>
             Há <strong>{pendentes}</strong> etapa{pendentes === 1 ? '' : 's'} sem resposta.
-            O PDF será gerado assim mesmo e essas etapas sairão como{' '}
+            O PDF será gerado assim mesmo, com essas etapas sinalizadas como{' '}
             <strong>“Não verificado”</strong>.
           </Aviso>
         ) : null}
@@ -89,7 +94,7 @@ export function DialogoGerarPdf({ aberto, projetoId, onFechar }: Props) {
             {entradas.map((e) => (
               <label
                 key={e.id}
-                className="flex min-h-12 items-center gap-3 rounded-md border border-abb-line bg-white px-3"
+                className="flex min-h-12 items-center gap-3 rounded-md border border-abb-line-botao bg-abb-offwhite px-3 hover:bg-abb-offwhite-hover"
               >
                 <input
                   type="checkbox"
@@ -109,51 +114,10 @@ export function DialogoGerarPdf({ aberto, projetoId, onFechar }: Props) {
           </div>
         </fieldset>
 
-        <fieldset>
-          <legend className="mb-2 text-base font-bold">Fotos</legend>
-          <div className="space-y-2">
-            <label className="flex min-h-12 items-center gap-3 rounded-md border border-abb-line bg-white px-3">
-              <input
-                type="radio"
-                name="fotos"
-                className="h-6 w-6"
-                checked={incluirFotos}
-                onChange={() => setIncluirFotos(true)}
-              />
-              <span className="text-base">Fotos incorporadas ao PDF</span>
-            </label>
-            <label className="flex min-h-12 items-center gap-3 rounded-md border border-abb-line bg-white px-3">
-              <input
-                type="radio"
-                name="fotos"
-                className="h-6 w-6"
-                checked={!incluirFotos}
-                onChange={() => setIncluirFotos(false)}
-              />
-              <span className="text-base">
-                PDF sem fotos + arquivo ZIP separado com as imagens
-              </span>
-            </label>
-          </div>
-        </fieldset>
+        <EscolhaFotos incluirFotos={incluirFotos} onChange={setIncluirFotos} />
 
         {erro ? <Erro detalhe={erro} /> : null}
-
-        {concluido ? (
-          <div className="rounded-md border border-green-600 bg-green-50 p-3 text-base">
-            <p className="font-bold text-green-800">Arquivos gerados:</p>
-            <ul className="mt-1 list-disc pl-5">
-              {concluido.map((n) => (
-                <li key={n} className="break-all">
-                  {n}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-2 text-sm text-abb-gray">
-              Envie o PDF por e-mail ao inspetor da ABB.
-            </p>
-          </div>
-        ) : null}
+        {concluido ? <ArquivosGerados nomes={concluido} /> : null}
       </div>
     </Modal>
   );
