@@ -684,7 +684,8 @@ O documento:
 - Tipografia Inter (subconjunto Latin, licença OFL) em `src/core/export/pdf/fontes`,
   incorporada via `@pdf-lib/fontkit` e incluída no precache. Se a fonte não
   carregar, o PDF sai em Helvetica com o mesmo leiaute. Cores e medidas ficam em
-  `src/core/export/pdf/tema.ts`; as primitivas de desenho em `desenho.ts`.
+  `src/core/export/pdf/tema.ts`; as primitivas de desenho em `desenho.ts`. O
+  certificado de produto (`core/certificado/documento.ts`) usa o mesmo tema.
 
 Nada no gerador conhece um checklist ou painel específico: seções, etapas,
 tipos de resposta e campos vêm da definição. Um checklist montado depois na
