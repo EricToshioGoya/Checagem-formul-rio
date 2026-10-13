@@ -12,7 +12,7 @@ import { AvisoFlutuante } from '../../shared/componentes/AvisoFlutuante';
 import { Botao } from '../../shared/componentes/Botao';
 import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { Carregando, Erro } from '../../shared/componentes/Estado';
-import { IconeBusca, IconeInfinito, IconeMais } from '../../shared/componentes/Icones';
+import { IconeBusca, IconeInfinito, IconeMais, IconeSeta } from '../../shared/componentes/Icones';
 import { Paginacao } from '../../shared/componentes/Paginacao';
 import { sessaoAdminAcabou } from './sessaoAdmin';
 import { dataBr, dataHoraBr, duracaoCurta } from '../../shared/utils/texto';
@@ -39,8 +39,19 @@ const PILULA: Record<StatusAcesso, { texto: string; classe: string; ponto: strin
   recusada: { texto: 'Recusado', classe: 'bg-neutral-100 text-neutral-600 ring-neutral-200', ponto: 'bg-neutral-400' },
 };
 
-/** Registros por página: cabem numa tela sem rolar, com as linhas compactas. */
+/** Contas por página: cabem numa tela sem rolar, com as linhas recolhidas. */
 const POR_PAGINA = 25;
+
+/** Ordem e rótulos do resumo de cada conta. */
+const RESUMO: Array<{ status: StatusAcesso; singular: string; plural: string }> = [
+  { status: 'pendente', singular: 'aguardando', plural: 'aguardando' },
+  { status: 'aprovada', singular: 'ativo', plural: 'ativos' },
+  { status: 'expirada', singular: 'expirado', plural: 'expirados' },
+  { status: 'revogada', singular: 'retirado', plural: 'retirados' },
+  { status: 'recusada', singular: 'recusado', plural: 'recusados' },
+];
+
+type ContaComAcessos = RespostaAcessosAdmin['contas'][number];
 
 interface Props {
   /** A sessão de administrador acabou no servidor: volta para o login. */
@@ -75,6 +86,8 @@ export function GestaoAcessos({ onSessaoVencida, onAlterado }: Props) {
   const [paraEncerrar, setParaEncerrar] = useState<AcessoAdmin | null>(null);
   const [paraApagar, setParaApagar] = useState<AcessoAdmin | null>(null);
   const [destaque, setDestaque] = useState<Set<number>>(new Set());
+  /** Contas abertas, pelo id do usuário: cada uma mostra os seus painéis. */
+  const [abertas, setAbertas] = useState<Set<number>>(new Set());
   const [aviso, setAviso] = useState<string | null>(null);
   const temporizadorAviso = useRef<number | undefined>(undefined);
 
@@ -94,7 +107,7 @@ export function GestaoAcessos({ onSessaoVencida, onAlterado }: Props) {
         })}`,
       );
       // Página que ficou vazia (a última linha dela saiu): volta uma.
-      if (resposta.acessos.length === 0 && resposta.pagina > 1) {
+      if (resposta.contas.length === 0 && resposta.pagina > 1) {
         setPagina(resposta.pagina - 1);
         return null;
       }
@@ -178,9 +191,12 @@ export function GestaoAcessos({ onSessaoVencida, onAlterado }: Props) {
       setLiberarAberto(false);
       const novo = await carregar();
       const ids =
-        novo?.acessos
-          .filter((a) => a.usuario.id === usuarioId && painelIds.includes(a.painel.id))
+        novo?.contas
+          .find((c) => c.usuario.id === usuarioId)
+          ?.acessos.filter((a) => painelIds.includes(a.painel.id))
           .map((a) => a.id) ?? [];
+      // A conta liberada abre, para mostrar o que mudou.
+      setAbertas((atual) => new Set(atual).add(usuarioId));
       avisar(mensagem, ids);
     },
     [avisar, carregar],
@@ -218,7 +234,13 @@ export function GestaoAcessos({ onSessaoVencida, onAlterado }: Props) {
   if (!dados && !erro) return <Carregando mensagem="Lendo os acessos…" />;
 
   const contagem = dados?.contagem ?? { ativos: 0, temporarios: 0, vencendo: 0, pendentes: 0, encerrados: 0 };
-  const visiveis = dados?.acessos ?? [];
+  const contas = dados?.contas ?? [];
+  const alternar = (usuarioId: number) =>
+    setAbertas((atual) => {
+      const nova = new Set(atual);
+      if (!nova.delete(usuarioId)) nova.add(usuarioId);
+      return nova;
+    });
   const filtrando = filtro !== 'todos' || busca.trim() !== '' || painelFiltro !== 'todos';
   const mudarFiltro = (novo: Filtro) => {
     setFiltro(novo);
@@ -349,7 +371,7 @@ export function GestaoAcessos({ onSessaoVencida, onAlterado }: Props) {
 
           <div className="flex items-center justify-between gap-2 text-sm text-abb-gray">
             <span>
-              {plural(dados.total, 'registro', 'registros')}
+              {plural(dados.total, 'conta', 'contas')}
               {filtrando ? ' com estes filtros' : ''}
             </span>
             {filtrando ? (
@@ -374,21 +396,23 @@ export function GestaoAcessos({ onSessaoVencida, onAlterado }: Props) {
                 Liberar o primeiro acesso
               </Botao>
             </div>
-          ) : visiveis.length === 0 ? (
+          ) : contas.length === 0 ? (
             <div className="rounded-2xl border border-abb-line bg-white p-8 text-center text-base text-abb-gray">
               Nada encontrado com esses filtros.
             </div>
           ) : (
             <ul className="divide-y divide-abb-line/70 overflow-hidden rounded-xl border border-abb-line bg-white shadow-sm">
-              {visiveis.map((a) => (
-                <LinhaAcesso
-                  key={a.id}
-                  acesso={a}
+              {contas.map((conta) => (
+                <LinhaConta
+                  key={conta.usuario.id}
+                  conta={conta}
                   agora={agora}
-                  destacado={destaque.has(a.id)}
-                  onPrazo={(acao) => setPrazoAlvo({ acesso: a, acao })}
-                  onEncerrar={() => setParaEncerrar(a)}
-                  onApagar={() => setParaApagar(a)}
+                  aberta={abertas.has(conta.usuario.id)}
+                  destaque={destaque}
+                  onAlternar={() => alternar(conta.usuario.id)}
+                  onPrazo={(acesso, acao) => setPrazoAlvo({ acesso, acao })}
+                  onEncerrar={setParaEncerrar}
+                  onApagar={setParaApagar}
                 />
               ))}
             </ul>
@@ -446,6 +470,117 @@ export function GestaoAcessos({ onSessaoVencida, onAlterado }: Props) {
   );
 }
 
+interface PropsConta {
+  conta: ContaComAcessos;
+  agora: number;
+  aberta: boolean;
+  /** Acessos recém-alterados, para piscar em verde. */
+  destaque: Set<number>;
+  onAlternar: () => void;
+  onPrazo: (acesso: AcessoAdmin, acao: AcaoPrazo) => void;
+  onEncerrar: (acesso: AcessoAdmin) => void;
+  onApagar: (acesso: AcessoAdmin) => void;
+}
+
+/**
+ * Uma conta por linha, com o resumo dos painéis dela; ao abrir, cada painel
+ * aparece com a validade e as ações. Assim uma conta com vários painéis não
+ * vira várias linhas repetidas.
+ */
+function LinhaConta({ conta, agora, aberta, destaque, onAlternar, onPrazo, onEncerrar, onApagar }: PropsConta) {
+  const { usuario, acessos } = conta;
+  const status = acessos.map((a) => statusAgora(a, agora));
+  const contagem = RESUMO.map((r) => ({ ...r, n: status.filter((s) => s === r.status).length })).filter(
+    (r) => r.n > 0,
+  );
+  // O acesso com prazo que vence primeiro: é o que pede atenção na linha fechada.
+  const proximo = acessos
+    .filter((a, i) => status[i] === 'aprovada' && a.expiraEm !== null)
+    .sort((a, b) => a.expiraEm! - b.expiraEm!)[0];
+  const restante = proximo ? proximo.expiraEm! - agora : null;
+  const idLista = `acessos-conta-${usuario.id}`;
+
+  return (
+    <li className={acessos.some((a) => destaque.has(a.id)) && !aberta ? 'bg-green-50' : undefined}>
+      <button
+        type="button"
+        aria-expanded={aberta}
+        aria-controls={idLista}
+        onClick={onAlternar}
+        className={[
+          'grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 px-3 py-2.5 text-left transition-colors',
+          'md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.25fr)_auto]',
+          aberta ? 'bg-neutral-50' : 'hover:bg-neutral-50',
+        ].join(' ')}
+      >
+        <span className="flex min-w-0 items-center gap-2.5">
+          <Avatar nome={usuario.nome} chave={usuario.email} pequeno />
+          <span className="min-w-0">
+            <span className="block truncate text-sm leading-tight font-semibold">{usuario.nome}</span>
+            <span className="block truncate text-xs text-abb-gray">{usuario.email}</span>
+          </span>
+        </span>
+
+        <span className="order-3 col-span-2 flex min-w-0 flex-wrap items-center gap-1.5 md:order-none md:col-span-1">
+          <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-xs font-semibold">
+            {plural(acessos.length, 'painel', 'painéis')}
+          </span>
+          {contagem.map((r) => (
+            <span
+              key={r.status}
+              className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ring-1 ${PILULA[r.status].classe}`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${PILULA[r.status].ponto}`} />
+              {plural(r.n, r.singular, r.plural)}
+            </span>
+          ))}
+        </span>
+
+        <span className="order-4 col-span-2 min-w-0 truncate text-xs md:order-none md:col-span-1">
+          {proximo && restante !== null ? (
+            <>
+              <span className={`font-semibold ${restante <= JANELA_VENCENDO ? 'text-amber-800' : 'text-abb-black'}`}>
+                Próximo vencimento em {duracaoCurta(restante)}
+              </span>
+              <span className="text-abb-gray"> · {proximo.painel.nome}</span>
+            </>
+          ) : status.includes('aprovada') ? (
+            <span className="inline-flex items-center gap-1.5">
+              <IconeInfinito className="h-4 w-4 shrink-0 text-abb-gray" />
+              <span className="font-semibold">Sem prazo</span>
+            </span>
+          ) : null}
+        </span>
+
+        <span className="order-2 flex items-center justify-end gap-1 text-sm font-semibold text-abb-gray md:order-none">
+          <span className="hidden sm:inline">{aberta ? 'Ocultar' : 'Ver painéis'}</span>
+          <IconeSeta className={`h-4 w-4 transition-transform ${aberta ? 'rotate-90' : ''}`} />
+        </span>
+      </button>
+
+      {aberta ? (
+        <ul
+          id={idLista}
+          aria-label={`Painéis de ${usuario.nome}`}
+          className="divide-y divide-abb-line/50 border-t border-abb-line/70 bg-neutral-50/60"
+        >
+          {acessos.map((a) => (
+            <LinhaAcesso
+              key={a.id}
+              acesso={a}
+              agora={agora}
+              destacado={destaque.has(a.id)}
+              onPrazo={(acao) => onPrazo(a, acao)}
+              onEncerrar={() => onEncerrar(a)}
+              onApagar={() => onApagar(a)}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
 interface PropsLinha {
   acesso: AcessoAdmin;
   agora: number;
@@ -456,31 +591,23 @@ interface PropsLinha {
   onApagar: () => void;
 }
 
+/** Um painel da conta aberta: situação, validade e ações. */
 function LinhaAcesso({ acesso: a, agora, destacado, onPrazo, onEncerrar, onApagar }: PropsLinha) {
   const st = statusAgora(a, agora);
   const pilula = PILULA[st];
 
-  // Uma linha por registro a partir de 768 px; no celular, quem e as ações em
-  // cima e o painel com a validade embaixo — sempre denso, para caber muitos
-  // registros sem rolar.
+  // Uma linha por painel a partir de 768 px, recuada sob a conta; no
+  // celular, o painel e as ações em cima e a validade embaixo.
   return (
     <li
       className={[
-        'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 px-3 py-2.5 transition-colors duration-700',
-        'md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.25fr)_auto]',
-        destacado ? 'bg-green-50' : 'hover:bg-neutral-50',
+        'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 py-2 pr-3 pl-6 transition-colors duration-700',
+        'md:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_auto] md:pl-14',
+        destacado ? 'bg-green-50' : 'hover:bg-white',
       ].join(' ')}
     >
-      <div className="flex min-w-0 items-center gap-2.5">
-        <Avatar nome={a.usuario.nome} chave={a.usuario.email} pequeno />
-        <div className="min-w-0">
-          <p className="truncate text-sm leading-tight font-semibold">{a.usuario.nome}</p>
-          <p className="truncate text-xs text-abb-gray">{a.usuario.email}</p>
-        </div>
-      </div>
-
-      <div className="order-3 col-span-2 flex min-w-0 flex-wrap items-center gap-1.5 md:order-none md:col-span-1">
-        <span className="truncate rounded-md bg-neutral-100 px-2 py-0.5 text-xs font-semibold">
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <span className="truncate rounded-md bg-white px-2 py-0.5 text-xs font-semibold ring-1 ring-abb-line">
           {a.painel.nome}
         </span>
         <span
@@ -491,7 +618,7 @@ function LinhaAcesso({ acesso: a, agora, destacado, onPrazo, onEncerrar, onApaga
         </span>
       </div>
 
-      <div className="order-4 col-span-2 min-w-0 md:order-none md:col-span-1">
+      <div className="order-3 col-span-2 min-w-0 md:order-none md:col-span-1">
         <Validade acesso={a} status={st} agora={agora} />
       </div>
 

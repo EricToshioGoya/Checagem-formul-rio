@@ -984,9 +984,10 @@ export const rotas: Record<string, Manipulador> = {
   // --------------------------------------------------- admin › acessos
 
   /**
-   * Todos os acessos de todos os painéis, mais as contas e os painéis que a
-   * tela precisa para liberar um acesso novo. `agora` é o relógio do servidor:
-   * a contagem regressiva da tela se acerta por ele, e não pelo do aparelho.
+   * Os acessos de todos os painéis, agrupados por conta — a página é de
+   * contas —, mais os painéis que a tela precisa para liberar um acesso novo.
+   * `agora` é o relógio do servidor: a contagem regressiva da tela se acerta
+   * por ele, e não pelo do aparelho.
    */
   'GET /api/admin/acessos': (ctx) => {
     exigirAdmin(ctx);
@@ -1024,27 +1025,48 @@ export const rotas: Record<string, Manipulador> = {
            JOIN usuarios u ON u.id = s.usuarioId
            LEFT JOIN usuarios d ON d.id = s.decididoPor
           ${onde}`;
-
-    const total = Number((banco.prepare(`SELECT COUNT(*) AS n ${base}`).get(...valores) as { n: number }).n);
-
     // Ordem de leitura: primeiro o que pede decisão, depois o que vence
     // antes, depois o acesso sem prazo, e por fim o histórico.
-    const linhas = banco
-      .prepare(
-        `SELECT s.id, s.status, s.mensagem, s.criadoEm, s.decididoEm, s.expiraEm,
-                p.id AS painelId, p.nome AS painelNome,
-                u.id AS usuarioId, u.nome AS usuarioNome, u.email AS usuarioEmail,
-                d.nome AS decididoPorNome,
-                CASE WHEN s.status = 'pendente' THEN 0
+    const peso = `CASE WHEN s.status = 'pendente' THEN 0
                      WHEN s.status = 'aprovada' AND s.expiraEm > ? THEN 1
                      WHEN s.status = 'aprovada' AND s.expiraEm IS NULL THEN 2
-                     ELSE 3 END AS peso
-           ${base}
-          ORDER BY peso, CASE WHEN peso = 1 THEN s.expiraEm END,
-                   COALESCE(s.decididoEm, s.criadoEm) DESC
-          LIMIT ? OFFSET ?`,
-      )
-      .all(agora, ...valores, porPagina, deslocamento) as Array<Record<string, unknown>>;
+                     ELSE 3 END`;
+
+    // A página é de contas, e não de registros: cada conta vem inteira, com
+    // todos os seus painéis, e nunca fica dividida entre duas páginas.
+    const total = Number(
+      (banco.prepare(`SELECT COUNT(DISTINCT s.usuarioId) AS n ${base}`).get(...valores) as { n: number }).n,
+    );
+    const contasDaPagina = (
+      banco
+        .prepare(
+          `SELECT s.usuarioId,
+                  MIN(${peso}) AS pesoConta,
+                  MIN(CASE WHEN (${peso}) = 1 THEN s.expiraEm END) AS venceAntes,
+                  MAX(COALESCE(s.decididoEm, s.criadoEm)) AS recente
+             ${base}
+            GROUP BY s.usuarioId
+            ORDER BY pesoConta, CASE WHEN pesoConta = 1 THEN venceAntes END,
+                     recente DESC, s.usuarioId
+            LIMIT ? OFFSET ?`,
+        )
+        .all(agora, agora, ...valores, porPagina, deslocamento) as Array<{ usuarioId: number }>
+    ).map((c) => Number(c.usuarioId));
+
+    const linhas = contasDaPagina.length
+      ? (banco
+          .prepare(
+            `SELECT s.id, s.status, s.mensagem, s.criadoEm, s.decididoEm, s.expiraEm,
+                    p.id AS painelId, p.nome AS painelNome,
+                    u.id AS usuarioId, u.nome AS usuarioNome, u.email AS usuarioEmail,
+                    d.nome AS decididoPorNome, ${peso} AS peso
+               ${base}
+               ${onde ? 'AND' : 'WHERE'} s.usuarioId IN (${contasDaPagina.map(() => '?').join(', ')})
+              ORDER BY peso, CASE WHEN peso = 1 THEN s.expiraEm END,
+                       COALESCE(s.decididoEm, s.criadoEm) DESC`,
+          )
+          .all(agora, ...valores, ...contasDaPagina) as Array<Record<string, unknown>>)
+      : [];
 
     // Os cartões do topo contam tudo, e não só a página ou o filtro.
     const c = banco
@@ -1075,24 +1097,35 @@ export const rotas: Record<string, Manipulador> = {
         pendentes: Number(c.pendentes),
         encerrados: Number(c.encerrados),
       },
-      acessos: linhas.map((l) => {
-        const expiraEm = l.expiraEm === null ? null : Number(l.expiraEm);
-        const decidido = l.decididoEm !== null;
+      contas: contasDaPagina.map((usuarioId) => {
+        const daConta = linhas.filter((l) => Number(l.usuarioId) === usuarioId);
+        const primeira = daConta[0];
         return {
-          id: Number(l.id),
-          status: statusEfetivo(l.status as StatusSolicitacao, expiraEm, agora),
-          mensagem: (l.mensagem as string | null) ?? null,
-          criadoEm: Number(l.criadoEm),
-          decididoEm: decidido ? Number(l.decididoEm) : null,
-          expiraEm,
-          // Linha decidida sem `decididoPor` foi decidida pela administração.
-          decididoPor: decidido ? ((l.decididoPorNome as string | null) ?? 'Administração') : null,
-          painel: { id: Number(l.painelId), nome: String(l.painelNome) },
           usuario: {
-            id: Number(l.usuarioId),
-            nome: String(l.usuarioNome),
-            email: String(l.usuarioEmail),
+            id: usuarioId,
+            nome: String(primeira.usuarioNome),
+            email: String(primeira.usuarioEmail),
           },
+          acessos: daConta.map((l) => {
+            const expiraEm = l.expiraEm === null ? null : Number(l.expiraEm);
+            const decidido = l.decididoEm !== null;
+            return {
+              id: Number(l.id),
+              status: statusEfetivo(l.status as StatusSolicitacao, expiraEm, agora),
+              mensagem: (l.mensagem as string | null) ?? null,
+              criadoEm: Number(l.criadoEm),
+              decididoEm: decidido ? Number(l.decididoEm) : null,
+              expiraEm,
+              // Linha decidida sem `decididoPor` foi decidida pela administração.
+              decididoPor: decidido ? ((l.decididoPorNome as string | null) ?? 'Administração') : null,
+              painel: { id: Number(l.painelId), nome: String(l.painelNome) },
+              usuario: {
+                id: usuarioId,
+                nome: String(l.usuarioNome),
+                email: String(l.usuarioEmail),
+              },
+            };
+          }),
         };
       }),
       paineis: paineis.map((p) => ({ id: Number(p.id), nome: p.nome })),
