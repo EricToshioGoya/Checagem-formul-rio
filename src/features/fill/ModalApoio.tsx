@@ -4,7 +4,7 @@ import { Modal } from '../../shared/componentes/Modal';
 import { Aviso } from '../../shared/componentes/Estado';
 import type { Etapa } from '../../core/forms/tipos';
 import { ehApoioDoServidor } from '../../core/media/apoio';
-import { ImagemApoio, VideoApoio } from '../../shared/componentes/ImagemApoio';
+import { ImagemApoio, LinkPdfApoio, VideoApoio } from '../../shared/componentes/ImagemApoio';
 
 interface Props {
   etapa: Etapa | null;
@@ -60,7 +60,7 @@ export function ModalApoio({ etapa, onFechar }: Props) {
               <figure key={i} className="space-y-2">
                 {falhou && ehApoioDoServidor(m.src) ? (
                   <Aviso>
-                    {m.tipo === 'video' ? 'Vídeo ainda não baixado' : 'Imagem ainda não baixada'} neste
+                    {m.tipo === 'video' ? 'Vídeo ainda não baixado' : m.tipo === 'pdf' ? 'PDF ainda não baixado' : 'Imagem ainda não baixada'} neste
                     aparelho. Abra a lista de
                     painéis com conexão para baixá-la.
                   </Aviso>
@@ -91,6 +91,14 @@ export function ModalApoio({ etapa, onFechar }: Props) {
                     className="w-full rounded-md border border-abb-line bg-black"
                     onError={() => setFalhas((f) => ({ ...f, [m.src]: true }))}
                   />
+                ) : ehApoioDoServidor(m.src) ? (
+                  <LinkPdfApoio
+                    src={m.src}
+                    className="inline-flex min-h-12 items-center rounded-md border border-abb-line-botao bg-abb-offwhite px-4 font-semibold text-abb-red hover:bg-abb-offwhite-hover"
+                    onFalha={() => setFalhas((f) => (f[m.src] ? f : { ...f, [m.src]: true }))}
+                  >
+                    Abrir manual em PDF
+                  </LinkPdfApoio>
                 ) : (
                   <a
                     href={url}

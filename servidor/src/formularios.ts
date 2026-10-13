@@ -17,7 +17,7 @@ import {
 /**
  * Checklists, guardados no servidor e pertencentes a um painel.
  *
- * Antes as definições eram arquivos em `public/forms` e as edições ficavam no
+ * Antes as definições eram arquivos em `servidor/sementes/forms` e as edições ficavam no
  * IndexedDB de cada aparelho — o que o administrador montava num tablet não
  * chegava a ninguém. Agora quem monta o checklist grava aqui, e todo montador
  * aprovado naquele painel recebe a mesma versão.
@@ -34,7 +34,7 @@ interface LinhaFormulario {
 }
 
 /** Pasta de onde vêm os checklists já existentes na primeira subida. */
-const PASTA_SEMENTE = process.env.FORMS_SEMENTE ?? 'public/forms';
+const PASTA_SEMENTE = process.env.FORMS_SEMENTE ?? 'servidor/sementes/forms';
 
 function lerDefinicao(linha: LinhaFormulario): DefinicaoFormulario {
   return validarDefinicao(JSON.parse(linha.definicao));
@@ -175,7 +175,7 @@ interface EntradaSemente {
 }
 
 /**
- * Traz para o banco os checklists que vinham como arquivo em `public/forms`.
+ * Traz para o banco os checklists que vinham como arquivo em `servidor/sementes/forms`.
  *
  * Roda só quando a tabela está vazia. Sem isto, a primeira subida depois da
  * mudança apagaria da vista as 38 etapas do SEN Plus, que existem e estão

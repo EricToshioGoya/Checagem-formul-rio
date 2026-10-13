@@ -100,7 +100,7 @@ await p.waitForTimeout(900);
 pre = (await lerStore(p, 'preenchimentos'))[0];
 checa('01.14 tipo "selecao" grava a opção', typeof pre.respostas['S1.4']?.valor === 'string');
 
-const def = JSON.parse(readFileSync('public/forms/sen-plus-montagem.json', 'utf8'));
+const def = JSON.parse(readFileSync('servidor/sementes/forms/sen-plus-montagem.json', 'utf8'));
 const etapaNumero = def.secoes.flatMap((s) => s.etapas).find((e) => e.tipoResposta === 'numero');
 const seletorNumero = `#campo-${etapaNumero.id.replace('.', '\\.')}`;
 await p.locator('nav button').filter({ hasText: new RegExp(`^${etapaNumero.id.replace('.', '\\.')}`) }).click();

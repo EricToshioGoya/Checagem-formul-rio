@@ -183,7 +183,7 @@ partir de [`servidor/src/paineis.ts`](servidor/src/paineis.ts):
 | SAFR | certificação | ensaios de rotina NBR IEC 61439 |
 | MNS | verificação | — ainda não cadastrado |
 
-Os checklists também são semente: o servidor importa `public/forms` só com a
+Os checklists também são semente: o servidor importa `servidor/sementes/forms` só com a
 tabela vazia. Um arquivo citado por vários painéis vira uma cópia por painel —
 os ensaios 61439 entram como `ensaios-rotina-61439`,
 `ensaios-rotina-61439-system-pro-e-power` e `ensaios-rotina-61439-safr` —,
@@ -202,7 +202,7 @@ nos aparelhos.
 > **Linha sem checklist abre vazia.** O painel abre, mas sem
 > formulário nenhum e com um aviso na tela. Não se reaproveita o checklist do
 > SEN Plus: as etapas de uma linha não valem para outra. Para cadastrar uma
-> delas, acrescente o JSON em `public/forms` e cite o `slug` do painel no campo
+> delas, acrescente o JSON em `servidor/sementes/forms` e cite o `slug` do painel no campo
 > `paineis` do catálogo — sem alteração de código.
 
 ### Controle de acesso
@@ -316,12 +316,8 @@ servidor/src/            API de acesso (Node + node:sqlite, sem framework)
   esquemas.ts            validação Zod de tudo que chega
   rotas.ts               contas, painéis, solicitações, administração
   index.ts               roteador HTTP
+  (sementes/forms/       sementes dos checklists — importadas na primeira subida)
 public/
-  forms/                  sementes dos checklists — importadas pelo servidor
-    index.json            catálogo das sementes e dos painéis de cada uma
-    sen-plus-montagem.json
-    rotina-bt.json
-    ensaios-rotina-61439.json
   paineis/
     index.json            fluxo por slug de painel: certificação, template
                           do certificado, responsável ABB e campos
@@ -360,7 +356,7 @@ scripts/                  validação dos dados, ícones, build portátil, fuma�
 
 **Princípio central:** o motor de formulários não conhece nenhum formulário
 específico. Todo formulário é um JSON carregado em tempo de execução a partir de
-`public/forms`. Acrescentar a linha System Pro E Energy é acrescentar um arquivo
+`servidor/sementes/forms`. Acrescentar a linha System Pro E Energy é acrescentar um arquivo
 JSON e suas mídias — sem alteração de código.
 
 Uma diferença em relação ao desenho da especificação: a montagem do documento
@@ -372,7 +368,7 @@ diálogo de geração.
 
 | Extensão | O que fazer |
 |---|---|
-| Novo formulário para uma linha | Acrescentar o JSON em `public/forms`, registrá-lo em `index.json` e citar no campo `paineis` o `slug` das linhas que o usam. Nenhuma alteração de código. |
+| Novo formulário para uma linha | Acrescentar o JSON em `servidor/sementes/forms`, registrá-lo em `index.json` e citar no campo `paineis` o `slug` das linhas que o usam. Nenhuma alteração de código. |
 | Novo painel, ou trocar quem aprova | Aba de administração → Painéis. Sem programação e sem reiniciar nada. |
 | Novo tipo de checklist (ex.: recebimento, inspeção final) | Acrescentar uma entrada em `TIPOS_CHECKLIST` (`compartilhado/tiposChecklist.ts`): `id`, `rotulo`, `tituloPdf`, `sufixoArquivo`. O botão "+" do painel, os rótulos, o PDF (um por tipo) e a validação do servidor passam a incluí-lo. |
 | Novo tipo de campo | Implementar o componente e registrá-lo em `src/features/fill/campos/registro.tsx`. |

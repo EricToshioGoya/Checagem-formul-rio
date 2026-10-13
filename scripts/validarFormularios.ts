@@ -1,5 +1,5 @@
 /**
- * Valida os JSON de `public/forms` contra o schema Zod do motor.
+ * Valida os JSON de `servidor/sementes/forms` contra o schema Zod do motor.
  *
  * Desde que os checklists passaram a morar no servidor, esta pasta é apenas a
  * semente: o que o servidor importa para o banco na primeira subida. Continua
@@ -34,7 +34,7 @@ const indiceSchema = z.object({
 });
 
 const raiz = join(process.cwd(), 'public');
-const pasta = join(raiz, 'forms');
+const pasta = join(process.cwd(), 'servidor', 'sementes', 'forms');
 let falhas = 0;
 
 function ler(arquivo: string): unknown {

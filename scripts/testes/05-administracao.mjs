@@ -78,7 +78,7 @@ await p.getByRole('button', { name: 'Exportar JSON' }).click();
 await p.waitForTimeout(2500);
 checa('05.9 exporta o JSON do formulário', baixados.length === 1);
 
-const original = JSON.parse(readFileSync('public/forms/sen-plus-montagem.json', 'utf8'));
+const original = JSON.parse(readFileSync('servidor/sementes/forms/sen-plus-montagem.json', 'utf8'));
 writeFileSync(join(SAIDA, 'outro-id.json'), JSON.stringify({ ...original, id: 'outro-id' }));
 await p.locator('input[type=file]').first().setInputFiles(join(SAIDA, 'outro-id.json'));
 await p.waitForTimeout(1800);

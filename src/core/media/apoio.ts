@@ -38,6 +38,20 @@ function mimeDoVideo(arquivo: File): string | null {
 }
 
 
+/** Mesmo limite do servidor para o PDF de apoio. */
+export const TAMANHO_MAXIMO_PDF_APOIO = 15 * 1024 * 1024;
+
+export function ehPdfDeApoio(arquivo: File): boolean {
+  return arquivo.type === 'application/pdf' || arquivo.name.toLowerCase().endsWith('.pdf');
+}
+
+/** Envia o PDF como está; devolve o endereço a gravar no checklist. */
+export async function enviarPdfApoio(arquivo: File): Promise<string> {
+  if (!ehPdfDeApoio(arquivo)) throw new Error('Escolha um arquivo PDF.');
+  if (arquivo.size > TAMANHO_MAXIMO_PDF_APOIO) throw new Error('O PDF passa de 15 MB.');
+  return enviarBlob(new Blob([arquivo], { type: 'application/pdf' }));
+}
+
 export function ehVideo(arquivo: File): boolean {
   return mimeDoVideo(arquivo) !== null;
 }
@@ -76,7 +90,7 @@ export async function obterImagemApoio(src: string): Promise<Blob> {
 }
 
 /**
- * Baixa as imagens e os vídeos de apoio que o aparelho ainda não tem. Roda quando o
+ * Baixa as imagens, vídeos e PDFs de apoio que o aparelho ainda não tem. Roda quando o
  * checklist é sincronizado, que é quando há rede: a falha de uma imagem não
  * impede as outras nem o checklist — ela é tentada de novo na próxima vez.
  */
@@ -85,7 +99,7 @@ export async function baixarImagensDoChecklist(definicao: DefinicaoFormulario): 
   for (const secao of definicao.secoes) {
     for (const etapa of secao.etapas) {
       for (const m of etapa.midiaApoio ?? []) {
-        if ((m.tipo === 'imagem' || m.tipo === 'video') && ehApoioDoServidor(m.src)) {
+        if (ehApoioDoServidor(m.src)) {
           enderecos.add(m.src);
         }
       }
