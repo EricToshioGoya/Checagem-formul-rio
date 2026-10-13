@@ -43,8 +43,41 @@ function ler(): Record<string, Registro> {
   }
 }
 
+const CHAVE_CATALOGO = 'catalogo-paineis';
+
+type DadosDoPainel = Pick<PainelApi, 'slug' | 'nome' | 'descricao' | 'fluxo' | 'certificado' | 'signatario'>;
+
+/** Painéis como o servidor os descreve (nome, fluxo, modelo, signatário), pelo `slug`. */
+export function lerCatalogoPaineis(): Record<string, DadosDoPainel> {
+  try {
+    return JSON.parse(localStorage.getItem(CHAVE_CATALOGO) ?? '{}') as Record<string, DadosDoPainel>;
+  } catch {
+    return {};
+  }
+}
+
+export function guardarCatalogoPaineis(paineis: readonly PainelApi[]): void {
+  try {
+    const mapa: Record<string, DadosDoPainel> = {};
+    for (const p of paineis) {
+      mapa[p.slug] = {
+        slug: p.slug,
+        nome: p.nome,
+        descricao: p.descricao,
+        fluxo: p.fluxo,
+        certificado: p.certificado,
+        signatario: p.signatario,
+      };
+    }
+    localStorage.setItem(CHAVE_CATALOGO, JSON.stringify(mapa));
+  } catch {
+    // Armazenamento bloqueado: a certificação sem rede não terá o painel.
+  }
+}
+
 /** Grava a situação recebida do servidor. Chamado a cada leitura de `/api/paineis`. */
 export function guardarAcessos(usuarioId: number, paineis: readonly PainelApi[]): void {
+  guardarCatalogoPaineis(paineis);
   try {
     const mapa = ler();
     for (const p of paineis) {

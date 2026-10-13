@@ -5,7 +5,7 @@ import {
 } from '../../../compartilhado/tiposChecklist';
 import { useCallback, useEffect, useState } from 'react';
 import type { EntradaCatalogo } from '../../core/forms/tipos';
-import { api, type AdministradorApi, type PainelAdmin } from '../../core/api/cliente';
+import { api, type AdministradorApi, type PainelAdmin, type Signatario } from '../../core/api/cliente';
 import { useSessao } from '../../core/api/SessaoContexto';
 import { plural } from '../../../compartilhado/plural';
 import { ConstrutorChecklist } from './ConstrutorChecklist';
@@ -21,9 +21,22 @@ interface Rascunho {
   nome: string;
   descricao: string;
   responsaveis: string[];
+  fluxo: 'verificacao' | 'certificacao';
+  certificado: string;
+  signatario: Signatario;
 }
 
-const VAZIO: Rascunho = { id: null, nome: '', descricao: '', responsaveis: [] };
+const SIGNATARIO_VAZIO: Signatario = { nome: '', cargo: '', area: '', empresa: 'ABB Ltda', email: '' };
+
+const VAZIO: Rascunho = {
+  id: null,
+  nome: '',
+  descricao: '',
+  responsaveis: [],
+  fluxo: 'verificacao',
+  certificado: '',
+  signatario: SIGNATARIO_VAZIO,
+};
 
 /** Checklist aberto no construtor, com o painel a que pertence. */
 interface Aberto {
@@ -51,14 +64,17 @@ export function GestaoPaineis() {
   const [checklistParaExcluir, setChecklistParaExcluir] = useState<EntradaCatalogo | null>(null);
   const [aberto, setAberto] = useState<Aberto | null>(null);
   const [admins, setAdmins] = useState<AdministradorApi[]>([]);
+  const [modelos, setModelos] = useState<string[]>([]);
   const { usuario } = useSessao();
 
   const carregar = useCallback(async () => {
     try {
-      const { paineis: lista } = await api.get<{ paineis: PainelAdmin[] }>(
-        '/api/admin/paineis',
-      );
+      const { paineis: lista, modelosCertificado: modelos } = await api.get<{
+        paineis: PainelAdmin[];
+        modelosCertificado: string[];
+      }>('/api/admin/paineis');
       setPaineis(lista);
+      setModelos(modelos);
       setErro(null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível ler os painéis.');
@@ -101,6 +117,10 @@ export function GestaoPaineis() {
         // editar o nome não pode apagá-la sem aviso.
         descricao: rascunho.descricao || undefined,
         responsaveis: rascunho.responsaveis,
+        fluxo: rascunho.fluxo,
+        ...(rascunho.fluxo === 'certificacao'
+          ? { certificado: rascunho.certificado, signatario: rascunho.signatario }
+          : {}),
       };
       if (rascunho.id === null) await api.post('/api/admin/paineis', corpo);
       else await api.put(`/api/admin/paineis/${rascunho.id}`, corpo);
@@ -210,6 +230,9 @@ export function GestaoPaineis() {
                       nome: p.nome,
                       descricao: p.descricao ?? '',
                       responsaveis: [...p.responsaveis],
+                      fluxo: p.fluxo,
+                      certificado: p.certificado ?? '',
+                      signatario: p.signatario ?? SIGNATARIO_VAZIO,
                     })
                   }
                 >
@@ -300,6 +323,73 @@ export function GestaoPaineis() {
               placeholder="Ex.: System Pro E Power"
               obrigatorio
             />
+
+            <div>
+              <label htmlFor="fluxo-painel" className="mb-1 block text-base font-semibold">
+                Tipo de fluxo
+                <span className="block text-sm font-normal text-abb-gray">
+                  Verificação: o montador preenche e envia o dossiê em PDF. Certificação: o
+                  montador faz a solicitação, a ABB valida e o certificado é emitido.
+                </span>
+              </label>
+              <select
+                id="fluxo-painel"
+                className="min-h-12 w-full rounded-md border border-abb-line bg-white px-3 text-base focus:border-abb-red"
+                value={rascunho.fluxo}
+                onChange={(e) =>
+                  setRascunho({ ...rascunho, fluxo: e.target.value as Rascunho['fluxo'] })
+                }
+              >
+                <option value="verificacao">Verificação de montagem</option>
+                <option value="certificacao">Solicitação de certificação</option>
+              </select>
+            </div>
+
+            {rascunho.fluxo === 'certificacao' ? (
+              <div className="space-y-3 rounded-lg border border-abb-line bg-neutral-50 p-3">
+                <div>
+                  <label htmlFor="modelo-certificado" className="mb-1 block text-base font-semibold">
+                    Modelo do certificado<span className="text-abb-red"> *</span>
+                  </label>
+                  <select
+                    id="modelo-certificado"
+                    className="min-h-12 w-full rounded-md border border-abb-line bg-white px-3 text-base focus:border-abb-red"
+                    value={rascunho.certificado}
+                    onChange={(e) => setRascunho({ ...rascunho, certificado: e.target.value })}
+                  >
+                    <option value="">Escolha…</option>
+                    {modelos.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <p className="text-base font-semibold">Quem assina o certificado (ABB)</p>
+                {(
+                  [
+                    ['nome', 'Nome', true],
+                    ['cargo', 'Cargo', true],
+                    ['area', 'Área', false],
+                    ['empresa', 'Empresa', false],
+                    ['email', 'E-mail', false],
+                  ] as const
+                ).map(([campo, rotulo, obrigatorio]) => (
+                  <CampoTexto
+                    key={campo}
+                    rotulo={rotulo}
+                    obrigatorio={obrigatorio}
+                    valor={rascunho.signatario[campo]}
+                    onChange={(v) =>
+                      setRascunho({
+                        ...rascunho,
+                        signatario: { ...rascunho.signatario, [campo]: v },
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            ) : null}
 
             <fieldset>
               <legend className="mb-1 text-base font-semibold">

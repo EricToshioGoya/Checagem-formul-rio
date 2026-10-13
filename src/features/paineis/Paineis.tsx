@@ -4,8 +4,6 @@ import { api, ErroApi, type AcessoPainel, type PainelApi } from '../../core/api/
 import { useSessao } from '../../core/api/SessaoContexto';
 import { guardarAcessos } from '../../core/api/acessoLocal';
 import { sincronizarPaineis } from '../../core/forms/catalogo';
-import { carregarCatalogoPaineis } from '../../core/paineis/catalogo';
-import type { FluxoPainel } from '../../core/paineis/tipos';
 import { Botao } from '../../shared/componentes/Botao';
 import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
 import { dataHoraBr, duracaoCurta } from '../../shared/utils/texto';
@@ -37,21 +35,6 @@ export function Paineis() {
   const [semConexao, setSemConexao] = useState(false);
   const [ocupado, setOcupado] = useState<number | null>(null);
   const pedidoAutomatico = useRef(false);
-  /**
-   * Fluxo de cada painel, pelo `slug`. Painel sem entrada no catálogo — todo
-   * painel novo da administração — é de verificação.
-   */
-  const [fluxos, setFluxos] = useState<Record<string, FluxoPainel>>({});
-
-  useEffect(() => {
-    carregarCatalogoPaineis()
-      .then((c) => setFluxos(Object.fromEntries(c.paineis.map((p) => [p.id, p.fluxo]))))
-      .catch(() => {
-        // Sem o catálogo, todos abrem como verificação; a certificação volta
-        // a aparecer quando o arquivo puder ser lido.
-      });
-  }, []);
-
   const carregar = useCallback(async () => {
     try {
       const { paineis: lista } = await api.get<{ paineis: PainelApi[] }>('/api/paineis');
@@ -109,7 +92,7 @@ export function Paineis() {
   /** Abre o painel aprovado: a lista de projetos dele, ou as solicitações na certificação. */
   const abrir = (painel: PainelApi) => {
     // Na certificação não há projeto: cada painel/quadro é uma solicitação.
-    if (fluxos[painel.slug] === 'certificacao') {
+    if (painel.fluxo === 'certificacao') {
       navegar(`/paineis/${painel.slug}/solicitacoes`);
       return;
     }
@@ -168,7 +151,7 @@ export function Paineis() {
                 <div className="min-w-0">
                   <p className="text-lg font-bold">{p.nome}</p>
                   <p className="text-sm font-semibold tracking-wide text-abb-gray uppercase">
-                    {fluxos[p.slug] === 'certificacao'
+                    {p.fluxo === 'certificacao'
                       ? 'Solicitação de certificação'
                       : 'Verificação de montagem'}
                   </p>
@@ -209,7 +192,7 @@ export function Paineis() {
                   <Botao variante="primario" disabled={trabalhando} onClick={() => abrir(p)}>
                     {trabalhando
                       ? 'Abrindo…'
-                      : fluxos[p.slug] === 'certificacao'
+                      : p.fluxo === 'certificacao'
                         ? 'Abrir solicitações'
                         : 'Abrir checagens'}
                   </Botao>

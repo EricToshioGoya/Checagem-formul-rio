@@ -426,6 +426,27 @@ function migrarResponsavelUnico(): void {
 
 migrarResponsavelUnico();
 
+// Fluxo, modelo de certificado e signatário moram no painel: antes vinham de um
+// arquivo de publicação, e renomear ou cadastrar um painel não os alcançava.
+garantirColuna('paineis', 'fluxo', "TEXT NOT NULL DEFAULT 'verificacao' CHECK (fluxo IN ('verificacao', 'certificacao'))");
+garantirColuna('paineis', 'certificado', 'TEXT');
+garantirColuna('paineis', 'signatario', 'TEXT');
+
+/**
+ * Bancos criados antes dessas colunas: os painéis iniciais conhecidos recebem
+ * o fluxo, o modelo e o signatário que o arquivo de publicação lhes dava.
+ */
+(function completarPaineisIniciais(): void {
+  const completar = banco.prepare(
+    `UPDATE paineis SET fluxo = ?, certificado = ?, signatario = ?
+      WHERE slug = ? AND fluxo = 'verificacao' AND certificado IS NULL`,
+  );
+  for (const p of PAINEIS) {
+    if (p.fluxo !== 'certificacao') continue;
+    completar.run(p.fluxo, p.certificado ?? null, p.signatario ? JSON.stringify(p.signatario) : null, p.slug);
+  }
+})();
+
 /**
  * Cria os painéis iniciais **apenas na primeira subida**, quando a tabela está
  * vazia. Dali em diante quem manda é a aba de administração: ressemear a cada
@@ -438,13 +459,23 @@ export function semearPaineis(): void {
 
   const agora = Date.now();
   const inserirPainel = banco.prepare(
-    'INSERT INTO paineis (slug, nome, descricao, ordem, criadoEm) VALUES (?, ?, ?, ?, ?)',
+    `INSERT INTO paineis (slug, nome, descricao, ordem, criadoEm, fluxo, certificado, signatario)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const inserirResp = banco.prepare(
     'INSERT OR IGNORE INTO painel_responsaveis (painelId, email) VALUES (?, ?)',
   );
   for (const [i, p] of PAINEIS.entries()) {
-    const info = inserirPainel.run(p.slug, p.nome, p.descricao, i, agora);
+    const info = inserirPainel.run(
+      p.slug,
+      p.nome,
+      p.descricao,
+      i,
+      agora,
+      p.fluxo,
+      p.certificado ?? null,
+      p.signatario ? JSON.stringify(p.signatario) : null,
+    );
     inserirResp.run(Number(info.lastInsertRowid), p.responsavelEmail.toLowerCase());
   }
   console.log(`${PAINEIS.length} painéis iniciais cadastrados.`);

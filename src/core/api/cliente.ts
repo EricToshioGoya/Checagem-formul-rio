@@ -200,6 +200,9 @@ export interface PainelAdmin {
   slug: string;
   nome: string;
   descricao: string | null;
+  fluxo: 'verificacao' | 'certificacao';
+  certificado: string | null;
+  signatario: Signatario | null;
   responsaveis: string[];
   montadoresAprovados: number;
   editado: Edicao | null;
@@ -258,9 +261,23 @@ export interface PainelPublico {
   slug: string;
   nome: string;
   descricao: string | null;
+  /** `verificacao` (dossiê em PDF) ou `certificacao` (solicitação, validação e emissão). */
+  fluxo: 'verificacao' | 'certificacao';
+}
+
+/** Quem assina o certificado (ABB), nos painéis do fluxo de certificação. */
+export interface Signatario {
+  nome: string;
+  cargo: string;
+  area: string;
+  empresa: string;
+  email: string;
 }
 
 export interface PainelApi extends PainelPublico {
+  /** Modelo do certificado; só no fluxo de certificação. */
+  certificado: string | null;
+  signatario: Signatario | null;
   responsaveis: string[];
   meuAcesso: AcessoPainel;
   podePreencher: boolean;

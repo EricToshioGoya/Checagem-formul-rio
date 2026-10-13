@@ -74,15 +74,34 @@ export const pedidoAdminSchema = z.object({
  * que podem aprovar montadores naquele painel — pelo menos um, sem limite
  * acima disso, sem repetição.
  */
-export const painelSchema = z.object({
-  nome: linha(2, 120, 'Informe o nome do painel.', 'Nome do painel longo demais.'),
-  descricao: z.string().transform(limparLinha).pipe(z.string().max(500)).optional(),
-  responsaveis: z
-    .array(emailSchema)
-    .min(1, 'Escolha ao menos um administrador responsável.')
-    .max(50, 'São no máximo 50 responsáveis por painel.')
-    .transform((lista) => [...new Set(lista)]),
+/** Quem assina o certificado (ABB), nos painéis do fluxo de certificação. */
+export const signatarioSchema = z.object({
+  nome: linha(2, 120, 'Informe o nome de quem assina.', 'Nome longo demais.'),
+  cargo: linha(2, 160, 'Informe o cargo de quem assina.', 'Cargo longo demais.'),
+  area: z.string().transform(limparLinha).pipe(z.string().max(120)).optional().default(''),
+  empresa: z.string().transform(limparLinha).pipe(z.string().max(120)).optional().default(''),
+  email: z.string().transform(limparLinha).pipe(z.string().max(160)).optional().default(''),
 });
+
+export const painelSchema = z
+  .object({
+    nome: linha(2, 120, 'Informe o nome do painel.', 'Nome do painel longo demais.'),
+    descricao: z.string().transform(limparLinha).pipe(z.string().max(500)).optional(),
+    responsaveis: z
+      .array(emailSchema)
+      .min(1, 'Escolha ao menos um administrador responsável.')
+      .max(50, 'São no máximo 50 responsáveis por painel.')
+      .transform((lista) => [...new Set(lista)]),
+    /** `verificacao`: dossiê em PDF. `certificacao`: solicitação, validação e emissão. */
+    fluxo: z.enum(['verificacao', 'certificacao']).optional().default('verificacao'),
+    /** Modelo do certificado (`public/certificados/<id>.json`). */
+    certificado: z.string().regex(/^[a-z0-9-]{1,60}$/, 'Modelo de certificado inválido.').optional(),
+    signatario: signatarioSchema.optional(),
+  })
+  .refine((p) => p.fluxo !== 'certificacao' || (!!p.certificado && !!p.signatario), {
+    message: 'Painel de certificação exige o modelo do certificado e quem assina.',
+    path: ['certificado'],
+  });
 
 export const solicitarSchema = z.object({
   mensagem: z.string().transform(limparLinha).pipe(z.string().max(500)).optional(),

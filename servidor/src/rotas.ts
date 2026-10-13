@@ -1,3 +1,5 @@
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import type { z } from 'zod';
 import { plural } from '../../compartilhado/plural';
 import {
@@ -18,9 +20,11 @@ import {
   fecharSessoesAdmin,
   type Perfil,
 } from './auth';
+import type { Signatario } from './paineis';
 import { deveNascerAdmin, promoverAdmin, quantosAdmins } from './admin';
 import { registrar, ultimasAlteracoes } from './auditoria';
 import { avisar } from './avisos';
+import { PASTA_APP } from './configuracao';
 import { chaveTentativa, esperaRestante, limparFalhas, registrarFalha } from './limite';
 import { moverParaLixeira, removerRegistrosDeMidias } from './midias';
 import { lerPagina, padraoBusca } from './paginacao';
@@ -230,11 +234,35 @@ function calcularExpiracao(validade: z.infer<typeof validadeSchema>, agora: numb
   return validade.ate;
 }
 
+/** Modelos de certificado disponíveis (`certificados/*.json` da publicação). */
+function modelosDeCertificado(): string[] {
+  for (const pasta of [join(PASTA_APP, 'certificados'), join('public', 'certificados')]) {
+    if (!existsSync(pasta)) continue;
+    return readdirSync(pasta)
+      .filter((n) => n.endsWith('.json'))
+      .map((n) => n.slice(0, -5))
+      .sort();
+  }
+  return [];
+}
+
+/** Fluxo, modelo e signatário do painel, como o cliente os lê. */
+function dadosDeFluxo(l: Record<string, unknown>) {
+  return {
+    fluxo: String(l.fluxo) as 'verificacao' | 'certificacao',
+    certificado: (l.certificado as string | null) ?? null,
+    signatario: l.signatario ? (JSON.parse(String(l.signatario)) as Signatario) : null,
+  };
+}
+
 interface PainelComAcesso {
   id: number;
   slug: string;
   nome: string;
   descricao: string | null;
+  fluxo: 'verificacao' | 'certificacao';
+  certificado: string | null;
+  signatario: Signatario | null;
   responsaveis: string[];
   meuAcesso: Acesso;
   podePreencher: boolean;
@@ -307,7 +335,7 @@ function gerarSlug(nome: string): string {
 export function listarPaineis(usuarioId: number, email: string): PainelComAcesso[] {
   const linhas = banco
     .prepare(
-      `SELECT p.id, p.slug, p.nome, p.descricao,
+      `SELECT p.id, p.slug, p.nome, p.descricao, p.fluxo, p.certificado, p.signatario,
               s.status AS statusSolicitacao, s.expiraEm AS acessoExpiraEm,
               (SELECT COUNT(*) FROM formularios f
                 WHERE f.painelId = p.id AND f.ativo = 1) AS formularios
@@ -341,6 +369,7 @@ export function listarPaineis(usuarioId: number, email: string): PainelComAcesso
       slug: String(l.slug),
       nome: String(l.nome),
       descricao: (l.descricao as string | null) ?? null,
+      ...dadosDeFluxo(l),
       responsaveis: lista,
       meuAcesso,
       // O administrador responsável preenche o painel dele sem pedir nada a ninguém.
@@ -525,7 +554,7 @@ export const rotas: Record<string, Manipulador> = {
    */
   'GET /api/paineis/publicos': () => {
     const linhas = banco
-      .prepare('SELECT id, slug, nome, descricao FROM paineis ORDER BY ordem')
+      .prepare('SELECT id, slug, nome, descricao, fluxo FROM paineis ORDER BY ordem')
       .all() as Array<Record<string, unknown>>;
     return {
       paineis: linhas.map((l) => ({
@@ -533,6 +562,7 @@ export const rotas: Record<string, Manipulador> = {
         slug: String(l.slug),
         nome: String(l.nome),
         descricao: (l.descricao as string | null) ?? null,
+        fluxo: String(l.fluxo),
       })),
     };
   },
@@ -766,7 +796,9 @@ export const rotas: Record<string, Manipulador> = {
   'GET /api/admin/paineis': (ctx) => {
     exigirAdmin(ctx);
     const linhas = banco
-      .prepare('SELECT id, slug, nome, descricao, ordem, criadoEm FROM paineis ORDER BY ordem, id')
+      .prepare(
+        'SELECT id, slug, nome, descricao, fluxo, certificado, signatario, ordem, criadoEm FROM paineis ORDER BY ordem, id',
+      )
       .all() as Array<Record<string, unknown>>;
     const responsaveis = mapaResponsaveis();
     const contagem = banco
@@ -782,6 +814,7 @@ export const rotas: Record<string, Manipulador> = {
     const edicoesChecklist = ultimasAlteracoes('checklist');
 
     return {
+      modelosCertificado: modelosDeCertificado(),
       paineis: linhas.map((l) => {
         const id = Number(l.id);
         return {
@@ -789,6 +822,7 @@ export const rotas: Record<string, Manipulador> = {
           slug: String(l.slug),
           nome: String(l.nome),
           descricao: (l.descricao as string | null) ?? null,
+          ...dadosDeFluxo(l),
           responsaveis: responsaveis.get(id) ?? [],
           montadoresAprovados: aprovados.get(id) ?? 0,
           editado: edicoesPainel.get(String(id)) ?? null,
@@ -807,7 +841,7 @@ export const rotas: Record<string, Manipulador> = {
     const eu = exigirAdmin(ctx);
     const r = painelSchema.safeParse(ctx.corpo);
     if (!r.success) throw new ErroHttp(400, primeiroErro(r.error));
-    const { nome, descricao, responsaveis } = r.data;
+    const { nome, descricao, responsaveis, fluxo, certificado, signatario } = r.data;
     exigirResponsaveisAdmin(responsaveis);
 
     const proxima = banco.prepare('SELECT COALESCE(MAX(ordem), -1) + 1 AS n FROM paineis').get() as {
@@ -818,9 +852,19 @@ export const rotas: Record<string, Manipulador> = {
       const slug = gerarSlug(nome);
       const info = banco
         .prepare(
-          'INSERT INTO paineis (slug, nome, descricao, ordem, criadoEm) VALUES (?, ?, ?, ?, ?)',
+          `INSERT INTO paineis (slug, nome, descricao, ordem, criadoEm, fluxo, certificado, signatario)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(slug, nome, descricao ?? null, Number(proxima.n), Date.now());
+        .run(
+          slug,
+          nome,
+          descricao ?? null,
+          Number(proxima.n),
+          Date.now(),
+          fluxo,
+          fluxo === 'certificacao' ? (certificado ?? null) : null,
+          fluxo === 'certificacao' && signatario ? JSON.stringify(signatario) : null,
+        );
       const painelId = Number(info.lastInsertRowid);
       const inserir = banco.prepare(
         'INSERT OR IGNORE INTO painel_responsaveis (painelId, email) VALUES (?, ?)',
@@ -851,12 +895,12 @@ export const rotas: Record<string, Manipulador> = {
     const eu = exigirAdmin(ctx);
     const r = painelSchema.safeParse(ctx.corpo);
     if (!r.success) throw new ErroHttp(400, primeiroErro(r.error));
-    const { nome, descricao, responsaveis } = r.data;
+    const { nome, descricao, responsaveis, fluxo, certificado, signatario } = r.data;
     exigirResponsaveisAdmin(responsaveis);
 
     const id = Number(ctx.params.id);
-    const antes = banco.prepare('SELECT nome FROM paineis WHERE id = ?').get(id) as
-      | { nome: string }
+    const antes = banco.prepare('SELECT nome, fluxo, certificado FROM paineis WHERE id = ?').get(id) as
+      | { nome: string; fluxo: string; certificado: string | null }
       | undefined;
     if (!antes) throw new ErroHttp(404, 'Painel não encontrado.');
     const responsaveisAntes = mapaResponsaveis().get(id) ?? [];
@@ -865,8 +909,17 @@ export const rotas: Record<string, Manipulador> = {
     // catálogo e aos projetos já gravados nos aparelhos.
     emTransacao(() => {
       banco
-        .prepare('UPDATE paineis SET nome = ?, descricao = ? WHERE id = ?')
-        .run(nome, descricao ?? null, id);
+        .prepare(
+          'UPDATE paineis SET nome = ?, descricao = ?, fluxo = ?, certificado = ?, signatario = ? WHERE id = ?',
+        )
+        .run(
+          nome,
+          descricao ?? null,
+          fluxo,
+          fluxo === 'certificacao' ? (certificado ?? null) : null,
+          fluxo === 'certificacao' && signatario ? JSON.stringify(signatario) : null,
+          id,
+        );
       banco.prepare('DELETE FROM painel_responsaveis WHERE painelId = ?').run(id);
       const inserir = banco.prepare(
         'INSERT OR IGNORE INTO painel_responsaveis (painelId, email) VALUES (?, ?)',
@@ -876,6 +929,10 @@ export const rotas: Record<string, Manipulador> = {
       // O que mudou, em palavras: o histórico mostra o antes e o depois.
       const mudancas: string[] = [];
       if (antes.nome !== nome) mudancas.push(`nome: ${antes.nome} → ${nome}`);
+      if (antes.fluxo !== fluxo) mudancas.push(`fluxo: ${antes.fluxo} → ${fluxo}`);
+      if (fluxo === 'certificacao' && antes.certificado !== (certificado ?? null)) {
+        mudancas.push(`modelo do certificado: ${antes.certificado ?? '—'} → ${certificado ?? '—'}`);
+      }
       const entraram = responsaveis.filter((e) => !responsaveisAntes.includes(e));
       const sairam = responsaveisAntes.filter((e) => !responsaveis.includes(e));
       if (entraram.length) mudancas.push(`passam a ser responsáveis: ${entraram.join(', ')}`);

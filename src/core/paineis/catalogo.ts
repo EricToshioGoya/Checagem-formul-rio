@@ -1,3 +1,5 @@
+import { api, type PainelApi } from '../api/cliente';
+import { guardarCatalogoPaineis, lerCatalogoPaineis } from '../api/acessoLocal';
 import type { CampoCabecalho } from '../forms/tipos';
 import { catalogoPaineisSchema, descreverErro } from './schema';
 import type { CatalogoPaineis, FluxoPainel, Painel } from './tipos';
@@ -14,6 +16,7 @@ async function lerJson(caminho: string): Promise<unknown> {
   return resposta.json();
 }
 
+/** Campos padrão da solicitação de certificação (dado de publicação). */
 export async function carregarCatalogoPaineis(forcar = false): Promise<CatalogoPaineis> {
   if (cache && !forcar) return cache;
   const bruto = await lerJson('paineis/index.json');
@@ -25,40 +28,53 @@ export async function carregarCatalogoPaineis(forcar = false): Promise<CatalogoP
   return cache;
 }
 
-/** Entrada do catálogo para o `slug`, ou `null` quando o painel não tem uma. */
+/** Painel do servidor no formato das telas de certificação. */
+export function painelDeApi(p: Pick<PainelApi, 'slug' | 'nome' | 'descricao' | 'fluxo' | 'certificado' | 'signatario'>): Painel {
+  return {
+    id: p.slug,
+    nome: p.nome,
+    descricao: p.descricao ?? '',
+    fluxo: p.fluxo,
+    certificado: p.certificado ?? undefined,
+    responsavel: p.signatario ?? undefined,
+  };
+}
+
+/**
+ * Painel pelo `slug`. A fonte é o servidor (`/api/paineis`); a cópia do aparelho
+ * serve quando não há rede, para a certificação abrir offline como o resto.
+ */
 export async function entradaDoPainel(slug: string): Promise<Painel | null> {
-  const catalogo = await carregarCatalogoPaineis();
-  return catalogo.paineis.find((p) => p.id === slug && p.ativo !== false) ?? null;
+  const guardado = lerCatalogoPaineis()[slug];
+  if (guardado) return painelDeApi(guardado);
+  try {
+    const { paineis } = await api.get<{ paineis: PainelApi[] }>('/api/paineis');
+    guardarCatalogoPaineis(paineis);
+    const p = paineis.find((x) => x.slug === slug);
+    return p ? painelDeApi(p) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function obterPainel(slug: string): Promise<Painel> {
   const painel = await entradaDoPainel(slug);
-  if (!painel) throw new Error(`O painel "${slug}" não consta no catálogo de fluxos.`);
+  if (!painel) throw new Error(`O painel "${slug}" não está disponível neste aparelho.`);
   return painel;
 }
 
 /**
- * Fluxo de um painel do servidor. Sem entrada no catálogo — ou sem o catálogo,
- * por falta de rede na primeira abertura — vale a verificação, que é o
- * comportamento de todo painel cadastrado na administração.
+ * Fluxo de um painel do servidor. Sem a cópia do painel e sem rede vale a
+ * verificação, que é o comportamento de todo painel comum.
  */
 export async function fluxoDoPainel(slug: string | undefined): Promise<FluxoPainel> {
   if (!slug) return 'verificacao';
-  try {
-    return (await entradaDoPainel(slug))?.fluxo ?? 'verificacao';
-  } catch {
-    return 'verificacao';
-  }
+  return (await entradaDoPainel(slug))?.fluxo ?? 'verificacao';
 }
 
-/**
- * Campos da solicitação para um painel: os próprios, quando declarados, ou os
- * campos padrão do catálogo. Nenhum deles é escrito no código das telas.
- */
-export async function camposDoPainel(slug: string): Promise<CampoCabecalho[]> {
-  const catalogo = await carregarCatalogoPaineis();
-  const painel = await obterPainel(slug);
-  return painel.campos ?? catalogo.camposPadrao;
+/** Campos da solicitação para um painel: os padrão do catálogo de publicação. */
+export async function camposDoPainel(_slug: string): Promise<CampoCabecalho[]> {
+  return (await carregarCatalogoPaineis()).camposPadrao;
 }
 
 export function limparCachePaineis(): void {
