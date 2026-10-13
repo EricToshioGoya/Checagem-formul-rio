@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { uidProjetoLegado } from '../../compartilhado/projeto';
-import { banco, emTransacao, type Usuario } from './banco';
+import { banco, emTransacao } from './banco';
 import {
   envioProjetoSchema,
   primeiroErro,
@@ -9,7 +9,7 @@ import {
 } from './esquemas';
 import { andamentoDoDocumento } from './andamento';
 import { caminhoMidia, gravarMidia, moverParaLixeira, uidValido } from './midias';
-import { ErroHttp, exigirSessao, listarPaineis, RespostaArquivo, type Contexto } from './rotas';
+import { ErroHttp, exigirAcessoAoPainel, exigirSessao, RespostaArquivo, type Contexto } from './rotas';
 
 /**
  * Sincronização das checagens: cada montador manda para o servidor os projetos
@@ -24,15 +24,6 @@ import { ErroHttp, exigirSessao, listarPaineis, RespostaArquivo, type Contexto }
  */
 
 type Manipulador = (ctx: Contexto) => unknown;
-
-/** Sincronizar exige o acesso valendo agora, como preencher. */
-export function exigirAcessoAoPainel(eu: Usuario, painelId: number): void {
-  const painel = listarPaineis(eu.id, eu.email).find((p) => p.id === painelId);
-  if (!painel) throw new ErroHttp(404, 'Painel não encontrado.');
-  if (!painel.podePreencher) {
-    throw new ErroHttp(403, 'O seu acesso a este painel não está liberado.', 'sem-acesso');
-  }
-}
 
 /** Teto de projetos por conta: cada um é um documento inteiro guardado aqui. */
 const MAXIMO_PROJETOS_POR_CONTA = 500;

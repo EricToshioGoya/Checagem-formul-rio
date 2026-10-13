@@ -1,3 +1,4 @@
+import { plural } from '../../../compartilhado/plural';
 import { useCallback, useEffect, useState } from 'react';
 import { api, consulta, ErroApi, type RespostaAndamento } from '../../core/api/cliente';
 import { Avatar } from '../../shared/componentes/Avatar';
@@ -58,7 +59,7 @@ export function Andamento({ onSessaoVencida }: { onSessaoVencida?: () => void })
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-abb-gray">
-              {dados.total} {dados.total === 1 ? 'linha' : 'linhas'}: cada projeto enviado e
+              {plural(dados.total, 'linha', 'linhas')}: cada projeto enviado e
               quem tem acesso sem projeto ainda. Atualiza sozinho.
             </p>
             {dados.paineis.length > 1 ? (

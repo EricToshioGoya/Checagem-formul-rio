@@ -21,6 +21,11 @@ interface Fontes {
  * Folha do certificado. Mais simples que a do dossiê: uma coluna de texto
  * corrido, sem tabelas de etapas.
  */
+/** Título do certificado: o do modelo ou, sem ele, "Certificado de produto" e o painel. */
+function tituloDe(template: TemplateCertificado, contexto: ContextoCertificado): string {
+  return template.tituloProduto ?? `Certificado de produto ${contexto.nomePainel ?? ''}`.trim();
+}
+
 class Folha {
   doc: PDFDocument;
   fontes: Fontes;
@@ -66,7 +71,7 @@ class Folha {
 
     this.y -= 30;
     this.pagina.drawText(
-      truncar(this.template.tituloProduto, this.fontes.negrito, 15, LARGURA_UTIL),
+      truncar(tituloDe(this.template, this.contexto), this.fontes.negrito, 15, LARGURA_UTIL),
       { x: MARGEM, y: this.y - 15, size: 15, font: this.fontes.negrito, color: PRETO },
     );
     this.y -= 22;
@@ -251,7 +256,7 @@ export async function gerarCertificado(
     negrito: await doc.embedFont(StandardFonts.HelveticaBold),
   };
 
-  doc.setTitle(`${template.tituloProduto} — ${contexto.numeroCertificado ?? ''}`.trim());
+  doc.setTitle(`${tituloDe(template, contexto)} — ${contexto.numeroCertificado ?? ''}`.trim());
   doc.setProducer('Sistema de Verificação de Montagem de Painéis');
   doc.setCreationDate(new Date());
 

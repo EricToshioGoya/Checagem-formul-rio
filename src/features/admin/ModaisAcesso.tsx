@@ -1,3 +1,4 @@
+import { plural } from '../../../compartilhado/plural';
 import { useEffect, useMemo, useState } from 'react';
 import {
   api,
@@ -31,9 +32,6 @@ export function statusAgora(a: AcessoAdmin, agora: number): StatusAcesso {
     : a.status;
 }
 
-function plural(n: number, um: string, varios: string): string {
-  return `${n} ${n === 1 ? um : varios}`;
-}
 
 // ------------------------------------------------------------ liberar
 

@@ -1,3 +1,4 @@
+import { UID } from './midias';
 import { IDS_TIPOS_CHECKLIST } from '../../compartilhado/tiposChecklist';
 import { z } from 'zod';
 
@@ -164,9 +165,7 @@ export const prazoAcessoSchema = z.object({
 
 // ---------------------------------------------------------- sincronização
 
-const uidSchema = z
-  .string()
-  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'Identificador inválido.');
+const uidSchema = z.string().regex(UID, 'Identificador inválido.');
 
 /** Tipos de arquivo que o aparelho grava: foto comprimida em JPEG e anexo em PDF. */
 export const MIMES_MIDIA = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'] as const;

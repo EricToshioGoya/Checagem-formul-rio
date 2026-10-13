@@ -1,3 +1,4 @@
+import { percentualDe } from '../../compartilhado/progresso';
 import { banco, statusEfetivo, type StatusSolicitacao, type Usuario } from './banco';
 import { registrar, type TipoAlvo } from './auditoria';
 import { avisar, processarFila, situacaoAvisos } from './avisos';
@@ -307,7 +308,7 @@ export const rotasGestao: Record<string, Manipulador> = {
           tags: l.qtdTags === null ? 0 : Number(l.qtdTags),
           total: totalEtapas,
           respondidas,
-          percentual: totalEtapas ? Math.round((respondidas / totalEtapas) * 100) : 0,
+          percentual: percentualDe(respondidas, totalEtapas),
           enviadoEm: l.enviadoEm === null ? null : Number(l.enviadoEm),
           alteradoEm: l.alteradoEm === null ? null : Number(l.alteradoEm),
         };

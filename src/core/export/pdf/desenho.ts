@@ -151,64 +151,6 @@ export function alturaMaiuscula(estilo: Pick<EstiloTexto, 'tamanho'>): number {
   return estilo.tamanho * 0.72;
 }
 
-export interface EstiloSelo {
-  fundo: Color;
-  texto: Color;
-  ponto?: Color;
-  borda?: Color;
-}
-
-/** Selo de cantos totalmente arredondados (status). Devolve a largura. */
-export function selo(
-  pagina: PDFPage,
-  rotulo: string,
-  x: number,
-  topo: number,
-  fonte: PDFFont,
-  estilo: EstiloSelo,
-  tamanho = 6.8,
-  altura = 13,
-): number {
-  const recuo = 6;
-  const diametro = estilo.ponto ? 4.4 : 0;
-  const largura = larguraSelo(rotulo, fonte, !!estilo.ponto, tamanho);
-  retangulo(
-    pagina,
-    { x, topo, largura, altura },
-    {
-      raio: altura / 2,
-      cor: estilo.fundo,
-      borda: estilo.borda,
-      espessura: 0.6,
-    },
-  );
-  let cx = x + recuo;
-  if (estilo.ponto) {
-    pagina.drawCircle({
-      x: cx + diametro / 2,
-      y: topo - altura / 2,
-      size: diametro / 2,
-      color: estilo.ponto,
-    });
-    cx += diametro + 4;
-  }
-  escrever(pagina, rotulo, cx, topo - altura / 2 - alturaMaiuscula({ tamanho }) / 2, {
-    fonte,
-    tamanho,
-    cor: estilo.texto,
-  });
-  return largura;
-}
-
-export function larguraSelo(
-  rotulo: string,
-  fonte: PDFFont,
-  comPonto: boolean,
-  tamanho = 6.8,
-): number {
-  return 12 + (comPonto ? 8.4 : 0) + larguraTexto(rotulo, { fonte, tamanho });
-}
-
 /** Barra de progresso de cantos arredondados, centrada em `yCentro`. */
 export function barraProgresso(
   pagina: PDFPage,

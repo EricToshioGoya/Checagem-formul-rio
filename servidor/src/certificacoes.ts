@@ -6,8 +6,14 @@ import { PREFIXO_CERTIFICADO } from './configuracao';
 import { devolucaoSchema, envioCertificacaoSchema, primeiroErro } from './esquemas';
 import { obterDefinicao } from './formularios';
 import { moverParaLixeira, uidValido } from './midias';
-import { ErroHttp, emailsDosAdmins, exigirAdmin, exigirSessao, type Contexto } from './rotas';
-import { exigirAcessoAoPainel } from './rotasSync';
+import {
+  ErroHttp,
+  emailsDosAdmins,
+  exigirAcessoAoPainel,
+  exigirAdmin,
+  exigirSessao,
+  type Contexto,
+} from './rotas';
 
 /**
  * Solicitações de certificação (painéis do fluxo de certificação).

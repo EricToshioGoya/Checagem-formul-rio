@@ -6,7 +6,13 @@ import {
 import { painelGuardado } from '../api/acessoLocal';
 import { solicitacaoStore, ROTULO_ESTADO } from '../certificacao';
 import { carregarFormulario, formulariosDoPainel } from '../forms/catalogo';
-import { calcularProgresso, checklistsDaTag, etapaVisivel, idsPendentes } from '../forms/progresso';
+import {
+  calcularProgresso,
+  checklistsDaTag,
+  etapaVisivel,
+  idsPendentes,
+  somarProgresso,
+} from '../forms/progresso';
 import { etapaSchema } from '../../../compartilhado/formulario';
 import type { Progresso } from '../forms/progresso';
 import { camposDoPainel, entradaDoPainel } from '../paineis/catalogo';
@@ -155,18 +161,6 @@ export function etapasImpressas(formulario: FormularioDoDossie): Etapa[] {
     ),
     ...etapasForaDoChecklist(formulario),
   ];
-}
-
-/** Soma o andamento de vários checklists. */
-export function somarProgresso(partes: readonly Progresso[]): Progresso {
-  const total = partes.reduce((s, p) => s + p.total, 0);
-  const respondidas = partes.reduce((s, p) => s + p.respondidas, 0);
-  return {
-    total,
-    respondidas,
-    pendentes: total - respondidas,
-    percentual: total === 0 ? 0 : Math.round((respondidas / total) * 100),
-  };
 }
 
 /** Preenchimento com as mídias e o andamento, no formato do dossiê. */

@@ -45,7 +45,7 @@ export const PAINEIS: PainelFixo[] = [
     descricao: 'Solicitação de certificado: ensaios de rotina da NBR IEC 61439.',
     responsavelEmail: process.env.RESPONSAVEL_PRO_E_POWER ?? RESPONSAVEL_PADRAO,
     fluxo: 'certificacao',
-    certificado: 'spep',
+    certificado: '61439',
     signatario: { nome: 'Carlos Eduardo Silva', cargo: 'Especialista de Produto – Distribution Enclosures – ELSP', area: 'Electrification Products', empresa: 'ABB Ltda', email: 'carlos.e.silva@br.abb.com' },
   },
   {
@@ -54,7 +54,7 @@ export const PAINEIS: PainelFixo[] = [
     descricao: 'Solicitação de certificado: ensaios de rotina da NBR IEC 61439.',
     responsavelEmail: process.env.RESPONSAVEL_PRO_E_ENERGY ?? RESPONSAVEL_PADRAO,
     fluxo: 'certificacao',
-    certificado: 'spee',
+    certificado: '61439',
     signatario: { nome: 'Tainá Gioia', cargo: 'Especialista de Produto – Enclosures – ELSB', area: 'Electrification Products', empresa: 'ABB Ltda', email: 'taina.gioia@br.abb.com' },
   },
   {
@@ -63,7 +63,7 @@ export const PAINEIS: PainelFixo[] = [
     descricao: 'Solicitação de certificado: ensaios de rotina da NBR IEC 61439.',
     responsavelEmail: process.env.RESPONSAVEL_SAFR ?? RESPONSAVEL_PADRAO,
     fluxo: 'certificacao',
-    certificado: 'safr',
+    certificado: '61439',
     signatario: { nome: 'Tainá Gioia', cargo: 'Especialista de Produto – Enclosures – ELSB', area: 'Electrification Products', empresa: 'ABB Ltda', email: 'taina.gioia@br.abb.com' },
   },
   {

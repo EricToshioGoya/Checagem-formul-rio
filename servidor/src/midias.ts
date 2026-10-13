@@ -24,7 +24,7 @@ export const PASTA_MIDIAS = process.env.MIDIAS_PASTA ?? join(dirname(ARQUIVO_BAN
 export const PASTA_LIXEIRA = join(dirname(PASTA_MIDIAS), 'midias-excluidas');
 const DIAS_NA_LIXEIRA = 30;
 
-const UID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const UID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function uidValido(uid: string): boolean {
   return UID.test(uid);

@@ -307,6 +307,19 @@ function exigirResponsaveisAdmin(emails: readonly string[]): void {
   }
 }
 
+/**
+ * Confere que o usuário pode preencher o painel agora — a mesma regra para
+ * baixar os checklists, sincronizar projetos e enviar solicitações. O código
+ * `sem-acesso` é o que o aparelho reconhece.
+ */
+export function exigirAcessoAoPainel(eu: Usuario, painelId: number): void {
+  const painel = listarPaineis(eu.id, eu.email).find((p) => p.id === painelId);
+  if (!painel) throw new ErroHttp(404, 'Painel não encontrado.');
+  if (!painel.podePreencher) {
+    throw new ErroHttp(403, 'O seu acesso a este painel não está liberado.', 'sem-acesso');
+  }
+}
+
 /** Gera um `slug` estável e único a partir do nome do painel. */
 function gerarSlug(nome: string): string {
   const base =
@@ -577,11 +590,7 @@ export const rotas: Record<string, Manipulador> = {
   'GET /api/paineis/:id/formularios': (ctx) => {
     const eu = exigirSessao(ctx);
     const painelId = Number(ctx.params.id);
-    const painel = listarPaineis(eu.id, eu.email).find((p) => p.id === painelId);
-    if (!painel) throw new ErroHttp(404, 'Painel não encontrado.');
-    if (!painel.podePreencher) {
-      throw new ErroHttp(403, 'O seu acesso a este painel ainda não foi aprovado.');
-    }
+    exigirAcessoAoPainel(eu, painelId);
 
     const entradas = listarEntradasPorPainelId(painelId).filter((e) => e.ativo);
     return {

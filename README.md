@@ -321,10 +321,8 @@ servidor/src/            API de acesso (Node + node:sqlite, sem framework)
   (sementes/forms/       sementes dos checklists — importadas na primeira subida)
 public/
   paineis/
-    index.json            fluxo por slug de painel: certificação, template
-                          do certificado, responsável ABB e campos
-  certificados/           templates de certificado, um por painel
-    spee.json  spep.json  safr.json
+    index.json            campos padrão da solicitação de certificação
+  certificados/           modelos de certificado (hoje um só: 61439.json)
   docs/                   PDF de instruções exibido nas telas de certificação
   media/                  conteúdo de apoio — editável sem build
     sen-plus/             (ver LEIA-ME.md: lista das imagens esperadas)
@@ -534,9 +532,9 @@ rascunho ──enviar──> enviada ──aprovar──> aprovada ──gerar�
 
 | Painel (`slug`) | Responsável ABB | Template |
 |---|---|---|
-| System Pro E Energy (`system-pro-e-energy`) | Tainá Gioia | `certificados/spee.json` |
-| System Pro E Power (`system-pro-e-power`) | Carlos Eduardo Silva | `certificados/spep.json` |
-| SAFR (`safr`) | Tainá Gioia | `certificados/safr.json` |
+| System Pro E Energy (`system-pro-e-energy`) | Tainá Gioia | `certificados/61439.json` |
+| System Pro E Power (`system-pro-e-power`) | Carlos Eduardo Silva | `certificados/61439.json` |
+| SAFR (`safr`) | Tainá Gioia | `certificados/61439.json` |
 
 O fluxo de cada painel (verificação ou certificação), o modelo do certificado e
 quem o assina são cadastrados na aba **Painéis e checklists** da administração —

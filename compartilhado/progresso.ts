@@ -89,6 +89,24 @@ export function etapaRespondida(
   }
 }
 
+/** Percentual inteiro; zero quando não há etapas. */
+export function percentualDe(respondidas: number, total: number): number {
+  return total === 0 ? 0 : Math.round((respondidas / total) * 100);
+}
+
+/** Monta o progresso a partir das etapas respondidas e do total. */
+export function progressoDe(respondidas: number, total: number): Progresso {
+  return { total, respondidas, pendentes: total - respondidas, percentual: percentualDe(respondidas, total) };
+}
+
+/** Soma o andamento de vários checklists. */
+export function somarProgresso(partes: readonly Progresso[]): Progresso {
+  return progressoDe(
+    partes.reduce((s, p) => s + p.respondidas, 0),
+    partes.reduce((s, p) => s + p.total, 0),
+  );
+}
+
 export function calcularProgresso(
   definicao: DefinicaoFormulario,
   respostas: MapaRespostas,
@@ -98,13 +116,7 @@ export function calcularProgresso(
   const respondidas = etapas.filter((e) =>
     etapaRespondida(e, respostas[e.id], fotosPorEtapa[e.id] ?? 0),
   ).length;
-  const total = etapas.length;
-  return {
-    total,
-    respondidas,
-    pendentes: total - respondidas,
-    percentual: total === 0 ? 0 : Math.round((respondidas / total) * 100),
-  };
+  return progressoDe(respondidas, etapas.length);
 }
 
 export function idsPendentes(

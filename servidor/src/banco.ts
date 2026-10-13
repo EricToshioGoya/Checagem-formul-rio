@@ -485,6 +485,9 @@ garantirColuna('paineis', 'signatario', 'TEXT');
  * Bancos criados antes dessas colunas: os painéis iniciais conhecidos recebem
  * o fluxo, o modelo e o signatário que o arquivo de publicação lhes dava.
  */
+// Os três modelos de certificado eram idênticos fora do título: viraram um só.
+banco.exec("UPDATE paineis SET certificado = '61439' WHERE certificado IN ('spee', 'spep', 'safr')");
+
 (function completarPaineisIniciais(): void {
   const completar = banco.prepare(
     `UPDATE paineis SET fluxo = ?, certificado = ?, signatario = ?

@@ -1,3 +1,4 @@
+import { plural } from '../../../compartilhado/plural';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { ResumoProjeto } from '../../core/db/repositorios';
@@ -59,7 +60,7 @@ export function CartaoProjeto({ projeto: p, percentual, onExcluir }: Props) {
           </p>
           <h2 className="text-xl font-bold break-words">{p.nomeProjeto}</h2>
           <p className="mt-1 text-base text-abb-gray">
-            {p.quantidadeTags} {p.quantidadeTags === 1 ? 'TAG' : 'TAGs'} • Operador: {p.operador || '—'}
+            {plural(p.quantidadeTags, 'TAG', 'TAGs')} • Operador: {p.operador || '—'}
           </p>
           <p className="text-sm text-abb-gray">Última alteração: {dataHoraBr(p.atualizadoEm)}</p>
           <SituacaoSincronizacao projeto={p} />

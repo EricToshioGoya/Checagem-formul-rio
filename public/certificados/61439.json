@@ -1,7 +1,5 @@
 {
-  "id": "spee",
-  "painelId": "system-pro-e-energy",
-  "tituloProduto": "Certificado de produto System pro E Energy",
+  "id": "61439",
   "numero": "Nº {{numeroCertificado}}",
   "rodape": "ABB Eletrificação Ltda. – Av. Nicolas Boer, 399 – São Paulo – Brasil",
   "blocos": [

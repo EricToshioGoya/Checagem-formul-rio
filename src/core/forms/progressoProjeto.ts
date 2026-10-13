@@ -4,7 +4,13 @@ import {
   ProjetoRepository,
 } from '../db/repositorios';
 import { carregarFormulario, formulariosDoPainel } from './catalogo';
-import { calcularProgresso, checklistsDaTag, idsPendentes, type Progresso } from './progresso';
+import {
+  calcularProgresso,
+  checklistsDaTag,
+  idsPendentes,
+  somarProgresso,
+  type Progresso,
+} from './progresso';
 import type { DefinicaoFormulario, EntradaCatalogo } from './tipos';
 
 export interface ProgressoDeFormulario {
@@ -28,17 +34,6 @@ export interface ProgressoDeTag {
 export interface ProgressoDeProjeto {
   tags: ProgressoDeTag[];
   progresso: Progresso;
-}
-
-function somar(partes: Progresso[]): Progresso {
-  const total = partes.reduce((s, p) => s + p.total, 0);
-  const respondidas = partes.reduce((s, p) => s + p.respondidas, 0);
-  return {
-    total,
-    respondidas,
-    pendentes: total - respondidas,
-    percentual: total === 0 ? 0 : Math.round((respondidas / total) * 100),
-  };
 }
 
 /**
@@ -89,9 +84,9 @@ export async function progressoDoProjeto(
       nome: tag.nome,
       formIds: tag.formIds,
       formularios,
-      progresso: somar(formularios.map((f) => f.progresso)),
+      progresso: somarProgresso(formularios.map((f) => f.progresso)),
     });
   }
 
-  return { tags: resultado, progresso: somar(resultado.map((t) => t.progresso)) };
+  return { tags: resultado, progresso: somarProgresso(resultado.map((t) => t.progresso)) };
 }
