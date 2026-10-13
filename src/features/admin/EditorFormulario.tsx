@@ -8,6 +8,7 @@ import {
 import { FormularioRepository } from '../../core/db/repositorios';
 import type { DefinicaoFormulario, Etapa, MidiaApoio } from '../../core/forms/tipos';
 import { baixarBlob } from '../../shared/utils/download';
+import { formatarBytes } from '../../shared/utils/texto';
 import { Botao } from '../../shared/componentes/Botao';
 import { CampoSelecao, CampoTexto } from '../../shared/componentes/Campos';
 import { Confirmacao } from '../../shared/componentes/Confirmacao';
@@ -20,6 +21,9 @@ interface Props {
 }
 
 type Estado = 'ocioso' | 'salvando' | 'salvo';
+
+/** Os formulários publicados têm dezenas de KB; o teto só barra arquivos absurdos. */
+const MAX_TAMANHO_JSON = 2 * 1024 * 1024;
 
 export function EditorFormulario({ formId, onVoltar }: Props) {
   const [definicao, setDefinicao] = useState<DefinicaoFormulario | null>(null);
@@ -105,6 +109,9 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
 
   const importar = async (arquivo: File) => {
     try {
+      if (arquivo.size > MAX_TAMANHO_JSON) {
+        throw new Error(`O arquivo passa do limite de ${formatarBytes(MAX_TAMANHO_JSON)}.`);
+      }
       const texto = await arquivo.text();
       const nova = validarDefinicao(JSON.parse(texto));
       if (nova.id !== formId) {

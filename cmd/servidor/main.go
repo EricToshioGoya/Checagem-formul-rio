@@ -34,6 +34,23 @@ const (
 	tentativasPorta = 20
 )
 
+// politicaConteudo é a Content-Security-Policy da aplicação. Manter em
+// sincronia com POLITICA_CONTEUDO em vite.config.ts; aqui entra também
+// frame-ancestors, que a meta tag do HTML não aceita.
+const politicaConteudo = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+	"img-src 'self' blob: data:; media-src 'self' blob:; font-src 'self'; " +
+	"connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; " +
+	"frame-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
+
+func cabecalhosSeguranca(h http.Header) {
+	h.Set("Content-Security-Policy", politicaConteudo)
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("Referrer-Policy", "no-referrer")
+	h.Set("Cross-Origin-Opener-Policy", "same-origin")
+	h.Set("Permissions-Policy", "geolocation=(), microphone=(), camera=(self)")
+}
+
 func main() {
 	porta := flag.Int("porta", portaPadrao, "porta HTTP local")
 	semNavegador := flag.Bool("sem-navegador", false, "não abrir o navegador automaticamente")
@@ -124,6 +141,8 @@ func manipulador(arquivos fs.FS) http.Handler {
 	servidorArquivos := http.FileServer(http.FS(arquivos))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cabecalhosSeguranca(w.Header())
+
 		caminho := strings.TrimPrefix(r.URL.Path, "/")
 		if caminho == "" {
 			caminho = "index.html"

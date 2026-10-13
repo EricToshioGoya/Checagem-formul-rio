@@ -10,9 +10,9 @@ interface Props {
 
 const base = import.meta.env.BASE_URL;
 
+/** O schema só aceita caminhos locais; aqui eles são resolvidos a partir da base. */
 function caminho(src: string): string {
-  if (/^(https?:)?\/\//.test(src)) return src;
-  return `${base}${src.replace(/^\//, '')}`;
+  return `${base}${src.replace(/^\/+/, '')}`;
 }
 
 /**

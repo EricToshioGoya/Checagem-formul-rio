@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { MAX_FOTOS_POR_ETAPA, MidiaRepository } from '../../core/db/repositorios';
 import { ehImagem, ehPdf, normalizarImagem } from '../../core/media/imagem';
+import { MAX_TAMANHO_MIDIA, blobTemAssinatura } from '../../core/media/tipoArquivo';
 import { Botao } from '../../shared/componentes/Botao';
 import { Modal } from '../../shared/componentes/Modal';
 import { Erro } from '../../shared/componentes/Estado';
@@ -55,6 +56,14 @@ export function AreaFotos({ preenchimentoId, etapaId, aceitaPdf, onAlterou }: Pr
       }
       for (const arquivo of lista) {
         if (aceitaPdf && ehPdf(arquivo)) {
+          if (arquivo.size > MAX_TAMANHO_MIDIA) {
+            setErro(`O PDF passa do limite de ${formatarBytes(MAX_TAMANHO_MIDIA)}.`);
+            continue;
+          }
+          if (!(await blobTemAssinatura(arquivo, 'application/pdf'))) {
+            setErro(`"${arquivo.name}" não é um PDF válido.`);
+            continue;
+          }
           await MidiaRepository.adicionar({
             preenchimentoId,
             etapaId,

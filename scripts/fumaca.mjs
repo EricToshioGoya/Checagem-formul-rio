@@ -6,10 +6,10 @@
  * opções de foto, exportação do projeto, grade de ensaios e aba de
  * administração.
  *
- * Uso:
+ * Uso (o build precisa do hash da mesma senha passada em SENHA_ADMIN):
  *   npm run build && npx vite preview --port 8099
  *   npm i -D playwright && npx playwright install chromium
- *   BASE_URL=http://localhost:8099 node scripts/fumaca.mjs
+ *   BASE_URL=http://localhost:8099 SENHA_ADMIN='…' node scripts/fumaca.mjs
  *
  * Em ambientes com o Chromium já instalado, aponte o executável:
  *   CHROMIUM=/caminho/para/chromium node scripts/fumaca.mjs
@@ -19,6 +19,11 @@ import { mkdirSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:8099';
+const SENHA_ADMIN = process.env.SENHA_ADMIN;
+if (!SENHA_ADMIN) {
+  console.error('Informe SENHA_ADMIN (a senha cujo hash foi usado no build).');
+  process.exit(1);
+}
 const SAIDA = process.env.SAIDA ?? join(process.cwd(), 'saida-fumaca');
 mkdirSync(SAIDA, { recursive: true });
 
@@ -161,7 +166,7 @@ await passo('abrir a rotina BT e a grade de ensaios', async () => {
 
 await passo('administração: senha e edição', async () => {
   await pagina.goto(`${BASE}/#/admin`, { waitUntil: 'networkidle' });
-  await pagina.getByLabel('Senha').fill('abb-admin');
+  await pagina.getByLabel('Senha').fill(SENHA_ADMIN);
   await pagina.getByRole('button', { name: 'Entrar' }).click();
   await pagina.getByRole('button', { name: /Verificação de Montagem/ }).click();
   await pagina.getByRole('button', { name: /S1 —/ }).click();

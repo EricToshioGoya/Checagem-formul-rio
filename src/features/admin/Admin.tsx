@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { SENHA_ADMIN } from '../../core/config';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { HASH_SENHA_ADMIN, MINUTOS_SESSAO_ADMIN } from '../../core/config';
+import { conferirSenha, interpretarHash } from '../../core/seguranca/senha';
 import { formulariosAtivos } from '../../core/forms/catalogo';
 import type { EntradaCatalogo } from '../../core/forms/tipos';
 import { EditorFormulario } from './EditorFormulario';
@@ -7,16 +8,32 @@ import { Botao } from '../../shared/componentes/Botao';
 import { CampoTexto } from '../../shared/componentes/Campos';
 import { Erro, Carregando } from '../../shared/componentes/Estado';
 
-const CHAVE_SESSAO = 'admin-liberado';
+/** Guarda o instante (ms) até o qual a aba fica liberada. */
+const CHAVE_SESSAO = 'admin-liberado-ate';
+/** Teto da espera progressiva entre tentativas erradas. */
+const ESPERA_MAXIMA_MS = 30_000;
+
+function sessaoValida(): boolean {
+  const ate = Number(sessionStorage.getItem(CHAVE_SESSAO));
+  return Number.isFinite(ate) && ate > Date.now();
+}
 
 export function Admin() {
-  const [liberado, setLiberado] = useState(
-    () => sessionStorage.getItem(CHAVE_SESSAO) === '1',
-  );
+  const hashSenha = useMemo(() => interpretarHash(HASH_SENHA_ADMIN), []);
+  const [liberado, setLiberado] = useState(sessaoValida);
   const [senha, setSenha] = useState('');
+  const [conferindo, setConferindo] = useState(false);
+  const [falhas, setFalhas] = useState(0);
+  const [esperarAte, setEsperarAte] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
   const [entradas, setEntradas] = useState<EntradaCatalogo[] | null>(null);
   const [selecionado, setSelecionado] = useState<string | null>(null);
+
+  const bloquear = useCallback(() => {
+    sessionStorage.removeItem(CHAVE_SESSAO);
+    setLiberado(false);
+    setSelecionado(null);
+  }, []);
 
   useEffect(() => {
     if (!liberado) return;
@@ -27,7 +44,56 @@ export function Admin() {
       );
   }, [liberado]);
 
+  // A liberação expira: depois de MINUTOS_SESSAO_ADMIN a aba volta a pedir a senha.
+  useEffect(() => {
+    if (!liberado) return;
+    const t = setInterval(() => {
+      if (!sessaoValida()) bloquear();
+    }, 15_000);
+    return () => clearInterval(t);
+  }, [liberado, bloquear]);
+
+  const entrar = async () => {
+    if (!hashSenha || conferindo) return;
+    const restante = esperarAte - Date.now();
+    if (restante > 0) {
+      setErro(`Aguarde ${Math.ceil(restante / 1000)} s antes de tentar de novo.`);
+      return;
+    }
+    setConferindo(true);
+    try {
+      if (await conferirSenha(senha, hashSenha)) {
+        sessionStorage.setItem(
+          CHAVE_SESSAO,
+          String(Date.now() + MINUTOS_SESSAO_ADMIN * 60_000),
+        );
+        setSenha('');
+        setFalhas(0);
+        setErro(null);
+        setLiberado(true);
+      } else {
+        const total = falhas + 1;
+        setFalhas(total);
+        setEsperarAte(Date.now() + Math.min(1000 * 2 ** total, ESPERA_MAXIMA_MS));
+        setErro('Senha incorreta.');
+      }
+    } finally {
+      setConferindo(false);
+    }
+  };
+
   if (!liberado) {
+    if (!hashSenha) {
+      return (
+        <div className="mx-auto max-w-md space-y-4">
+          <h1 className="text-2xl font-bold">Administração</h1>
+          <Erro
+            titulo="Administração indisponível"
+            detalhe="A senha da administração não foi configurada nesta versão (VITE_SENHA_ADMIN_HASH). Consulte o README."
+          />
+        </div>
+      );
+    }
     return (
       <div className="mx-auto max-w-md space-y-4">
         <h1 className="text-2xl font-bold">Administração</h1>
@@ -39,17 +105,10 @@ export function Admin() {
         <Botao
           variante="primario"
           larguraTotal
-          onClick={() => {
-            if (senha === SENHA_ADMIN) {
-              sessionStorage.setItem(CHAVE_SESSAO, '1');
-              setLiberado(true);
-              setErro(null);
-            } else {
-              setErro('Senha incorreta.');
-            }
-          }}
+          disabled={conferindo}
+          onClick={() => void entrar()}
         >
-          Entrar
+          {conferindo ? 'Conferindo…' : 'Entrar'}
         </Botao>
       </div>
     );
@@ -68,14 +127,7 @@ export function Admin() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Administração</h1>
-        <Botao
-          onClick={() => {
-            sessionStorage.removeItem(CHAVE_SESSAO);
-            setLiberado(false);
-          }}
-        >
-          Bloquear
-        </Botao>
+        <Botao onClick={bloquear}>Bloquear</Botao>
       </div>
       <p className="text-base text-abb-gray">
         Escolha um formulário para editar textos, ativar ou desativar etapas,
