@@ -13,9 +13,14 @@ import {
   type TipoResposta,
 } from '../../../compartilhado/formulario';
 import { api } from '../../core/api/cliente';
-import { ehApoioDoServidor, enviarImagemApoio } from '../../core/media/apoio';
+import {
+  ehApoioDoServidor,
+  ehVideo,
+  enviarImagemApoio,
+  enviarVideoApoio,
+} from '../../core/media/apoio';
 import { ehImagem } from '../../core/media/imagem';
-import { ImagemApoio } from '../../shared/componentes/ImagemApoio';
+import { ImagemApoio, VideoApoio } from '../../shared/componentes/ImagemApoio';
 import { plural } from '../../../compartilhado/plural';
 import { useSalvamentoAutomatico } from '../../shared/hooks/useSalvamentoAutomatico';
 import { baixarBlob } from '../../shared/utils/download';
@@ -83,6 +88,7 @@ export function ConstrutorChecklist({
   const [secaoParaExcluir, setSecaoParaExcluir] = useState<Secao | null>(null);
   const entradaArquivo = useRef<HTMLInputElement>(null);
   const entradaImagem = useRef<HTMLInputElement>(null);
+  const entradaVideo = useRef<HTMLInputElement>(null);
   /** Etapa que recebe a imagem escolhida no seletor de arquivo. */
   const alvoImagem = useRef<{ secaoId: string; etapaId: string } | null>(null);
   const [enviandoImagem, setEnviandoImagem] = useState<string | null>(null);
@@ -179,17 +185,21 @@ export function ConstrutorChecklist({
     alterarEtapa(secaoId, etapa.id, { midiaApoio: midias });
   };
 
-  const enviarImagem = async (arquivo: File) => {
+  const enviarMidia = async (arquivo: File, tipo: 'imagem' | 'video') => {
     const alvo = alvoImagem.current;
     alvoImagem.current = null;
     if (!alvo) return;
-    if (!ehImagem(arquivo)) {
-      setErro('Escolha um arquivo de imagem (JPEG, PNG…).');
+    if (tipo === 'imagem' ? !ehImagem(arquivo) : !ehVideo(arquivo)) {
+      setErro(
+        tipo === 'imagem'
+          ? 'Escolha um arquivo de imagem (JPEG, PNG…).'
+          : 'Escolha um arquivo de vídeo (MP4, WebM ou MOV).',
+      );
       return;
     }
     setEnviandoImagem(`${alvo.secaoId}/${alvo.etapaId}`);
     try {
-      const src = await enviarImagemApoio(arquivo);
+      const src = tipo === 'imagem' ? await enviarImagemApoio(arquivo) : await enviarVideoApoio(arquivo);
       const d = atual.current;
       if (!d) return;
       alterar({
@@ -202,13 +212,16 @@ export function ConstrutorChecklist({
                 etapas: s.etapas.map((e) =>
                   e.id !== alvo.etapaId
                     ? e
-                    : { ...e, midiaApoio: [...(e.midiaApoio ?? []), { tipo: 'imagem' as const, src }] },
+                    : { ...e, midiaApoio: [...(e.midiaApoio ?? []), { tipo, src }] },
                 ),
               },
         ),
       });
     } catch (e) {
-      setErro(e instanceof Error ? `Não foi possível enviar a imagem: ${e.message}` : 'Falha ao enviar a imagem.');
+      const nome = tipo === 'imagem' ? 'a imagem' : 'o vídeo';
+      setErro(
+        e instanceof Error ? `Não foi possível enviar ${nome}: ${e.message}` : `Falha ao enviar ${nome}.`,
+      );
     } finally {
       setEnviandoImagem(null);
     }
@@ -314,7 +327,20 @@ export function ConstrutorChecklist({
         onChange={(e) => {
           const arquivo = e.target.files?.[0];
           e.target.value = '';
-          if (arquivo) void enviarImagem(arquivo);
+          if (arquivo) void enviarMidia(arquivo, 'imagem');
+        }}
+      />
+
+      <input
+        ref={entradaVideo}
+        type="file"
+        accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
+        className="hidden"
+        aria-label="Vídeo de apoio"
+        onChange={(e) => {
+          const arquivo = e.target.files?.[0];
+          e.target.value = '';
+          if (arquivo) void enviarMidia(arquivo, 'video');
         }}
       />
 
@@ -544,7 +570,7 @@ export function ConstrutorChecklist({
 
                     <div className="space-y-2">
                       <p className="text-base font-semibold">
-                        Imagem de apoio{' '}
+                        Imagem ou vídeo de apoio{' '}
                         <span className="font-normal text-abb-gray">(opcional)</span>
                       </p>
                       <p className="text-sm text-abb-gray">
@@ -556,11 +582,18 @@ export function ConstrutorChecklist({
                             key={midia.src}
                             className="grid items-start gap-2 rounded border border-abb-line p-2 sm:grid-cols-[10rem_1fr_auto]"
                           >
-                            <ImagemApoio
-                              src={midia.src}
-                              alt={midia.legenda || `Imagem de apoio da ${etapa.id}`}
-                              className="h-28 w-full rounded border border-abb-line object-contain"
-                            />
+                            {midia.tipo === 'video' ? (
+                              <VideoApoio
+                                src={midia.src}
+                                className="h-28 w-full rounded border border-abb-line bg-black object-contain"
+                              />
+                            ) : (
+                              <ImagemApoio
+                                src={midia.src}
+                                alt={midia.legenda || `Imagem de apoio da ${etapa.id}`}
+                                className="h-28 w-full rounded border border-abb-line object-contain"
+                              />
+                            )}
                             <CampoTexto
                               valor={midia.legenda ?? ''}
                               placeholder="Legenda (opcional)"
@@ -621,20 +654,27 @@ export function ConstrutorChecklist({
                             entradaImagem.current?.click();
                           }}
                         >
-                          {enviandoImagem === `${secao.id}/${etapa.id}`
-                            ? 'Enviando imagem…'
-                            : 'Adicionar imagem'}
+                          {enviandoImagem === `${secao.id}/${etapa.id}` ? 'Enviando…' : 'Adicionar imagem'}
+                        </Botao>
+                        <Botao
+                          disabled={enviandoImagem !== null}
+                          onClick={() => {
+                            alvoImagem.current = { secaoId: secao.id, etapaId: etapa.id };
+                            entradaVideo.current?.click();
+                          }}
+                        >
+                          Adicionar vídeo
                         </Botao>
                         <Botao
                           variante="texto"
                           onClick={() =>
                             alterarMidia(secao.id, etapa, (etapa.midiaApoio ?? []).length, {
-                              tipo: 'video',
+                              tipo: 'pdf',
                               src: '',
                             })
                           }
                         >
-                          Vídeo ou PDF por endereço
+                          PDF por endereço
                         </Botao>
                       </div>
                     </div>

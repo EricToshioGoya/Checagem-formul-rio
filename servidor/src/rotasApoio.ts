@@ -4,11 +4,12 @@ import { caminhoMidia, gravarMidia, uidValido } from './midias';
 import { ErroHttp, exigirAdmin, exigirSessao, RespostaArquivo, type Contexto } from './rotas';
 
 /**
- * Imagens de apoio das etapas: a administração envia ao montar o checklist, e
- * o montador vê na etapa — a foto do pino certo, da cor esperada.
+ * Imagens e vídeos de apoio das etapas: a administração envia ao montar o
+ * checklist, e o montador vê na etapa — a foto do pino certo, o vídeo da
+ * conexão correta.
  *
- * O aparelho comprime antes (JPEG, como as fotos das checagens) e escolhe o
- * `uid`; o checklist guarda só o endereço `/api/apoio/<uid>`. Ler exige
+ * O aparelho comprime a imagem antes (JPEG, como as fotos das checagens; vídeo
+ * vai como está) e escolhe o `uid`; o checklist guarda só o endereço `/api/apoio/<uid>`. Ler exige
  * sessão, como o próprio checklist; o aparelho baixa a imagem junto com o
  * checklist e a guarda para o preenchimento offline.
  */
@@ -16,9 +17,14 @@ import { ErroHttp, exigirAdmin, exigirSessao, RespostaArquivo, type Contexto } f
 type Manipulador = (ctx: Contexto) => unknown;
 
 /** 5 MB: uma imagem comprimida no aparelho fica bem abaixo. */
-export const TAMANHO_MAXIMO_APOIO = 5 * 1024 * 1024;
+export const TAMANHO_MAXIMO_IMAGEM_APOIO = 5 * 1024 * 1024;
+/** 30 MB: um vídeo curto de instrução. Vai sem recompressão, como foi gravado. */
+export const TAMANHO_MAXIMO_VIDEO_APOIO = 30 * 1024 * 1024;
+/** Maior corpo aceito pela rota; o limite de cada tipo é conferido no manipulador. */
+export const TAMANHO_MAXIMO_APOIO = TAMANHO_MAXIMO_VIDEO_APOIO;
 
-const MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const MIMES_IMAGEM = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const MIMES_VIDEO = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
 
 /** Confere a assinatura do arquivo: o tipo declarado sozinho não basta. */
 function assinaturaConfere(mime: string, dados: Buffer): boolean {
@@ -26,6 +32,13 @@ function assinaturaConfere(mime: string, dados: Buffer): boolean {
   if (mime === 'image/png') return dados.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
   if (mime === 'image/webp') {
     return dados.subarray(0, 4).toString('latin1') === 'RIFF' && dados.subarray(8, 12).toString('latin1') === 'WEBP';
+  }
+  // MP4 e MOV (iPhone) começam com o tamanho do bloco e a marca "ftyp".
+  if (mime === 'video/mp4' || mime === 'video/quicktime') {
+    return dados.subarray(4, 8).toString('latin1') === 'ftyp';
+  }
+  if (mime === 'video/webm') {
+    return dados.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
   }
   return false;
 }
@@ -37,10 +50,13 @@ export const rotasApoio: Record<string, Manipulador> = {
     if (!uidValido(uid)) throw new ErroHttp(400, 'Identificador de imagem inválido.');
     const dados = ctx.corpoBruto;
     if (!dados?.length) throw new ErroHttp(400, 'Arquivo vazio.');
-    if (dados.length > TAMANHO_MAXIMO_APOIO) throw new ErroHttp(413, 'Imagem grande demais.');
     const mime = (ctx.tipoConteudo ?? '').split(';')[0].trim().toLowerCase();
-    if (!MIMES.has(mime) || !assinaturaConfere(mime, dados)) {
-      throw new ErroHttp(400, 'Envie uma imagem JPEG, PNG ou WebP.');
+    const ehVideo = MIMES_VIDEO.has(mime);
+    if ((!ehVideo && !MIMES_IMAGEM.has(mime)) || !assinaturaConfere(mime, dados)) {
+      throw new ErroHttp(400, 'Envie uma imagem (JPEG, PNG, WebP) ou um vídeo (MP4, WebM, MOV).');
+    }
+    if (dados.length > (ehVideo ? TAMANHO_MAXIMO_VIDEO_APOIO : TAMANHO_MAXIMO_IMAGEM_APOIO)) {
+      throw new ErroHttp(413, ehVideo ? 'Vídeo grande demais (máximo 30 MB).' : 'Imagem grande demais.');
     }
     // O `uid` é a identidade da imagem e vai parar no checklist: não se troca
     // o conteúdo de um já usado, nem se toma o de uma foto de checagem.

@@ -3,7 +3,7 @@ import { Modal } from '../../shared/componentes/Modal';
 import { Aviso } from '../../shared/componentes/Estado';
 import type { Etapa } from '../../core/forms/tipos';
 import { ehApoioDoServidor } from '../../core/media/apoio';
-import { ImagemApoio } from '../../shared/componentes/ImagemApoio';
+import { ImagemApoio, VideoApoio } from '../../shared/componentes/ImagemApoio';
 
 interface Props {
   etapa: Etapa | null;
@@ -59,7 +59,8 @@ export function ModalApoio({ etapa, onFechar }: Props) {
               <figure key={i} className="space-y-2">
                 {falhou && ehApoioDoServidor(m.src) ? (
                   <Aviso>
-                    Imagem ainda não baixada neste aparelho. Abra a lista de
+                    {m.tipo === 'video' ? 'Vídeo ainda não baixado' : 'Imagem ainda não baixada'} neste
+                    aparelho. Abra a lista de
                     painéis com conexão para baixá-la.
                   </Aviso>
                 ) : falhou ? (
@@ -73,6 +74,12 @@ export function ModalApoio({ etapa, onFechar }: Props) {
                     src={m.src}
                     alt={m.legenda ?? `Referência da etapa ${etapa.id}`}
                     className="w-full rounded-md border border-abb-line bg-white"
+                    onFalha={() => setFalhas((f) => (f[m.src] ? f : { ...f, [m.src]: true }))}
+                  />
+                ) : m.tipo === 'video' && ehApoioDoServidor(m.src) ? (
+                  <VideoApoio
+                    src={m.src}
+                    className="w-full rounded-md border border-abb-line bg-black"
                     onFalha={() => setFalhas((f) => (f[m.src] ? f : { ...f, [m.src]: true }))}
                   />
                 ) : m.tipo === 'video' ? (
