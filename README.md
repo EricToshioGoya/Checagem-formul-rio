@@ -242,7 +242,8 @@ no aparelho. A sessão só é descartada quando o servidor a recusa (401) — e,
 quando isso acontece no meio do uso, o aplicativo volta sozinho para o login.
 
 A tela **Projetos neste aparelho** (link na tela de painéis) lista os projetos
-locais e é onde se importa um projeto exportado de outro aparelho.
+locais. Para levar um projeto a outro aparelho, entre com a mesma conta: a
+sincronização traz o projeto de volta.
 
 ### O que fica em cada lado
 
@@ -273,9 +274,6 @@ não por pessoa.
 - **Não há redefinição de senha.** Sem servidor de e-mail, não há para onde
   mandar o link. Se nenhum administrador conseguir entrar, o socorro é
   `npm run admin -- promover <e-mail>` na máquina do servidor.
-- **Importar projeto ignora a aprovação.** Um `.zip` exportado de outro aparelho
-  é recriado localmente sem passar pelos painéis. É o preço da mitigação manual
-  de sincronização; fechar isso exige amarrar o pacote ao painel de origem.
 - **Todo administrador pode tudo.** Não há níveis dentro da administração:
   quem tem o papel libera acessos, cadastra painéis, edita checklists e aprova
   outros administradores. O que fica registrado é quem decidiu cada acesso e
@@ -701,10 +699,9 @@ O servidor sincroniza **o acesso**, não as checagens. Cada aparelho mantém a s
 própria base de respostas e fotos: um preenchimento iniciado no celular **não
 aparece** no notebook, mesmo com a mesma conta e o mesmo painel aprovado.
 
-Mitigação da v1: **Exportar projeto** (na tela do projeto) grava um `.zip` com o
-JSON dos dados e as fotos; **Importar projeto** (na tela de projetos) lê esse
-arquivo e recria o projeto no outro aparelho, com o sufixo “(importado)” no
-nome. A transferência é manual.
+**Exportar projeto** (na tela do projeto) grava um `.zip` com o JSON dos dados e as
+fotos, como cópia de arquivo. Não existe importação: a troca de aparelho é a
+sincronização com a conta.
 
 Solução definitiva: subir também as respostas, em versão futura. A infraestrutura
 para isso já existe — servidor, contas e sessões — e a camada de persistência
