@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  atualizarSolicitacoesDoServidor,
   podeEditar,
   ROTULO_ESTADO,
   servicoValidacao,
@@ -19,6 +20,7 @@ import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
 import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { IconePdf, IconeSeta, IconeVoltar } from '../../shared/componentes/Icones';
 import { dataHoraBr } from '../../shared/utils/texto';
+import { ErroApi } from '../../core/api/cliente';
 import { useSessao } from '../../core/api/SessaoContexto';
 import { AcessoBloqueado } from '../paineis/AcessoBloqueado';
 import { EtiquetaEstado } from './estado';
@@ -42,6 +44,8 @@ export function DetalheSolicitacao() {
 
   const recarregar = useCallback(async () => {
     try {
+      // A decisão da validação (devolvida, aprovada, número) vem do servidor.
+      if (usuario) await atualizarSolicitacoesDoServidor(usuario.id);
       const s = await solicitacaoStore.obter(id);
       // Solicitação de outra conta no mesmo aparelho não abre aqui.
       if (!s || (s.usuarioId !== undefined && s.usuarioId !== usuario?.id)) {
@@ -62,6 +66,16 @@ export function DetalheSolicitacao() {
   useEffect(() => {
     void recarregar();
   }, [recarregar]);
+
+  // Enquanto espera a validação, relê a resposta de tempos em tempos.
+  const aguardando = solicitacao?.estado === 'enviada';
+  useEffect(() => {
+    if (!aguardando) return;
+    const releitura = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void recarregar();
+    }, 60_000);
+    return () => window.clearInterval(releitura);
+  }, [aguardando, recarregar]);
 
   const pendentesCampos = useMemo(
     () => (situacao ? camposObrigatoriosVazios(situacao.campos, valores) : []),
@@ -92,7 +106,13 @@ export function DetalheSolicitacao() {
       );
       await recarregar();
     } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Falha ao enviar a solicitação.');
+      setErro(
+        e instanceof ErroApi && e.status === 0
+          ? 'Sem conexão: enviar para validação exige o servidor. A solicitação continua salva neste aparelho — tente de novo quando houver rede.'
+          : e instanceof Error
+            ? e.message
+            : 'Falha ao enviar a solicitação.',
+      );
     } finally {
       setOcupado(false);
       setConfirmandoEnvio(false);

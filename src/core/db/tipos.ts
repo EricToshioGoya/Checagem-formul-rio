@@ -144,6 +144,10 @@ export interface EventoSolicitacao {
 
 export interface Solicitacao {
   id?: number;
+  /** Identificador que vale em todo aparelho e no servidor. */
+  uid?: string;
+  /** Versão da cópia no servidor; zero ou ausente é "nunca enviada". */
+  versaoServidor?: number;
   /** `slug` do painel (`system-pro-e-energy`, `system-pro-e-power`, `safr`). */
   tipoPainel: string;
   /** Id do checklist usado — o primeiro checklist ativo do painel. */

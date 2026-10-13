@@ -162,7 +162,7 @@ function avisarPedidoAdmin(nome: string, email: string): void {
 /** Acesso com prazo dentro desta janela conta como "vencendo". */
 const JANELA_VENCENDO_MS = 48 * 3_600_000;
 
-function nomeDoPainel(id: number): string {
+export function nomeDoPainel(id: number): string {
   return (banco.prepare('SELECT nome FROM paineis WHERE id = ?').get(id) as { nome: string } | undefined)?.nome ?? `painel #${id}`;
 }
 
@@ -175,7 +175,7 @@ function nomeDaConta(id: number): string {
 }
 
 /** E-mails dos administradores ativos, para os avisos de pedido novo. */
-function emailsDosAdmins(): string[] {
+export function emailsDosAdmins(): string[] {
   return (
     banco.prepare("SELECT email FROM usuarios WHERE papel = 'admin' AND ativo = 1").all() as Array<{
       email: string;

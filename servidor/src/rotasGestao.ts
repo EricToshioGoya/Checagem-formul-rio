@@ -29,6 +29,7 @@ const FILTROS_HISTORICO: Record<string, TipoAlvo[]> = {
   paineis: ['painel', 'checklist'],
   acessos: ['acesso'],
   contas: ['conta', 'administrador'],
+  certificados: ['certificado'],
   sistema: ['sistema'],
 };
 

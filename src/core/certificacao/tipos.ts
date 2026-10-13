@@ -25,9 +25,8 @@ export interface FiltroSolicitacoes {
 /**
  * Persistência das solicitações e dos certificados emitidos.
  *
- * O restante do sistema conhece apenas esta interface. A implementação local
- * grava no IndexedDB do aparelho; uma implementação de portal trocaria as
- * mesmas operações por chamadas ao servidor, sem tocar nas telas.
+ * O restante do sistema conhece apenas esta interface. A cópia do aparelho
+ * fica no IndexedDB; a validação e a numeração são do servidor.
  */
 export interface SolicitacaoStore {
   listar(filtro?: FiltroSolicitacoes): Promise<Solicitacao[]>;
@@ -46,23 +45,15 @@ export interface SolicitacaoStore {
   obterCertificadoPorSolicitacao(solicitacaoId: number): Promise<Certificado | undefined>;
 }
 
-export interface ResultadoAprovacao {
-  numero: string;
-  certificado: Certificado;
-}
-
 /**
- * Validação ABB e numeração sequencial.
+ * Validação ABB, do lado do montador.
  *
- * A numeração é global, única e imutável: uma vez atribuída na aprovação, não
- * é reaproveitada nem reescrita. A implementação local resolve o contador em
- * uma transação do IndexedDB; a implementação de servidor resolveria o mesmo
- * contador no banco central, mantendo esta interface.
+ * A numeração é global, única e imutável, atribuída pelo servidor na aprovação
+ * (ver `validacaoServidor.ts`, usado pela administração).
  */
 export interface ServicoValidacao {
+  /** Sobe a solicitação e pede a validação; exige conexão com o servidor. */
   enviarParaValidacao(solicitacaoId: number, por: string): Promise<void>;
-  devolver(solicitacaoId: number, apontamentos: string, por: string): Promise<void>;
-  aprovar(solicitacaoId: number, por: string): Promise<ResultadoAprovacao>;
   /** Marca o certificado como emitido depois que o arquivo foi gerado. */
   registrarEmissao(solicitacaoId: number, por: string): Promise<void>;
 }

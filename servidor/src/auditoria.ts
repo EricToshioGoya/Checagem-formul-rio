@@ -8,7 +8,14 @@ import { banco, type Usuario } from './banco';
  * deixarem de existir.
  */
 
-export type TipoAlvo = 'painel' | 'checklist' | 'acesso' | 'conta' | 'administrador' | 'sistema';
+export type TipoAlvo =
+  | 'painel'
+  | 'checklist'
+  | 'acesso'
+  | 'conta'
+  | 'administrador'
+  | 'certificado'
+  | 'sistema';
 
 interface Fato {
   /** Quem fez; nulo é o próprio sistema (backup automático, por exemplo). */

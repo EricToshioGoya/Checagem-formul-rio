@@ -239,6 +239,55 @@ banco.exec(`
     alvo      TEXT    NOT NULL,
     detalhe   TEXT
   );
+  -- Solicitações de certificação. O montador trabalha no aparelho e envia a
+  -- solicitação inteira (dados, respostas e a lista das fotos) ao pedir a
+  -- validação; o estado e o número do certificado são decididos aqui.
+  CREATE TABLE IF NOT EXISTS certificacoes (
+    id           INTEGER PRIMARY KEY,
+    uid          TEXT    NOT NULL,
+    usuarioId    INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    painelId     INTEGER NOT NULL REFERENCES paineis(id)  ON DELETE CASCADE,
+    formId       TEXT    NOT NULL,
+    estado       TEXT    NOT NULL CHECK (estado IN ('rascunho','enviada','devolvida','aprovada','emitida')),
+    dados        TEXT    NOT NULL,
+    preenchimento TEXT   NOT NULL,
+    midias       TEXT    NOT NULL,
+    apontamentos TEXT,
+    historico    TEXT    NOT NULL,
+    numero       TEXT    UNIQUE,
+    aprovadoEm   INTEGER,
+    aprovadoPor  TEXT,
+    versao       INTEGER NOT NULL,
+    criadoEm     INTEGER NOT NULL,
+    atualizadoEm INTEGER NOT NULL,
+    UNIQUE (usuarioId, uid)
+  );
+  CREATE INDEX IF NOT EXISTS idx_certificacoes_estado ON certificacoes (estado, atualizadoEm);
+
+  -- Registro das emissões: guarda uma cópia dos dados no momento da
+  -- aprovação, para alterar a solicitação depois não reescrever o certificado.
+  CREATE TABLE IF NOT EXISTS certificados (
+    numero          TEXT    PRIMARY KEY,
+    certificacaoId  INTEGER NOT NULL REFERENCES certificacoes(id) ON DELETE CASCADE,
+    painelSlug      TEXT    NOT NULL,
+    nomePainel      TEXT    NOT NULL,
+    projeto         TEXT    NOT NULL,
+    tagPainel       TEXT    NOT NULL,
+    clienteFinal    TEXT    NOT NULL,
+    montador        TEXT    NOT NULL,
+    correnteNominal TEXT    NOT NULL,
+    correnteCurtoCircuito TEXT NOT NULL,
+    responsavel     TEXT    NOT NULL,
+    emitidoEm       INTEGER NOT NULL
+  );
+
+  -- Contadores sequenciais. O do certificado é lido e incrementado na mesma
+  -- transação que grava o certificado: dois aprovadores nunca pegam o mesmo número.
+  CREATE TABLE IF NOT EXISTS contadores (
+    id      TEXT    PRIMARY KEY,
+    proximo INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_auditoria_em   ON auditoria (em);
   CREATE INDEX IF NOT EXISTS idx_auditoria_alvo ON auditoria (alvoTipo, alvoId);
 

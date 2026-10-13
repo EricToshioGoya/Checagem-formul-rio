@@ -283,8 +283,10 @@ não por pessoa.
 - **A modalidade portátil não guarda contas.** O binário Go entrega os
   arquivos estáticos e repassa `/api` ao servidor de acesso indicado em
   `-api`; sem alcançar esse servidor pela rede, ninguém entra.
-- **Solicitações de certificação ficam no aparelho.** A validação ABB vê só as
-  do aparelho em que a administração é aberta — ver
+- **Enviar uma solicitação de certificação exige o servidor.** A solicitação é
+  preparada offline no aparelho; ao pedir a validação ela sobe inteira e, dali em
+  diante, o estado e o número do certificado são do servidor. Rascunhos ainda
+  não enviados existem só no aparelho que os criou — ver
   [Fluxo de certificação](#fluxo-de-certificação).
 
 ### Configuração
@@ -375,9 +377,9 @@ diálogo de geração.
 | Novo destino de exportação | Implementar `ExportTarget` (`src/core/export/ExportTarget.ts`). `PdfExport` é a implementação da v1. |
 | Trocar a persistência | Todo acesso ao Dexie passa por `ProjetoRepository`, `PreenchimentoRepository`, `MidiaRepository` e `FormularioRepository`. Nenhuma tela importa Dexie. |
 | Conteúdo de apoio | Imagem: enviar pela administração, na etapa. Vídeo e PDF: arquivo em `public/media`, com o caminho no JSON. |
-| Painel de certificação | Acrescentar a entrada em `public/paineis/index.json` com o `slug` do painel, `fluxo: "certificacao"`, o template em `public/certificados` e o responsável ABB. Nenhuma alteração de código. |
+| Painel de certificação | Cadastrar o painel na administração com o fluxo *Solicitação de certificação*, o modelo do certificado (um JSON de `public/certificados`) e quem assina. Nenhuma alteração de código. |
 | Novos campos da solicitação | Editar `camposPadrao` em `public/paineis/index.json`, ou dar ao painel a sua própria lista `campos`. |
-| Solicitações no servidor | Trocar o que `src/core/certificacao/index.ts` aponta em `solicitacaoStore` e `servicoValidacao`. Nenhuma tela muda. |
+| Validação ABB | Servidor: `servidor/src/certificacoes.ts`; cliente: `src/core/certificacao/` (sincronização, serviço do montador e `validacaoServidor.ts` da administração). |
 
 ### Modelo de dados
 
@@ -520,10 +522,13 @@ rascunho ──enviar──> enviada ──aprovar──> aprovada ──gerar�
   todo o preenchimento já feito.
 - **O certificado só é gerado após a aprovação explícita** do responsável ABB,
   na aba **Validação ABB** da administração.
-- **As solicitações ficam no aparelho.** Diferente das checagens de projeto,
-  elas não sincronizam: a validação ABB enxerga as solicitações gravadas no
-  aparelho em que é aberta. Levá-las ao servidor é trocar a implementação em
-  `src/core/certificacao/index.ts` — as telas não mudam.
+- **Quem decide é o servidor.** O rascunho é preparado no aparelho, offline.
+  **Enviar** sobe a solicitação (dados, respostas e fotos) e exige conexão; aprovar,
+  devolver e o **número do certificado** — de um contador único, gravado na mesma
+  transação do certificado — são do servidor, e a validação ABB enxerga as
+  solicitações enviadas por qualquer aparelho. O aparelho do montador atualiza a
+  cópia ao abrir a lista ou a solicitação (e a cada minuto, enquanto aguarda).
+  Aprovar, devolver e emitir ficam no **Histórico** (filtro *Certificados*).
 
 ### Responsáveis e numeração
 
@@ -533,15 +538,15 @@ rascunho ──enviar──> enviada ──aprovar──> aprovada ──gerar�
 | System Pro E Power (`system-pro-e-power`) | Carlos Eduardo Silva | `certificados/spep.json` |
 | SAFR (`safr`) | Tainá Gioia | `certificados/safr.json` |
 
-O fluxo de cada painel vem de `public/paineis/index.json`, pelo `slug` do painel
-no servidor. Painel sem entrada ali — todo painel novo da administração — segue
-a verificação. Quem pode abrir as solicitações de um painel é a mesma regra dos
-projetos: acesso aprovado pelo responsável ou liberado pela administração,
-reconferido a cada entrada.
+O fluxo de cada painel (verificação ou certificação), o modelo do certificado e
+quem o assina são cadastrados na aba **Painéis e checklists** da administração —
+inclusive em painéis novos. `public/paineis/index.json` guarda só os campos padrão
+da solicitação. Quem pode abrir as solicitações de um painel segue a mesma regra
+dos projetos: acesso liberado pela administração, reconferido a cada entrada.
 
-O responsável ABB (quem assina o certificado) e o responsável do painel (quem
-aprova o acesso do montador) são coisas diferentes: o primeiro mora no
-catálogo de fluxos, o segundo no cadastro de painéis do servidor.
+Quem assina o certificado (ABB) e o responsável do painel (administrador que recebe
+os avisos de pedido de acesso e preenche o painel sem pedir) são coisas
+diferentes; as duas ficam no cadastro do painel.
 
 Na aprovação, a camada de validação atribui um número **sequencial global, único
 e imutável** (`0001`, `0002`, …) resolvido em transação, com índice único em

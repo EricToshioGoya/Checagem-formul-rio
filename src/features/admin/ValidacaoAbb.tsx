@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  servicoValidacao,
-  situacaoDaSolicitacao,
-  solicitacaoStore,
-  type SituacaoSolicitacao,
-} from '../../core/certificacao';
-import type { Certificado, Solicitacao } from '../../core/db/tipos';
+  aprovarSolicitacao,
+  devolverSolicitacao,
+  listarCertificados,
+  listarParaValidar,
+  type LinhaDeValidacao,
+} from '../../core/certificacao/validacaoServidor';
+import type { Certificado } from '../../core/db/tipos';
 import { Botao } from '../../shared/componentes/Botao';
 import { CampoTexto } from '../../shared/componentes/Campos';
 import { Modal } from '../../shared/componentes/Modal';
@@ -13,20 +14,19 @@ import { Aviso, Carregando, Erro, Vazio } from '../../shared/componentes/Estado'
 import { dataHoraBr } from '../../shared/utils/texto';
 import { EtiquetaEstado } from '../solicitacoes/estado';
 
-interface Linha {
-  solicitacao: Solicitacao;
-  situacao: SituacaoSolicitacao;
-}
+type Linha = LinhaDeValidacao;
+type Emitido = Omit<Certificado, 'id' | 'solicitacaoId'>;
 
 /**
- * Validação ABB: aprova ou devolve as solicitações enviadas.
+ * Validação ABB: aprova ou devolve as solicitações enviadas, de qualquer
+ * aparelho.
  *
- * A aprovação é o único caminho para o número do certificado — atribuído pela
- * camada de validação, nunca por esta tela.
+ * A aprovação é o único caminho para o número do certificado — atribuído pelo
+ * servidor, nunca por esta tela.
  */
 export function ValidacaoAbb() {
   const [linhas, setLinhas] = useState<Linha[] | null>(null);
-  const [certificados, setCertificados] = useState<Certificado[]>([]);
+  const [certificados, setCertificados] = useState<Emitido[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [devolvendo, setDevolvendo] = useState<Linha | null>(null);
@@ -35,13 +35,9 @@ export function ValidacaoAbb() {
 
   const recarregar = useCallback(async () => {
     try {
-      const enviadas = await solicitacaoStore.listar({ estados: ['enviada'] });
-      const comSituacao: Linha[] = [];
-      for (const solicitacao of enviadas) {
-        comSituacao.push({ solicitacao, situacao: await situacaoDaSolicitacao(solicitacao) });
-      }
-      setLinhas(comSituacao);
-      setCertificados(await solicitacaoStore.listarCertificados());
+      const [paraValidar, emitidos] = await Promise.all([listarParaValidar(), listarCertificados()]);
+      setLinhas(paraValidar);
+      setCertificados(emitidos);
       setErro(null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao carregar as solicitações.');
@@ -56,11 +52,8 @@ export function ValidacaoAbb() {
     setOcupado(true);
     setErro(null);
     try {
-      const responsavel = linha.situacao.painel.responsavel?.nome ?? 'ABB';
-      const { numero } = await servicoValidacao.aprovar(linha.solicitacao.id!, responsavel);
-      setMensagem(
-        `Solicitação aprovada por ${responsavel}. Certificado nº ${numero} atribuído.`,
-      );
+      const { numero } = await aprovarSolicitacao(linha.item.id);
+      setMensagem(`Solicitação aprovada. Certificado nº ${numero} atribuído.`);
       await recarregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao aprovar.');
@@ -74,11 +67,7 @@ export function ValidacaoAbb() {
     setOcupado(true);
     setErro(null);
     try {
-      await servicoValidacao.devolver(
-        devolvendo.solicitacao.id!,
-        apontamentos,
-        devolvendo.situacao.painel.responsavel?.nome ?? 'ABB',
-      );
+      await devolverSolicitacao(devolvendo.item.id, apontamentos);
       setMensagem('Solicitação devolvida ao montador para correção.');
       setDevolvendo(null);
       setApontamentos('');
@@ -109,79 +98,69 @@ export function ValidacaoAbb() {
           </Vazio>
         ) : (
           <ul className="space-y-3">
-            {linhas.map(({ solicitacao, situacao }) => (
-              <li
-                key={solicitacao.id}
-                className="space-y-3 rounded-lg border border-abb-line bg-white p-4"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold tracking-wide text-abb-gray uppercase">
-                      {situacao.painel.nome}
-                    </p>
-                    <h3 className="text-xl font-bold break-words">
-                      {solicitacao.dados.tagPainel || 'Sem TAG'}
-                    </h3>
-                  </div>
-                  <EtiquetaEstado estado={solicitacao.estado} />
-                </div>
-
-                <dl className="grid gap-x-4 gap-y-1 text-base sm:grid-cols-2">
-                  {situacao.campos.map((campo) => (
-                    <div key={campo.id} className="flex gap-2">
-                      <dt className="shrink-0 font-semibold text-abb-gray">
-                        {campo.rotulo}:
-                      </dt>
-                      <dd className="min-w-0 break-words">
-                        {solicitacao.dados[campo.id] || '—'}
-                        {campo.unidade && solicitacao.dados[campo.id]
-                          ? ` ${campo.unidade}`
-                          : ''}
-                      </dd>
+            {linhas.map((linha) => {
+              const { item, painel, campos, camposPendentes, completa } = linha;
+              return (
+                <li key={item.id} className="space-y-3 rounded-lg border border-abb-line bg-white p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold tracking-wide text-abb-gray uppercase">
+                        {painel.nome}
+                      </p>
+                      <h3 className="text-xl font-bold break-words">{item.dados.tagPainel || 'Sem TAG'}</h3>
+                      <p className="text-sm text-abb-gray">
+                        {item.montador.nome} · {item.montador.email}
+                      </p>
                     </div>
-                  ))}
-                </dl>
+                    <EtiquetaEstado estado="enviada" />
+                  </div>
 
-                <p className="text-base">
-                  Checklist: {situacao.progresso.respondidas} de {situacao.progresso.total}{' '}
-                  etapas ({situacao.progresso.percentual}%). Enviada em{' '}
-                  {dataHoraBr(solicitacao.atualizadoEm)}.
-                </p>
+                  <dl className="grid gap-x-4 gap-y-1 text-base sm:grid-cols-2">
+                    {campos.map((campo) => (
+                      <div key={campo.id} className="flex gap-2">
+                        <dt className="shrink-0 font-semibold text-abb-gray">{campo.rotulo}:</dt>
+                        <dd className="min-w-0 break-words">
+                          {item.dados[campo.id] || '—'}
+                          {campo.unidade && item.dados[campo.id] ? ` ${campo.unidade}` : ''}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
 
-                {!situacao.completa ? (
-                  <Aviso>
-                    Há pendências no preenchimento:{' '}
-                    {[
-                      ...situacao.camposPendentes,
-                      ...(situacao.etapasPendentes.length
-                        ? [`etapas ${situacao.etapasPendentes.join(', ')}`]
-                        : []),
-                    ].join('; ')}
-                    .
-                  </Aviso>
-                ) : null}
+                  <p className="text-base">
+                    Checklist: {item.progresso.respondidas} de {item.progresso.total} etapas (
+                    {item.progresso.percentual}%). Enviada em {dataHoraBr(item.enviadaEm)}.
+                  </p>
 
-                <div className="flex flex-wrap gap-2">
-                  <Botao
-                    variante="primario"
-                    disabled={ocupado}
-                    onClick={() => void aprovar({ solicitacao, situacao })}
-                  >
-                    Aprovar e numerar
-                  </Botao>
-                  <Botao
-                    variante="perigo"
-                    disabled={ocupado}
-                    onClick={() => {
-                      setDevolvendo({ solicitacao, situacao });
-                      setApontamentos('');
-                    }}
-                  >
-                    Devolver com apontamentos
-                  </Botao>
-                </div>
-              </li>
-            ))}
+                  {!completa ? (
+                    <Aviso>
+                      Há pendências no preenchimento:{' '}
+                      {[
+                        ...camposPendentes,
+                        ...(item.etapasPendentes.length ? [`etapas ${item.etapasPendentes.join(', ')}`] : []),
+                      ].join('; ')}
+                      .
+                    </Aviso>
+                  ) : null}
+
+                  <div className="flex flex-wrap gap-2">
+                    <Botao variante="primario" disabled={ocupado} onClick={() => void aprovar(linha)}>
+                      Aprovar e numerar
+                    </Botao>
+                    <Botao
+                      variante="perigo"
+                      disabled={ocupado}
+                      onClick={() => {
+                        setDevolvendo(linha);
+                        setApontamentos('');
+                      }}
+                    >
+                      Devolver com apontamentos
+                    </Botao>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -190,7 +169,7 @@ export function ValidacaoAbb() {
         <h2 className="text-xl font-bold">Registro de emissões</h2>
         {certificados.length === 0 ? (
           <Vazio titulo="Nenhum certificado emitido">
-            O número sequencial é atribuído na aprovação e não é reaproveitado.
+            O número sequencial é atribuído pelo servidor na aprovação e não é reaproveitado.
           </Vazio>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-abb-line bg-white">

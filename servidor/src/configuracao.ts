@@ -22,6 +22,9 @@ export const HTTPS_ATIVO = Boolean(HTTPS_CERTIFICADO && HTTPS_CHAVE);
  * servidor o entrega, e aplicativo e API ficam no mesmo endereço — sem proxy
  * para juntar os dois e sem CORS.
  */
+/** Prefixo do número do certificado (ex.: `ABB-`); vazio por padrão. */
+export const PREFIXO_CERTIFICADO = process.env.PREFIXO_CERTIFICADO ?? '';
+
 export const PASTA_APP = process.env.APP_PASTA ?? 'dist';
 
 /** Endereço do cliente, respeitando os proxies confiáveis. */
