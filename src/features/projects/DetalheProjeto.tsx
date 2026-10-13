@@ -1,3 +1,4 @@
+import { infoDoTipo } from '../../../compartilhado/tiposChecklist';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ProjetoRepository } from '../../core/db/repositorios';
@@ -349,7 +350,7 @@ export function DetalheProjeto() {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="text-base font-bold">
-                          {f.entrada.tipo === 'montagem' ? 'Montagem' : 'Rotina'}
+                          {infoDoTipo(f.entrada.tipo).rotulo}
                         </p>
                         <p className="text-sm text-abb-gray">{f.entrada.linhaProduto}</p>
                       </div>

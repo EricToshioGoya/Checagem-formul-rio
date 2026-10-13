@@ -1,3 +1,4 @@
+import { IDS_TIPOS_CHECKLIST } from '../../compartilhado/tiposChecklist';
 import { z } from 'zod';
 
 /**
@@ -89,7 +90,7 @@ export const solicitarSchema = z.object({
 
 /** Criação de um checklist: o conteúdo vem depois, pelo editor. */
 export const formularioNovoSchema = z.object({
-  tipo: z.enum(['montagem', 'rotina']),
+  tipo: z.enum(IDS_TIPOS_CHECKLIST),
   nome: linha(2, 200, 'Informe o nome do checklist.', 'Nome do checklist longo demais.').optional(),
 });
 

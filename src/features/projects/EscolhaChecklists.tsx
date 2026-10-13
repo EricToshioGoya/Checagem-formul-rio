@@ -1,3 +1,4 @@
+import { infoDoTipo } from '../../../compartilhado/tiposChecklist';
 import type { EntradaCatalogo } from '../../core/forms/tipos';
 
 interface Props {
@@ -36,7 +37,7 @@ export function EscolhaChecklists({ checklists, selecionados, onChange, avisarVa
             />
             <span>
               <span className="block text-base font-semibold">
-                {c.tipo === 'montagem' ? 'Montagem' : 'Rotina'}
+                {infoDoTipo(c.tipo).rotulo}
               </span>
               <span className="block text-sm text-abb-gray">{c.nome}</span>
             </span>

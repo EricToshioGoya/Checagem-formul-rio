@@ -1,3 +1,8 @@
+import {
+  infoDoTipo,
+  TIPO_CHECKLIST_PADRAO,
+  type TipoChecklist,
+} from '../../compartilhado/tiposChecklist';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { banco } from './banco';
@@ -89,7 +94,7 @@ export function obterEntrada(id: string): EntradaCatalogo | null {
 }
 
 /** Id estável e livre, derivado do painel e do tipo do checklist. */
-function gerarId(painelSlug: string, tipo: 'montagem' | 'rotina'): string {
+function gerarId(painelSlug: string, tipo: TipoChecklist): string {
   const base = `${painelSlug}-${tipo}`;
   let id = base;
   let n = 2;
@@ -108,14 +113,14 @@ export function criarParaPainel(entrada: {
   painelId: number;
   painelSlug: string;
   painelNome: string;
-  tipo?: 'montagem' | 'rotina';
+  tipo?: TipoChecklist;
   nome?: string;
 }): EntradaCatalogo {
-  const tipo = entrada.tipo ?? 'montagem';
+  const tipo = entrada.tipo ?? TIPO_CHECKLIST_PADRAO;
   const id = gerarId(entrada.painelSlug, tipo);
   const definicao = formularioEmBranco({
     id,
-    nome: entrada.nome ?? `Checklist de ${tipo === 'rotina' ? 'Rotina' : 'Montagem'} — ${entrada.painelNome}`,
+    nome: entrada.nome ?? `Checklist de ${infoDoTipo(tipo).rotulo} — ${entrada.painelNome}`,
     linhaProduto: entrada.painelNome,
     tipo,
   });

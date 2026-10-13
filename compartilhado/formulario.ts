@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { TipoChecklist } from './tiposChecklist';
 
 /**
  * Contrato do formulário, compartilhado entre o cliente e o servidor.
@@ -171,7 +172,7 @@ export const definicaoFormularioSchema = z.object({
   id: z.string().min(1),
   nome: z.string().min(1),
   linhaProduto: z.string().min(1),
-  tipo: z.enum(['montagem', 'rotina']),
+  tipo: z.string().min(1),
   revisao: z.string().min(1),
   dataRevisao: z.string().min(1),
   emitidoPor: z.string().optional().default(''),
@@ -187,7 +188,7 @@ export const definicaoFormularioSchema = z.object({
 export const entradaCatalogoSchema = z.object({
   id: z.string().min(1),
   nome: z.string().min(1),
-  tipo: z.enum(['montagem', 'rotina']),
+  tipo: z.string().min(1),
   linhaProduto: z.string().min(1),
   painelSlug: z.string().min(1),
   ativo: z.boolean().optional().default(true),
@@ -265,7 +266,7 @@ export function formularioEmBranco(entrada: {
   id: string;
   nome: string;
   linhaProduto: string;
-  tipo: 'montagem' | 'rotina';
+  tipo: TipoChecklist;
 }): DefinicaoFormulario {
   return {
     id: entrada.id,

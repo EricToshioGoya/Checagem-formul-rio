@@ -1,3 +1,4 @@
+import { infoDoTipo, type TipoChecklist } from '../../../compartilhado/tiposChecklist';
 import {
   etapasImpressas,
   montarDossie,
@@ -20,14 +21,12 @@ export interface ArquivoGerado {
   blob: Blob;
 }
 
-type TipoChecklist = 'montagem' | 'rotina';
-
 function rotuloTipo(tipo: TipoChecklist): string {
-  return tipo === 'montagem' ? 'Verificação de Montagem' : 'Verificação de Rotina';
+  return infoDoTipo(tipo).tituloPdf;
 }
 
 function sufixoTipo(tipo: TipoChecklist): string {
-  return tipo === 'montagem' ? 'MONTAGEM' : 'ROTINA';
+  return infoDoTipo(tipo).sufixoArquivo;
 }
 
 /**

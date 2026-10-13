@@ -1,3 +1,4 @@
+import type { TipoChecklist } from '../../../compartilhado/tiposChecklist';
 import type {
   DefinicaoFormulario,
   MapaRespostas,
@@ -106,7 +107,7 @@ export interface FormularioCache {
   id: string;
   painelSlug: string;
   nome: string;
-  tipo: 'montagem' | 'rotina';
+  tipo: TipoChecklist;
   linhaProduto: string;
   ativo: boolean;
   /** Etapas ativas; zero significa checklist ainda em construção. */

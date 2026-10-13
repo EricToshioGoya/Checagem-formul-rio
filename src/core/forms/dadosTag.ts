@@ -1,3 +1,4 @@
+import { infoDoTipo } from '../../../compartilhado/tiposChecklist';
 import {
   PreenchimentoRepository,
   ProjetoRepository,
@@ -69,7 +70,7 @@ export function camposDaTag(definicoes: readonly DefinicaoFormulario[]): CampoCa
       campos.push({
         ...campo,
         id: chaveSeparada(definicao.id, campo.id),
-        rotulo: `${campo.rotulo} — ${definicao.tipo === 'montagem' ? 'Montagem' : 'Rotina'}`,
+        rotulo: `${campo.rotulo} — ${infoDoTipo(definicao.tipo).rotulo}`,
       });
     }
   }
