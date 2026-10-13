@@ -376,6 +376,7 @@ diálogo de geração.
 |---|---|
 | Novo formulário para uma linha | Acrescentar o JSON em `public/forms`, registrá-lo em `index.json` e citar no campo `paineis` o `slug` das linhas que o usam. Nenhuma alteração de código. |
 | Novo painel, ou trocar quem aprova | Aba de administração → Painéis. Sem programação e sem reiniciar nada. |
+| Novo tipo de checklist (ex.: recebimento, inspeção final) | Acrescentar uma entrada em `TIPOS_CHECKLIST` (`compartilhado/tiposChecklist.ts`): `id`, `rotulo`, `tituloPdf`, `sufixoArquivo`. O botão "+" do painel, os rótulos, o PDF (um por tipo) e a validação do servidor passam a incluí-lo. |
 | Novo tipo de campo | Implementar o componente e registrá-lo em `src/features/fill/campos/registro.tsx`. |
 | Novo destino de exportação | Implementar `ExportTarget` (`src/core/export/ExportTarget.ts`). `PdfExport` é a implementação da v1. |
 | Trocar a persistência | Todo acesso ao Dexie passa por `ProjetoRepository`, `PreenchimentoRepository`, `MidiaRepository` e `FormularioRepository`. Nenhuma tela importa Dexie. |

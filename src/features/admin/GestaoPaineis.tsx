@@ -1,3 +1,8 @@
+import {
+  infoDoTipo,
+  TIPOS_CHECKLIST,
+  type TipoChecklist,
+} from '../../../compartilhado/tiposChecklist';
 import { useCallback, useEffect, useState } from 'react';
 import type { EntradaCatalogo } from '../../core/forms/tipos';
 import { api, type PainelAdmin } from '../../core/api/cliente';
@@ -102,7 +107,7 @@ export function GestaoPaineis() {
     }
   };
 
-  const criarChecklist = async (painel: PainelAdmin, tipo: 'montagem' | 'rotina') => {
+  const criarChecklist = async (painel: PainelAdmin, tipo: TipoChecklist) => {
     try {
       const { formulario } = await api.post<{ formulario: EntradaCatalogo }>(
         `/api/admin/paineis/${painel.id}/formularios`,
@@ -204,14 +209,16 @@ export function GestaoPaineis() {
               <div className="flex flex-wrap items-center justify-between gap-2 px-1">
                 <p className="text-sm font-semibold">Checklists</p>
                 <div className="flex flex-wrap gap-2">
-                  <Botao tamanho="compacto" onClick={() => void criarChecklist(p, 'montagem')}>
-                    <IconeMais className="h-4 w-4" />
-                    Montagem
-                  </Botao>
-                  <Botao tamanho="compacto" onClick={() => void criarChecklist(p, 'rotina')}>
-                    <IconeMais className="h-4 w-4" />
-                    Rotina
-                  </Botao>
+                  {TIPOS_CHECKLIST.map((t) => (
+                    <Botao
+                      key={t.id}
+                      tamanho="compacto"
+                      onClick={() => void criarChecklist(p, t.id)}
+                    >
+                      <IconeMais className="h-4 w-4" />
+                      {t.rotulo}
+                    </Botao>
+                  ))}
                 </div>
               </div>
 
@@ -229,7 +236,7 @@ export function GestaoPaineis() {
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold">{f.nome}</p>
                         <p className="text-xs text-abb-gray">
-                          {f.tipo === 'rotina' ? 'Rotina' : 'Montagem'} ·{' '}
+                          {infoDoTipo(f.tipo).rotulo} ·{' '}
                           {f.etapas === 0
                             ? 'em branco'
                             : plural(f.etapas, 'verificação', 'verificações')}

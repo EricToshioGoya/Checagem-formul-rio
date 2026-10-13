@@ -1,3 +1,4 @@
+import { infoDoTipo } from '../../../compartilhado/tiposChecklist';
 import { solicitacaoStore, podeEditar, ROTULO_ESTADO } from '../../core/certificacao';
 import { PreenchimentoRepository, ProjetoRepository } from '../../core/db/repositorios';
 import {
@@ -61,7 +62,7 @@ export async function contextoDoProjeto(
 
   return {
     contexto: {
-      titulo: `${tag.nome} — ${definicao.tipo === 'montagem' ? 'Montagem' : 'Rotina'}`,
+      titulo: `${tag.nome} — ${infoDoTipo(definicao.tipo).rotulo}`,
       subtitulo: `${definicao.nome} • ${definicao.revisao}`,
       definicao,
       preenchimento,
