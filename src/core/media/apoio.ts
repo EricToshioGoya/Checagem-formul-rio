@@ -5,9 +5,9 @@ import type { DefinicaoFormulario } from '../forms/tipos';
 import { normalizarImagem } from './imagem';
 
 /**
- * Imagens de apoio das etapas. A administração envia ao montar o checklist; o
- * checklist guarda só o endereço `/api/apoio/<uid>`, e o aparelho do montador
- * baixa a imagem junto com o checklist e a guarda para usar sem rede.
+ * Imagens e vídeos de apoio das etapas. A administração envia ao montar o
+ * checklist; o checklist guarda só o endereço `/api/apoio/<uid>`, e o aparelho
+ * do montador baixa o arquivo junto com o checklist e a guarda para usar sem rede.
  *
  * Imagens com caminho dentro da aplicação (`/media/…`, as que vêm com o
  * publicado) seguem servidas como antes, pelo próprio aplicativo.
@@ -19,17 +19,54 @@ export function ehApoioDoServidor(src: string): boolean {
   return src.startsWith(PREFIXO);
 }
 
-/** Comprime e envia a imagem; devolve o endereço a gravar no checklist. */
-export async function enviarImagemApoio(arquivo: File): Promise<string> {
-  const { blob } = await normalizarImagem(arquivo);
+/** Mesmo limite do servidor: avisa antes de subir um arquivo que seria recusado. */
+export const TAMANHO_MAXIMO_VIDEO_APOIO = 30 * 1024 * 1024;
+
+const TIPOS_VIDEO: Record<string, string> = {
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+};
+
+const TIPOS_VIDEO_ACEITOS = new Set(Object.values(TIPOS_VIDEO));
+
+/** Tipo MIME do vídeo; alguns navegadores deixam o `type` vazio para .mov/.mp4. */
+function mimeDoVideo(arquivo: File): string | null {
+  if (TIPOS_VIDEO_ACEITOS.has(arquivo.type)) return arquivo.type;
+  const extensao = arquivo.name.split('.').pop()?.toLowerCase() ?? '';
+  return TIPOS_VIDEO[extensao] ?? null;
+}
+
+
+export function ehVideo(arquivo: File): boolean {
+  return mimeDoVideo(arquivo) !== null;
+}
+
+async function enviarBlob(blob: Blob): Promise<string> {
   const src = `${PREFIXO}${novoUid()}`;
   await api.enviarArquivo(`/api/admin${src.slice('/api'.length)}`, blob);
-  // Quem enviou já tem a imagem: guarda para a pré-visualização não baixar de volta.
+  // Quem enviou já tem o arquivo: guarda para a pré-visualização não baixar de volta.
   await ApoioRepository.gravar(src, blob);
   return src;
 }
 
-/** A imagem, do aparelho ou, se ainda não estiver nele, do servidor. */
+/** Comprime e envia a imagem; devolve o endereço a gravar no checklist. */
+export async function enviarImagemApoio(arquivo: File): Promise<string> {
+  const { blob } = await normalizarImagem(arquivo);
+  return enviarBlob(blob);
+}
+
+/** Envia o vídeo como foi gravado; devolve o endereço a gravar no checklist. */
+export async function enviarVideoApoio(arquivo: File): Promise<string> {
+  const mime = mimeDoVideo(arquivo);
+  if (!mime) throw new Error('Escolha um vídeo MP4, WebM ou MOV.');
+  if (arquivo.size > TAMANHO_MAXIMO_VIDEO_APOIO) {
+    throw new Error('O vídeo passa de 30 MB. Reduza a duração ou a resolução e tente de novo.');
+  }
+  return enviarBlob(new Blob([arquivo], { type: mime }));
+}
+
+/** A imagem ou o vídeo, do aparelho ou, se ainda não estiver nele, do servidor. */
 export async function obterImagemApoio(src: string): Promise<Blob> {
   const guardada = await ApoioRepository.obter(src);
   if (guardada) return guardada;
@@ -39,7 +76,7 @@ export async function obterImagemApoio(src: string): Promise<Blob> {
 }
 
 /**
- * Baixa as imagens de apoio que o aparelho ainda não tem. Roda quando o
+ * Baixa as imagens e os vídeos de apoio que o aparelho ainda não tem. Roda quando o
  * checklist é sincronizado, que é quando há rede: a falha de uma imagem não
  * impede as outras nem o checklist — ela é tentada de novo na próxima vez.
  */
@@ -48,7 +85,9 @@ export async function baixarImagensDoChecklist(definicao: DefinicaoFormulario): 
   for (const secao of definicao.secoes) {
     for (const etapa of secao.etapas) {
       for (const m of etapa.midiaApoio ?? []) {
-        if (m.tipo === 'imagem' && ehApoioDoServidor(m.src)) enderecos.add(m.src);
+        if ((m.tipo === 'imagem' || m.tipo === 'video') && ehApoioDoServidor(m.src)) {
+          enderecos.add(m.src);
+        }
       }
     }
   }

@@ -6,6 +6,7 @@ import {
   type PDFImage,
   type PDFPage,
 } from 'pdf-lib';
+import { codigoDe } from '../../../../compartilhado/formulario';
 import { quebrarLimitado, quebrarLinhas, truncar } from './texto';
 import {
   BASE_CONTEUDO,
@@ -623,7 +624,7 @@ function resumo(folha: Folha, blocos: readonly Bloco[]): void {
       const centro = folha.y - alturaLinha / 2;
       const base = baseCentrada(centro, 8.5);
       const larguraId = folha.escrever(
-        truncar(secao.id, seminegrito, 8.5, 40),
+        truncar(codigoDe(secao), seminegrito, 8.5, 40),
         X + PAD_X,
         base,
         8.5,
@@ -779,8 +780,8 @@ function pendencias(folha: Folha, blocos: readonly Bloco[], reservar: number): v
     const id =
       item.tipo === 'etapa'
         ? varios
-          ? `${item.tag.nome} · ${item.etapa.id}`
-          : item.etapa.id
+          ? `${item.tag.nome} · ${codigoDe(item.etapa)}`
+          : codigoDe(item.etapa)
         : `${item.tag.nome} · ${item.formulario.definicao.nome}`;
     const larguraMaximaId = item.tipo === 'etapa' ? 150 : 260;
     const textoId = truncar(id, seminegrito, 8, larguraMaximaId);
@@ -1000,7 +1001,7 @@ const ALTURA_TITULO_SECAO = 17;
  */
 function faixaSecao(
   folha: Folha,
-  secao: { id?: string; titulo: string },
+  secao: { id?: string; codigo?: string; titulo: string },
   direita: { p: Progresso } | { texto: string } | null,
 ): void {
   const { negrito, seminegrito, medio, regular } = folha.fontes;
@@ -1008,13 +1009,13 @@ function faixaSecao(
   const centro = topo - ALTURA_TITULO_SECAO / 2;
 
   let xTitulo = X;
-  if (secao.id) {
-    const larguraId = Math.max(larguraTexto(secao.id, { fonte: negrito, tamanho: 8 }) + 12, ALTURA_TITULO_SECAO + 4);
+  if (codigoDe(secao)) {
+    const larguraId = Math.max(larguraTexto(codigoDe(secao), { fonte: negrito, tamanho: 8 }) + 12, ALTURA_TITULO_SECAO + 4);
     retangulo(folha.pagina, { x: X, topo, largura: larguraId, altura: ALTURA_TITULO_SECAO }, {
       raio: 4.5,
       cor: COR.marca,
     });
-    const texto = truncar(secao.id, negrito, 8, 80);
+    const texto = truncar(codigoDe(secao), negrito, 8, 80);
     folha.escrever(
       texto,
       X + (larguraId - larguraTexto(texto, { fonte: negrito, tamanho: 8 })) / 2,
@@ -1184,7 +1185,7 @@ function desenharEtapa(folha: Folha, etapa: Etapa, formulario: FormularioDoDossi
     const base = baseCentrada(centro, 8);
     if (primeira) {
       folha.escrever(
-        truncar(etapa.id, seminegrito, 8, COLUNAS[0].largura - PAD_X - 2),
+        truncar(codigoDe(etapa), seminegrito, 8, COLUNAS[0].largura - PAD_X - 2),
         X + PAD_X,
         base,
         8,
@@ -1454,7 +1455,7 @@ function desenharChecklist(folha: Folha, tag: TagDoDossie, formulario: Formulari
 /** Título da seção, cabeçalho e as etapas — o título volta no alto de cada página nova. */
 function tabelaDeEtapas(
   folha: Folha,
-  secao: { id?: string; titulo: string },
+  secao: { id?: string; codigo?: string; titulo: string },
   direita: { p: Progresso } | { texto: string },
   etapas: readonly Etapa[],
   formulario: FormularioDoDossie,

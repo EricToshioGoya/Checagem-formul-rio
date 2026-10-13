@@ -130,8 +130,16 @@ export const condicaoSchema = z.object({
   igualA: z.array(z.string().min(1)).min(1),
 });
 
+/**
+ * Código que o montador vê (S1, S1.1…). O `id` é a chave estável das respostas
+ * e fotos já gravadas e nunca muda; o código é só o rótulo e pode ser trocado
+ * à vontade. Vazio ou ausente, vale o próprio `id`.
+ */
+const codigoSchema = z.string().max(20).optional();
+
 export const etapaSchema = z.object({
   id: z.string().min(1),
+  codigo: codigoSchema,
   descricao: z.string().min(1),
   detalhes: z.array(z.string()).optional(),
   tipoResposta: z.enum(tiposResposta),
@@ -159,6 +167,7 @@ export const etapaSchema = z.object({
  */
 export const secaoSchema = z.object({
   id: z.string().min(1),
+  codigo: codigoSchema,
   titulo: z.string().min(1),
   descricao: z.string().optional(),
   etapas: z.array(etapaSchema).default([]),
@@ -215,6 +224,11 @@ export function descreverErro(erro: z.ZodError): string {
       return `• ${caminho}: ${i.message}`;
     })
     .join('\n');
+}
+
+/** Código exibido de uma seção ou etapa: o escolhido na administração ou, sem ele, o id. */
+export function codigoDe(item: { id?: string; codigo?: string }): string {
+  return item.codigo?.trim() || item.id || '';
 }
 
 export function validarDefinicao(bruto: unknown): DefinicaoFormulario {

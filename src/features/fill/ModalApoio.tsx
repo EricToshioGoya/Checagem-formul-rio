@@ -1,9 +1,10 @@
+import { codigoDe } from '../../../compartilhado/formulario';
 import { useState } from 'react';
 import { Modal } from '../../shared/componentes/Modal';
 import { Aviso } from '../../shared/componentes/Estado';
 import type { Etapa } from '../../core/forms/tipos';
 import { ehApoioDoServidor } from '../../core/media/apoio';
-import { ImagemApoio } from '../../shared/componentes/ImagemApoio';
+import { ImagemApoio, VideoApoio } from '../../shared/componentes/ImagemApoio';
 
 interface Props {
   etapa: Etapa | null;
@@ -33,7 +34,7 @@ export function ModalApoio({ etapa, onFechar }: Props) {
   const midias = etapa.midiaApoio ?? [];
 
   return (
-    <Modal aberto titulo={`Ajuda — etapa ${etapa.id}`} largura="larga" onFechar={onFechar}>
+    <Modal aberto titulo={`Ajuda — etapa ${codigoDe(etapa)}`} largura="larga" onFechar={onFechar}>
       <div className="space-y-4">
         <p className="text-base font-semibold">{etapa.descricao}</p>
 
@@ -59,7 +60,8 @@ export function ModalApoio({ etapa, onFechar }: Props) {
               <figure key={i} className="space-y-2">
                 {falhou && ehApoioDoServidor(m.src) ? (
                   <Aviso>
-                    Imagem ainda não baixada neste aparelho. Abra a lista de
+                    {m.tipo === 'video' ? 'Vídeo ainda não baixado' : 'Imagem ainda não baixada'} neste
+                    aparelho. Abra a lista de
                     painéis com conexão para baixá-la.
                   </Aviso>
                 ) : falhou ? (
@@ -71,8 +73,14 @@ export function ModalApoio({ etapa, onFechar }: Props) {
                 ) : m.tipo === 'imagem' ? (
                   <ImagemApoio
                     src={m.src}
-                    alt={m.legenda ?? `Referência da etapa ${etapa.id}`}
+                    alt={m.legenda ?? `Referência da etapa ${codigoDe(etapa)}`}
                     className="w-full rounded-md border border-abb-line bg-white"
+                    onFalha={() => setFalhas((f) => (f[m.src] ? f : { ...f, [m.src]: true }))}
+                  />
+                ) : m.tipo === 'video' && ehApoioDoServidor(m.src) ? (
+                  <VideoApoio
+                    src={m.src}
+                    className="w-full rounded-md border border-abb-line bg-black"
                     onFalha={() => setFalhas((f) => (f[m.src] ? f : { ...f, [m.src]: true }))}
                   />
                 ) : m.tipo === 'video' ? (

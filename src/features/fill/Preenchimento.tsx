@@ -1,3 +1,4 @@
+import { codigoDe } from '../../../compartilhado/formulario';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -325,7 +326,7 @@ export function Preenchimento() {
                         {ok ? <IconeCheck className="h-4 w-4" /> : null}
                       </span>
                       <span className="min-w-0">
-                        <span className="block text-sm font-bold">{etapa.id}</span>
+                        <span className="block text-sm font-bold">{codigoDe(etapa)}</span>
                         <span className="block truncate text-sm text-abb-gray">
                           {etapa.descricao}
                         </span>
