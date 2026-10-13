@@ -1,7 +1,10 @@
+import { codigoDe } from '../../../compartilhado/formulario';
 import { useState } from 'react';
 import { Modal } from '../../shared/componentes/Modal';
 import { Aviso } from '../../shared/componentes/Estado';
 import type { Etapa } from '../../core/forms/tipos';
+import { ehApoioDoServidor } from '../../core/media/apoio';
+import { ImagemApoio, LinkPdfApoio, VideoApoio } from '../../shared/componentes/ImagemApoio';
 
 interface Props {
   etapa: Etapa | null;
@@ -10,9 +13,14 @@ interface Props {
 
 const base = import.meta.env.BASE_URL;
 
+/**
+ * Resolve o caminho do arquivo de apoio dentro da aplicação.
+ *
+ * Nada aqui sai para a rede externa: o schema já recusa esquema e `//`, e esta
+ * função só monta o caminho relativo à base da publicação.
+ */
 function caminho(src: string): string {
-  if (/^(https?:)?\/\//.test(src)) return src;
-  return `${base}${src.replace(/^\//, '')}`;
+  return `${base}${src.replace(/^\/+/, '')}`;
 }
 
 /**
@@ -26,7 +34,7 @@ export function ModalApoio({ etapa, onFechar }: Props) {
   const midias = etapa.midiaApoio ?? [];
 
   return (
-    <Modal aberto titulo={`Ajuda — etapa ${etapa.id}`} largura="larga" onFechar={onFechar}>
+    <Modal aberto titulo={`Ajuda — etapa ${codigoDe(etapa)}`} largura="larga" onFechar={onFechar}>
       <div className="space-y-4">
         <p className="text-base font-semibold">{etapa.descricao}</p>
 
@@ -50,18 +58,30 @@ export function ModalApoio({ etapa, onFechar }: Props) {
             const falhou = falhas[m.src];
             return (
               <figure key={i} className="space-y-2">
-                {falhou ? (
+                {falhou && ehApoioDoServidor(m.src) ? (
+                  <Aviso>
+                    {m.tipo === 'video' ? 'Vídeo ainda não baixado' : m.tipo === 'pdf' ? 'PDF ainda não baixado' : 'Imagem ainda não baixada'} neste
+                    aparelho. Abra a lista de
+                    painéis com conexão para baixá-la.
+                  </Aviso>
+                ) : falhou ? (
                   <Aviso>
                     Arquivo de apoio ainda não disponível neste aparelho.
                     <br />
                     Caminho esperado: <code className="break-all">{m.src}</code>
                   </Aviso>
                 ) : m.tipo === 'imagem' ? (
-                  <img
-                    src={url}
-                    alt={m.legenda ?? `Referência da etapa ${etapa.id}`}
+                  <ImagemApoio
+                    src={m.src}
+                    alt={m.legenda ?? `Referência da etapa ${codigoDe(etapa)}`}
                     className="w-full rounded-md border border-abb-line bg-white"
-                    onError={() => setFalhas((f) => ({ ...f, [m.src]: true }))}
+                    onFalha={() => setFalhas((f) => (f[m.src] ? f : { ...f, [m.src]: true }))}
+                  />
+                ) : m.tipo === 'video' && ehApoioDoServidor(m.src) ? (
+                  <VideoApoio
+                    src={m.src}
+                    className="w-full rounded-md border border-abb-line bg-black"
+                    onFalha={() => setFalhas((f) => (f[m.src] ? f : { ...f, [m.src]: true }))}
                   />
                 ) : m.tipo === 'video' ? (
                   <video
@@ -71,12 +91,20 @@ export function ModalApoio({ etapa, onFechar }: Props) {
                     className="w-full rounded-md border border-abb-line bg-black"
                     onError={() => setFalhas((f) => ({ ...f, [m.src]: true }))}
                   />
+                ) : ehApoioDoServidor(m.src) ? (
+                  <LinkPdfApoio
+                    src={m.src}
+                    className="inline-flex min-h-12 items-center rounded-md border border-abb-line-botao bg-abb-offwhite px-4 font-semibold text-abb-red hover:bg-abb-offwhite-hover"
+                    onFalha={() => setFalhas((f) => (f[m.src] ? f : { ...f, [m.src]: true }))}
+                  >
+                    Abrir manual em PDF
+                  </LinkPdfApoio>
                 ) : (
                   <a
                     href={url}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex min-h-12 items-center rounded-md border border-abb-line bg-white px-4 font-semibold text-abb-red"
+                    className="inline-flex min-h-12 items-center rounded-md border border-abb-line-botao bg-abb-offwhite px-4 font-semibold text-abb-red hover:bg-abb-offwhite-hover"
                   >
                     Abrir manual em PDF
                   </a>

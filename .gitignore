@@ -18,7 +18,8 @@ cmd/servidor/web/*
 cmd/servidor/servidor
 cmd/servidor/servidor.exe
 
-# Servidor do arquivo central: binário e dados locais
-cmd/arquivo/arquivo
-cmd/arquivo/arquivo.exe
-cmd/arquivo/dados/
+# Base do servidor de acesso (contas e aprovações locais)
+servidor/dados/
+
+# Saída da bateria de verificação
+saida-testes/

@@ -136,3 +136,77 @@ export function IconeSeta({ className = base }: Props) {
     </svg>
   );
 }
+
+export function IconeBusca({ className = base }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="2" />
+      <path d="m16 16 4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function IconeRelogio({ className = base }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="2" />
+      <path d="M12 7.5V12l3 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function IconeInfinito({ className = base }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 12c-1.8-2.4-3.4-3.6-5-3.6a3.6 3.6 0 0 0 0 7.2c1.6 0 3.2-1.2 5-3.6Zm0 0c1.8 2.4 3.4 3.6 5 3.6a3.6 3.6 0 0 0 0-7.2c-1.6 0-3.2 1.2-5 3.6Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconeChave({ className = base }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="8" cy="15" r="4" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="m11 12 8-8m-3 3 2.5 2.5M14 9l2 2"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+export function IconeOlho({ className = base }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  );
+}
+
+export function IconeOlhoFechado({ className = base }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.7 8.5 2 12 2 12s3.6 7 10 7a9.9 9.9 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="m3 3 18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}

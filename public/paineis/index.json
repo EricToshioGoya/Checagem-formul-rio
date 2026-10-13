@@ -1,0 +1,77 @@
+{
+  "camposPadrao": [
+    {
+      "id": "montador",
+      "rotulo": "Nome do cliente montador responsável pela montagem",
+      "tipo": "texto",
+      "obrigatorio": true,
+      "ajuda": "Empresa ou pessoa que executou a montagem do painel/quadro."
+    },
+    {
+      "id": "emailMontador",
+      "rotulo": "E-mail do montador solicitante",
+      "tipo": "email",
+      "obrigatorio": true
+    },
+    {
+      "id": "celularMontador",
+      "rotulo": "Celular do montador solicitante",
+      "tipo": "telefone",
+      "obrigatorio": true,
+      "ajuda": "Com DDD."
+    },
+    {
+      "id": "projeto",
+      "rotulo": "Nome do projeto",
+      "tipo": "texto",
+      "obrigatorio": true
+    },
+    {
+      "id": "tagPainel",
+      "rotulo": "Nome/TAG do painel/quadro",
+      "tipo": "texto",
+      "obrigatorio": true,
+      "ajuda": "Cada painel/quadro tem a sua própria solicitação."
+    },
+    {
+      "id": "clienteFinal",
+      "rotulo": "Nome do cliente final",
+      "tipo": "texto",
+      "obrigatorio": true
+    },
+    {
+      "id": "correnteNominal",
+      "rotulo": "Corrente nominal do painel",
+      "tipo": "numero",
+      "unidade": "A",
+      "obrigatorio": true
+    },
+    {
+      "id": "correnteCurtoCircuito",
+      "rotulo": "Corrente de curto-circuito do painel",
+      "tipo": "numero",
+      "unidade": "kA",
+      "obrigatorio": true
+    },
+    {
+      "id": "empresa",
+      "rotulo": "Empresa parceira",
+      "tipo": "texto",
+      "obrigatorio": true,
+      "ajuda": "Parceiro de painel certificado ABB."
+    },
+    {
+      "id": "operador",
+      "rotulo": "Nome do operador",
+      "tipo": "texto",
+      "obrigatorio": true,
+      "ajuda": "Quem preenche o checklist. Repetido na coluna “Operador” de todas as etapas."
+    },
+    {
+      "id": "numeroPedido",
+      "rotulo": "Número do pedido",
+      "tipo": "texto",
+      "obrigatorio": false
+    }
+  ]
+}

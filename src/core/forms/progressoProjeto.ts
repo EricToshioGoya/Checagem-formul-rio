@@ -3,8 +3,14 @@ import {
   PreenchimentoRepository,
   ProjetoRepository,
 } from '../db/repositorios';
-import { carregarFormulario, formulariosAtivos } from './catalogo';
-import { calcularProgresso, idsPendentes, type Progresso } from './progresso';
+import { carregarFormulario, formulariosDoPainel } from './catalogo';
+import {
+  calcularProgresso,
+  checklistsDaTag,
+  idsPendentes,
+  somarProgresso,
+  type Progresso,
+} from './progresso';
 import type { DefinicaoFormulario, EntradaCatalogo } from './tipos';
 
 export interface ProgressoDeFormulario {
@@ -19,6 +25,8 @@ export interface ProgressoDeFormulario {
 export interface ProgressoDeTag {
   tagId: number;
   nome: string;
+  /** Escolha gravada na TAG; ausente quando ela segue com todos. */
+  formIds?: string[];
   formularios: ProgressoDeFormulario[];
   progresso: Progresso;
 }
@@ -28,25 +36,18 @@ export interface ProgressoDeProjeto {
   progresso: Progresso;
 }
 
-function somar(partes: Progresso[]): Progresso {
-  const total = partes.reduce((s, p) => s + p.total, 0);
-  const respondidas = partes.reduce((s, p) => s + p.respondidas, 0);
-  return {
-    total,
-    respondidas,
-    pendentes: total - respondidas,
-    percentual: total === 0 ? 0 : Math.round((respondidas / total) * 100),
-  };
-}
-
 /**
- * Progresso de um projeto inteiro: cada TAG × cada formulário ativo.
+ * Progresso de um projeto inteiro: cada TAG × cada formulário ativo escolhido
+ * para ela.
  * Serve à tela do projeto, à lista inicial e ao resumo de pendências do PDF.
  */
-export async function progressoDoProjeto(projetoId: number): Promise<ProgressoDeProjeto> {
+export async function progressoDoProjeto(
+  projetoId: number,
+  painelSlug?: string,
+): Promise<ProgressoDeProjeto> {
   const [tags, entradas] = await Promise.all([
     ProjetoRepository.listarTags(projetoId),
-    formulariosAtivos(),
+    formulariosDoPainel(painelSlug),
   ]);
   const definicoes = new Map<string, DefinicaoFormulario>();
   for (const entrada of entradas) {
@@ -60,7 +61,7 @@ export async function progressoDoProjeto(projetoId: number): Promise<ProgressoDe
   const resultado: ProgressoDeTag[] = [];
   for (const tag of tags) {
     const formularios: ProgressoDeFormulario[] = [];
-    for (const entrada of entradas) {
+    for (const entrada of checklistsDaTag(tag.formIds, entradas)) {
       const definicao = definicoes.get(entrada.id)!;
       const preenchimento = preenchimentos.find(
         (p) => p.tagId === tag.id && p.formId === entrada.id,
@@ -81,10 +82,11 @@ export async function progressoDoProjeto(projetoId: number): Promise<ProgressoDe
     resultado.push({
       tagId: tag.id!,
       nome: tag.nome,
+      formIds: tag.formIds,
       formularios,
-      progresso: somar(formularios.map((f) => f.progresso)),
+      progresso: somarProgresso(formularios.map((f) => f.progresso)),
     });
   }
 
-  return { tags: resultado, progresso: somar(resultado.map((t) => t.progresso)) };
+  return { tags: resultado, progresso: somarProgresso(resultado.map((t) => t.progresso)) };
 }
