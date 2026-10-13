@@ -1,7 +1,5 @@
 import { existsSync } from 'node:fs';
-import { calcularProgresso, checklistsDaTag, type MapaRespostas } from '../../compartilhado/progresso';
 import { uidProjetoLegado } from '../../compartilhado/projeto';
-import type { DefinicaoFormulario } from '../../compartilhado/formulario';
 import { banco, emTransacao, type Usuario } from './banco';
 import {
   envioProjetoSchema,
@@ -9,7 +7,7 @@ import {
   TAMANHO_MAXIMO_MIDIA,
   type DocumentoProjeto,
 } from './esquemas';
-import { listarEntradasPorPainelId, obterDefinicao } from './formularios';
+import { andamentoDoDocumento } from './andamento';
 import { caminhoMidia, gravarMidia, moverParaLixeira, uidValido } from './midias';
 import { ErroHttp, exigirSessao, listarPaineis, RespostaArquivo, type Contexto } from './rotas';
 
@@ -34,45 +32,6 @@ function exigirAcessoAoPainel(eu: Usuario, painelId: number): void {
   if (!painel.podePreencher) {
     throw new ErroHttp(403, 'O seu acesso a este painel não está liberado.', 'sem-acesso');
   }
-}
-
-/**
- * Andamento do projeto com a mesma regra do aparelho: cada TAG vezes cada
- * checklist ativo do painel escolhido para ela, contando as fotos de cada
- * etapa.
- */
-export function andamentoDoDocumento(
-  painelId: number,
-  documento: DocumentoProjeto,
-): { total: number; respondidas: number } {
-  const definicoes = listarEntradasPorPainelId(painelId)
-    .filter((f) => f.ativo)
-    .map((f) => obterDefinicao(f.id))
-    .filter((d): d is DefinicaoFormulario => d !== null);
-
-  let total = 0;
-  let respondidas = 0;
-  for (const tag of documento.tags) {
-    for (const definicao of checklistsDaTag(tag.formIds, definicoes)) {
-      const preenchimento = documento.preenchimentos.find(
-        (p) => p.tagUid === tag.uid && p.formId === definicao.id,
-      );
-      const fotos: Record<string, number> = {};
-      for (const m of documento.midias) {
-        if (m.tagUid === tag.uid && m.formId === definicao.id) {
-          fotos[m.etapaId] = (fotos[m.etapaId] ?? 0) + 1;
-        }
-      }
-      const progresso = calcularProgresso(
-        definicao,
-        (preenchimento?.respostas ?? {}) as MapaRespostas,
-        fotos,
-      );
-      total += progresso.total;
-      respondidas += progresso.respondidas;
-    }
-  }
-  return { total, respondidas };
 }
 
 /** Teto de projetos por conta: cada um é um documento inteiro guardado aqui. */

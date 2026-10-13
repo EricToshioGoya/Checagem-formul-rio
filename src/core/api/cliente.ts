@@ -372,6 +372,45 @@ export interface ItemAndamento {
   alteradoEm: number | null;
 }
 
+/** Detalhe de um projeto no andamento: TAG → checklist → seção → etapa. */
+export interface ContagemAndamento {
+  total: number;
+  respondidas: number;
+}
+
+export interface EtapaAndamento {
+  id: string;
+  codigo: string;
+  descricao: string;
+  respondida: boolean;
+  fotos: number;
+}
+
+export interface SecaoAndamento extends ContagemAndamento {
+  id: string;
+  codigo: string;
+  titulo: string;
+  etapas: EtapaAndamento[];
+}
+
+export interface ChecklistAndamento extends ContagemAndamento {
+  formId: string;
+  nome: string;
+  tipo: string;
+  secoes: SecaoAndamento[];
+}
+
+export interface TagAndamento extends ContagemAndamento {
+  uid: string;
+  nome: string;
+  checklists: ChecklistAndamento[];
+}
+
+export interface DetalheAndamento {
+  enviadoEm: number;
+  tags: TagAndamento[];
+}
+
 export interface RespostaAndamento extends Paginado {
   itens: ItemAndamento[];
   paineis: Array<{ id: number; nome: string }>;

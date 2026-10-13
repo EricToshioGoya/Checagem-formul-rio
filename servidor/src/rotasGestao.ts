@@ -3,6 +3,9 @@ import { registrar, type TipoAlvo } from './auditoria';
 import { avisar, processarFila, situacaoAvisos } from './avisos';
 import { configuracaoBackup, fazerBackup, listarBackups } from './backup';
 import { desativarConta, excluirConta, paineisComoResponsavel, reativarConta } from './contas';
+import { detalheDoDocumento } from './andamento';
+import type { DocumentoProjeto } from './esquemas';
+import { uidValido } from './midias';
 import { lerPagina, padraoBusca } from './paginacao';
 import { verificarPublicacao } from './publicacao';
 import { ErroHttp, exigirAdmin, exigirSessao, type Contexto } from './rotas';
@@ -28,6 +31,17 @@ const FILTROS_HISTORICO: Record<string, TipoAlvo[]> = {
   contas: ['conta', 'administrador'],
   sistema: ['sistema'],
 };
+
+/** Painéis cujo andamento a pessoa vê: todos, para o administrador; os dela, para o responsável. */
+function paineisDoAndamento(ctx: Contexto, eu: Usuario): number[] {
+  const ehAdmin = eu.papel === 'admin' && ctx.perfil === 'admin';
+  const visiveis = (
+    ehAdmin
+      ? banco.prepare('SELECT id FROM paineis').all()
+      : banco.prepare('SELECT painelId AS id FROM painel_responsaveis WHERE email = ?').all(eu.email)
+  ) as Array<{ id: number }>;
+  return visiveis.map((v) => Number(v.id));
+}
 
 export const rotasGestao: Record<string, Manipulador> = {
   // ------------------------------------------------------------ contas
@@ -266,12 +280,7 @@ export const rotasGestao: Record<string, Manipulador> = {
   'GET /api/andamento': (ctx) => {
     const eu = exigirSessao(ctx);
     const ehAdmin = eu.papel === 'admin' && ctx.perfil === 'admin';
-    const visiveis = (
-      ehAdmin
-        ? banco.prepare('SELECT id FROM paineis').all()
-        : banco.prepare('SELECT painelId AS id FROM painel_responsaveis WHERE email = ?').all(eu.email)
-    ) as Array<{ id: number }>;
-    let ids = visiveis.map((v) => Number(v.id));
+    let ids = paineisDoAndamento(ctx, eu);
     const painelFiltro = Number(ctx.consulta.get('painel')) || null;
     if (painelFiltro) ids = ids.filter((id) => id === painelFiltro);
 
@@ -340,6 +349,36 @@ export const rotasGestao: Record<string, Manipulador> = {
           alteradoEm: l.alteradoEm === null ? null : Number(l.alteradoEm),
         };
       }),
+    };
+  },
+
+  /**
+   * Detalhe de um projeto: TAG → checklist → seção → etapa, com o que já foi
+   * respondido. Mesma visibilidade da lista; o projeto é lido do que o
+   * montador sincronizou, então reflete o último envio do aparelho.
+   */
+  'GET /api/andamento/:usuarioId/:projetoUid': (ctx) => {
+    const eu = exigirSessao(ctx);
+    const usuarioId = Number(ctx.params.usuarioId);
+    const projetoUid = ctx.params.projetoUid.toLowerCase();
+    if (!Number.isInteger(usuarioId) || !uidValido(projetoUid)) {
+      throw new ErroHttp(400, 'Projeto inválido.');
+    }
+    const linha = banco
+      .prepare(
+        'SELECT painelId, documento, enviadoEm FROM sync_projetos WHERE usuarioId = ? AND projetoUid = ?',
+      )
+      .get(usuarioId, projetoUid) as
+      | { painelId: number; documento: string; enviadoEm: number }
+      | undefined;
+    // Projeto de painel que a pessoa não acompanha responde como inexistente.
+    if (!linha || !paineisDoAndamento(ctx, eu).includes(Number(linha.painelId))) {
+      throw new ErroHttp(404, 'Projeto não encontrado.');
+    }
+    const documento = JSON.parse(linha.documento) as DocumentoProjeto;
+    return {
+      enviadoEm: Number(linha.enviadoEm),
+      tags: detalheDoDocumento(Number(linha.painelId), documento),
     };
   },
 };
