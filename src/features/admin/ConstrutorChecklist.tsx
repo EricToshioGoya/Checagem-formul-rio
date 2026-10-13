@@ -24,6 +24,7 @@ import { CampoTexto } from '../../shared/componentes/Campos';
 import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { Aviso, Carregando, Erro, Vazio } from '../../shared/componentes/Estado';
 import { IconeVoltar } from '../../shared/componentes/Icones';
+import { EditorOpcoes } from './EditorOpcoes';
 
 interface Props {
   formId: string;
@@ -505,15 +506,10 @@ export function ConstrutorChecklist({
                     ) : null}
 
                     {etapa.tipoResposta === 'selecao' ? (
-                      <CampoTexto
-                        rotulo="Opções (uma por linha)"
-                        multilinha
-                        valor={(etapa.opcoes ?? []).join('\n')}
-                        onChange={(v) =>
-                          alterarEtapa(secao.id, etapa.id, {
-                            opcoes: v.split('\n').map((l) => l.trim()).filter(Boolean),
-                          })
-                        }
+                      <EditorOpcoes
+                        key={etapa.id}
+                        opcoes={etapa.opcoes ?? []}
+                        onChange={(opcoes) => alterarEtapa(secao.id, etapa.id, { opcoes })}
                       />
                     ) : null}
 
