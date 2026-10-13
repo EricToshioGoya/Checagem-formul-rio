@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   carregarFormulario,
   carregarFormularioOriginal,
@@ -7,7 +7,6 @@ import {
 } from '../../core/forms/catalogo';
 import { FormularioRepository } from '../../core/db/repositorios';
 import type { DefinicaoFormulario, Etapa, MidiaApoio } from '../../core/forms/tipos';
-import { baixarBlob } from '../../shared/utils/download';
 import { Botao } from '../../shared/componentes/Botao';
 import { CampoSelecao, CampoTexto } from '../../shared/componentes/Campos';
 import { Confirmacao } from '../../shared/componentes/Confirmacao';
@@ -27,7 +26,6 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
   const [estado, setEstado] = useState<Estado>('ocioso');
   const [secaoAberta, setSecaoAberta] = useState<string | null>(null);
   const [confirmarRestauro, setConfirmarRestauro] = useState(false);
-  const entradaArquivo = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     carregarFormulario(formId, true)
@@ -103,25 +101,6 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
     alterarEtapa(secaoId, etapaId, { midiaApoio: midias });
   };
 
-  const importar = async (arquivo: File) => {
-    try {
-      const texto = await arquivo.text();
-      const nova = validarDefinicao(JSON.parse(texto));
-      if (nova.id !== formId) {
-        throw new Error(
-          `O arquivo importado tem id "${nova.id}", diferente de "${formId}".`,
-        );
-      }
-      await gravar(nova);
-    } catch (e) {
-      setErro(
-        e instanceof Error
-          ? `Não foi possível importar o arquivo:\n${e.message}`
-          : 'Arquivo inválido.',
-      );
-    }
-  };
-
   if (erro && !definicao) return <Erro detalhe={erro} />;
   if (!definicao) return <Carregando mensagem="Carregando o formulário…" />;
 
@@ -138,39 +117,15 @@ export function EditorFormulario({ formId, onVoltar }: Props) {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Botao
-          onClick={() =>
-            baixarBlob(
-              new Blob([JSON.stringify(definicao, null, 2)], { type: 'application/json' }),
-              `${definicao.id}.json`,
-            )
-          }
-        >
-          Exportar JSON
-        </Botao>
-        <Botao onClick={() => entradaArquivo.current?.click()}>Importar JSON</Botao>
         <Botao variante="perigo" onClick={() => setConfirmarRestauro(true)}>
           Restaurar original
         </Botao>
       </div>
 
-      <input
-        ref={entradaArquivo}
-        type="file"
-        accept="application/json,.json"
-        className="hidden"
-        onChange={(e) => {
-          const arquivo = e.target.files?.[0];
-          e.target.value = '';
-          if (arquivo) void importar(arquivo);
-        }}
-      />
-
       {erro ? <Erro titulo="Erro de validação" detalhe={erro} /> : null}
 
       <Aviso>
-        As alterações valem apenas neste aparelho. Para distribuir, exporte o JSON
-        e substitua o arquivo em <code>/public/forms</code> na próxima publicação.
+        As alterações valem apenas neste aparelho.
       </Aviso>
 
       {definicao.secoes.map((secao) => {
