@@ -32,15 +32,17 @@ Requer Node 20 ou superior.
 | `npm run build` | Valida JSON dos formulários → `tsc -b` → `vite build` |
 | `npm run typecheck` | Somente a checagem de tipos |
 | `npm run validar-formularios` | Valida `public/forms/*.json` contra o schema Zod |
+| `npm run gerar-hash-senha` | Gera o `VITE_SENHA_ADMIN_HASH` exigido pelo build |
 | `npm run fumaca` | Teste de fumaça do fluxo completo em navegador real |
 | `scripts/build-portatil.sh` | Gera o binário portátil (modalidade B) |
 
-O teste de fumaça exige Playwright, que **não** é dependência do projeto:
+O teste de fumaça exige Playwright, que **não** é dependência do projeto, e um
+build feito com o hash da mesma senha informada em `SENHA_ADMIN`:
 
 ```bash
 npm run build && npx vite preview --port 8099 &
 npm i -D playwright && npx playwright install chromium
-BASE_URL=http://localhost:8099 npm run fumaca
+BASE_URL=http://localhost:8099 SENHA_ADMIN='…' npm run fumaca
 ```
 
 Ele percorre criação de projeto, preenchimento com salvamento automático,
@@ -112,7 +114,8 @@ src/
   core/
     db/                   Dexie: schema e repositórios
     forms/                motor: schema Zod, catálogo, progresso
-    media/                compressão e normalização de imagem
+    media/                compressão e normalização de imagem, tipos aceitos
+    seguranca/            verificação da senha da administração (hash PBKDF2)
     export/               ExportTarget, dossiê, PDF, backup .zip
   features/
     projects/             listagem, criação, TAGs
@@ -203,16 +206,23 @@ publicado. Para distribuir uma alteração a todos, exporte o JSON e substitua o
 arquivo em `public/forms` na próxima publicação. O botão **Restaurar original**
 descarta as edições locais.
 
-A senha fica em `src/core/config.ts` (constante `SENHA_ADMIN`) e pode ser
-trocada no build com a variável `VITE_SENHA_ADMIN`:
+Não existe senha padrão. O build recebe apenas o **hash** PBKDF2-SHA256 da
+senha (600 000 iterações, sal aleatório) — a senha em texto claro nunca entra
+no código publicado. O build de produção falha se o hash faltar ou se
+`VITE_SENHA_ADMIN` (texto claro, formato antigo) for informada.
 
 ```bash
-VITE_SENHA_ADMIN='senha-do-cliente' npm run build
+npm run gerar-hash-senha          # pede a senha sem eco; mínimo de 12 caracteres
+# copie a linha gerada para .env.local (fora do Git) ou exporte no ambiente:
+VITE_SENHA_ADMIN_HASH='pbkdf2-sha256:600000:…' npm run build
 ```
 
-> **Pendência da especificação (seção 15):** a senha inicial é `abb-admin` e
-> **precisa ser trocada antes de publicar** para os parceiros. Não há
-> autenticação nem controle de usuários: a senha só evita edição acidental.
+A liberação vale 30 minutos e termina ao fechar a aba. Tentativas erradas
+impõem espera progressiva (2 s, 4 s, 8 s… até 30 s).
+
+> **Limite:** toda a verificação roda no aparelho. A senha evita edição
+> acidental ou casual dos modelos de formulário; não é controle de acesso a
+> dados. Ver [Segurança](#segurança).
 
 ---
 
@@ -248,6 +258,56 @@ persistência já está atrás dos repositórios para que a troca não afete as 
 
 ---
 
+## Segurança
+
+### O que a aplicação aplica
+
+- **Content-Security-Policy** no `index.html` gerado: scripts, dados e mídias
+  só da própria origem, sem script inline, sem `<object>`/`<iframe>`.
+- **Conteúdo de apoio só local:** o `src` das mídias aceita apenas caminhos
+  relativos (nada de `https:`, `data:`, `//host` ou `..`), e o catálogo só
+  aceita nomes de arquivo `.json` simples.
+- **Importação de projeto (.zip):** limite de 300 MB por arquivo, 50 MB para o
+  `projeto.json`, 30 MB por mídia e 5 000 mídias; descompactação interrompida
+  ao passar do limite; todo o JSON validado por schema; mídias restritas a
+  JPEG, PNG e PDF com conferência da assinatura do arquivo; gravação em
+  transação única — um arquivo recusado não deixa projeto pela metade.
+- **Anexo PDF:** recusado se não começar com `%PDF-` ou passar de 30 MB.
+- **Importação de JSON na administração:** limite de 2 MB.
+
+### Cabeçalhos HTTP na hospedagem (modalidade A)
+
+O servidor portátil (modalidade B) já envia os cabeçalhos abaixo. Na
+hospedagem da empresa, configure-os no servidor web — a meta tag do HTML não
+cobre `frame-ancestors` nem os demais:
+
+```nginx
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "DENY" always;
+add_header Referrer-Policy "no-referrer" always;
+add_header Cross-Origin-Opener-Policy "same-origin" always;
+add_header Permissions-Policy "geolocation=(), microphone=(), camera=(self)" always;
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+```
+
+`style-src` aceita estilo inline porque anexos PDF abrem em aba `blob:`, que
+herda a política, e o visualizador de PDF do navegador depende dele.
+
+### Limitações da arquitetura
+
+- **Sem backend, sem autenticação.** Publicar o `dist/` é publicar um site
+  estático; não há dado no servidor a proteger.
+- **Dados só no aparelho, sem criptografia.** Projetos, respostas e fotos
+  ficam no IndexedDB do navegador e são legíveis por quem tiver acesso ao
+  aparelho desbloqueado. Proteger dados sigilosos com controle de acesso exige
+  servidor central com autenticação — previsto como evolução da arquitetura
+  (a persistência já está atrás dos repositórios).
+- **A senha da administração não é fronteira de segurança** (ver
+  [Aba de administração](#aba-de-administração)).
+
+---
+
 ## Pendências de conteúdo
 
 | Item | Situação |
@@ -255,7 +315,7 @@ persistência já está atrás dos repositórios para que a troca não afete as 
 | Descrição da etapa **S2.6** | Ilegível no OCR. Está no JSON com o texto marcado como `TRANSCREVER` e `pendenteTranscricao: true`; a etapa aparece com aviso na tela. |
 | Imagens de referência das 38 etapas | Ainda não recortadas. Os caminhos já estão no JSON; a lista completa está em `public/media/sen-plus/LEIA-ME.md`. Enquanto o arquivo não existir, o modal de ajuda mostra um aviso com o caminho esperado, sem quebrar a tela. |
 | Redação exata das etapas | Conferir contra o documento original. S1.1, S1.3, S2.2 e S2.6 estão marcadas com `pendenteTranscricao`. |
-| Senha da administração | Provisória (`abb-admin`). Trocar antes de publicar. |
+| Senha da administração | Definir a senha do cliente e gerar o hash antes do build (`npm run gerar-hash-senha`). |
 
 ---
 

@@ -17,9 +17,24 @@ export const tiposResposta = [
   'grade_numerica',
 ] as const;
 
+/**
+ * Conteúdo de apoio só vem da própria aplicação: caminho relativo, sem
+ * esquema (`https:`, `javascript:`, `data:`…), sem host (`//`) e sem `..`.
+ */
+const caminhoLocalSchema = z
+  .string()
+  .min(1)
+  .regex(
+    /^\/?[A-Za-z0-9._\-/]+$/,
+    'use um caminho local, como /media/sen-plus/s1-1.png (sem endereço externo)',
+  )
+  .refine((s) => !s.startsWith('//') && !/(^|\/)\.\.(\/|$)/.test(s), {
+    message: 'use um caminho local, sem "//" no início e sem ".."',
+  });
+
 export const midiaApoioSchema = z.object({
   tipo: z.enum(['imagem', 'video', 'pdf']),
-  src: z.string().min(1),
+  src: caminhoLocalSchema,
   legenda: z.string().optional(),
 });
 
@@ -90,7 +105,9 @@ export const definicaoFormularioSchema = z.object({
 
 export const entradaCatalogoSchema = z.object({
   id: z.string().min(1),
-  arquivo: z.string().min(1),
+  arquivo: z
+    .string()
+    .regex(/^[A-Za-z0-9_-][A-Za-z0-9._-]*\.json$/, 'nome de arquivo .json dentro de /forms'),
   nome: z.string().min(1),
   tipo: z.enum(['montagem', 'rotina']),
   linhaProduto: z.string().min(1),

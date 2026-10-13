@@ -11,6 +11,7 @@
     "typecheck": "tsc -b --noEmit",
     "lint": "tsc -b --noEmit",
     "validar-formularios": "tsx scripts/validarFormularios.ts",
+    "gerar-hash-senha": "tsx scripts/gerarHashSenha.ts",
     "fumaca": "node scripts/fumaca.mjs"
   },
   "dependencies": {
