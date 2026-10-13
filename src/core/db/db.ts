@@ -6,6 +6,7 @@ import type {
   FormularioCache,
   ImagemApoioCache,
   Midia,
+  PdfPendente,
   Preenchimento,
   Projeto,
   Solicitacao,
@@ -27,6 +28,7 @@ class BancoVerificacao extends Dexie {
   certificados!: Table<Certificado, number>;
   contadores!: Table<Contador, string>;
   apoio!: Table<ImagemApoioCache, string>;
+  pdfsPendentes!: Table<PdfPendente, number>;
 
   constructor() {
     super('verificacao-montagem');
@@ -147,6 +149,11 @@ class BancoVerificacao extends Dexie {
             if (!s.uid) s.uid = novoUid();
           });
       });
+
+    // v10: fila dos PDFs emitidos a caminho do arquivo do servidor.
+    this.version(10).stores({
+      pdfsPendentes: '++id, &uid, usuarioId, criadoEm',
+    });
 
     // Todo projeto, TAG e mídia novo nasce com `uid`, venha de onde vier:
     // tela, importação de .zip ou a própria sincronização.

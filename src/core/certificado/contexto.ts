@@ -1,6 +1,6 @@
 import type { Certificado } from '../db/tipos';
 import type { Painel } from '../paineis/tipos';
-import { dataBr } from '../../shared/utils/texto';
+import { dataBr, dataHoraEmissao } from '../../shared/utils/texto';
 import type { ContextoCertificado } from './tipos';
 
 /**
@@ -15,6 +15,7 @@ export function montarContexto(
   return {
     numeroCertificado: certificado.numero,
     dataEmissao: dataBr(certificado.emitidoEm),
+    dataHoraEmissao: dataHoraEmissao(new Date(certificado.emitidoEm)),
     projeto: certificado.projeto,
     clienteFinal: certificado.clienteFinal,
     tagPainel: certificado.tagPainel,

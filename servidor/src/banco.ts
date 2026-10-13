@@ -331,6 +331,31 @@ banco.exec(`
     criadoEm  INTEGER NOT NULL,
     criadoPor INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
   );
+
+  -- Arquivo dos PDFs de checklist emitidos pelos aparelhos: a documentação
+  -- que valida a garantia ABB em caso de falha ou quebra do material. O
+  -- arquivo fica na pasta das mídias (e no mesmo espelho de backup), com o
+  -- \`uid\` como nome; nada aqui é alterado nem excluído depois de gravado.
+  -- Excluir a conta ou o painel não leva o PDF: o vínculo vira nulo e os
+  -- nomes ficam na própria linha.
+  CREATE TABLE IF NOT EXISTS pdfs_emitidos (
+    uid         TEXT    PRIMARY KEY,
+    usuarioId   INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+    painelId    INTEGER REFERENCES paineis(id)  ON DELETE SET NULL,
+    painelNome  TEXT,
+    empresa     TEXT    NOT NULL,
+    nomeProjeto TEXT    NOT NULL,
+    titulo      TEXT    NOT NULL,
+    nomeArquivo TEXT    NOT NULL,
+    -- Instante de emissão impresso no PDF, pelo relógio do aparelho.
+    emitidoEm   INTEGER NOT NULL,
+    recebidoEm  INTEGER NOT NULL,
+    tamanho     INTEGER NOT NULL,
+    sha256      TEXT    NOT NULL,
+    -- Empresa e projeto sem acento e em minúsculas, para a busca.
+    busca       TEXT    NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_pdfs_emitidos_em ON pdfs_emitidos (emitidoEm);
 `);
 
 /** Acrescenta a coluna se a tabela ainda não a tem — bancos de antes dos perfis. */

@@ -4,6 +4,7 @@ import { ProjetoRepository } from '../db/repositorios';
 import type { Midia, Preenchimento, Projeto } from '../db/tipos';
 import type { MapaRespostas, ValoresCabecalho } from '../forms/tipos';
 import { uidProjetoLegado } from '../../../compartilhado/projeto';
+import { enviarPdfsPendentes } from './arquivoPdfs';
 
 /**
  * Sincronização das checagens com o servidor.
@@ -582,6 +583,8 @@ export async function sincronizarAgora(usuarioId: number): Promise<void> {
         // Sem acesso a esse painel agora: o projeto fica no servidor.
       }
     }
+    // PDFs emitidos sem rede seguem para o arquivo do servidor.
+    await enviarPdfsPendentes(usuarioId);
     mudar({ fase: 'ocioso', ultimaEm: Date.now() });
   } catch (erro) {
     if (ehFaltaDeConexao(erro)) mudar({ fase: 'sem-rede' });

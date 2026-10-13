@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, type ResumoAdmin } from '../../core/api/cliente';
 import { useSessao } from '../../core/api/SessaoContexto';
 import { Andamento } from '../paineis/Andamento';
+import { ArquivoPdfs } from './ArquivoPdfs';
 import { GestaoAcessos } from './GestaoAcessos';
 import { GestaoAdministradores } from './GestaoAdministradores';
 import { GestaoContas } from './GestaoContas';
@@ -17,6 +18,7 @@ type Aba =
   | 'acessos'
   | 'andamento'
   | 'validacao'
+  | 'pdfs'
   | 'paineis'
   | 'contas'
   | 'administradores'
@@ -27,6 +29,7 @@ const ABAS: Array<{ id: Aba; rotulo: string; curto: string }> = [
   { id: 'acessos', rotulo: 'Acessos', curto: 'Acessos' },
   { id: 'andamento', rotulo: 'Andamento', curto: 'Andamento' },
   { id: 'validacao', rotulo: 'Validação ABB', curto: 'Validação' },
+  { id: 'pdfs', rotulo: 'Arquivo de PDFs', curto: 'PDFs' },
   { id: 'paineis', rotulo: 'Painéis e checklists', curto: 'Painéis' },
   { id: 'contas', rotulo: 'Contas', curto: 'Contas' },
   { id: 'administradores', rotulo: 'Administradores', curto: 'Admins' },
@@ -152,6 +155,8 @@ export function Admin() {
             </div>
             <ValidacaoAbb />
           </div>
+        ) : aba === 'pdfs' ? (
+          <ArquivoPdfs onSessaoVencida={sessaoVencida} />
         ) : aba === 'contas' ? (
           <GestaoContas onSessaoVencida={sessaoVencida} onAlterado={lerResumo} />
         ) : aba === 'administradores' ? (

@@ -51,6 +51,7 @@ import type { Etapa, Resposta, Secao, ValorGrade } from '../../forms/tipos';
 import {
   dataBr,
   dataHoraBr,
+  dataHoraEmissao,
   formatarBytes,
   nomeSemRepetir,
   normalizarParaArquivo,
@@ -930,7 +931,7 @@ function desenharCapa(folha: Folha, dossie: Dossie, blocos: readonly Bloco[], op
     ...(dossie.listarTags
       ? [[dossie.tags.length === 1 ? 'TAG' : 'TAGs', dossie.tags.map((t) => t.nome).join(', ')] as [string, string]]
       : []),
-    ['Documento gerado em', dataHoraBr(dossie.geradoEm.getTime())],
+    ['Documento emitido em', dataHoraEmissao(dossie.geradoEm)],
   ], 4);
 
   if (!blocos.length) {
@@ -1764,13 +1765,15 @@ export async function gerarPdf(dossie: Dossie, opcoes: OpcoesPdf): Promise<Blob>
   doc.setProducer('Sistema de Verificação de Montagem de Painéis');
   doc.setLanguage('pt-BR');
   doc.setCreationDate(dossie.geradoEm);
+  doc.setModificationDate(dossie.geradoEm);
+  doc.setKeywords([`Emitido em ${dossie.geradoEm.toISOString()}`]);
 
   const blocos: Bloco[] = dossie.tags.flatMap((tag) =>
     tag.formularios.map((formulario) => ({ tag, formulario })),
   );
 
   const contexto = [dossie.painel, dossie.empresa, dossie.nomeProjeto].filter(Boolean).join(' · ');
-  const folha = new Folha(doc, fontes, opcoes.titulo, `Gerado em ${dataBr(dossie.geradoEm)}`);
+  const folha = new Folha(doc, fontes, opcoes.titulo, `Emitido em ${dataHoraEmissao(dossie.geradoEm)}`);
   desenharCapa(folha, dossie, blocos, opcoes);
 
   for (const { tag, formulario } of blocos) {
@@ -1782,7 +1785,8 @@ export async function gerarPdf(dossie: Dossie, opcoes: OpcoesPdf): Promise<Blob>
   rodape(
     doc,
     fontes,
-    `${dossie.empresa} · ${dossie.nomeProjeto} · gerado em ${dataHoraBr(dossie.geradoEm.getTime())}`,
+    // A emissão vem primeiro: se o rodapé for truncado, perde-se o nome, não a data.
+    `Emitido em ${dataHoraEmissao(dossie.geradoEm)} · ${dossie.empresa} · ${dossie.nomeProjeto}`,
   );
 
   const bytes = await doc.save();

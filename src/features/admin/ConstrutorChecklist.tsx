@@ -6,7 +6,6 @@ import {
   novaEtapa,
   novaSecao,
   tiposResposta,
-  validarDefinicao,
   type DefinicaoFormulario,
   type Etapa,
   type MidiaApoio,
@@ -26,7 +25,6 @@ import { ehImagem } from '../../core/media/imagem';
 import { ImagemApoio, LinkPdfApoio, VideoApoio } from '../../shared/componentes/ImagemApoio';
 import { plural } from '../../../compartilhado/plural';
 import { useSalvamentoAutomatico } from '../../shared/hooks/useSalvamentoAutomatico';
-import { baixarBlob } from '../../shared/utils/download';
 import { Botao } from '../../shared/componentes/Botao';
 import { CampoTexto } from '../../shared/componentes/Campos';
 import { Confirmacao } from '../../shared/componentes/Confirmacao';
@@ -89,7 +87,6 @@ export function ConstrutorChecklist({
   const [erro, setErro] = useState<string | null>(null);
   const [abertas, setAbertas] = useState<Set<string>>(new Set());
   const [secaoParaExcluir, setSecaoParaExcluir] = useState<Secao | null>(null);
-  const entradaArquivo = useRef<HTMLInputElement>(null);
   const entradaImagem = useRef<HTMLInputElement>(null);
   const entradaVideo = useRef<HTMLInputElement>(null);
   const entradaPdf = useRef<HTMLInputElement>(null);
@@ -239,19 +236,6 @@ export function ConstrutorChecklist({
     }
   };
 
-  const importar = async (arquivo: File) => {
-    try {
-      const nova = validarDefinicao(JSON.parse(await arquivo.text()));
-      // O id do registro manda: importar um checklist de outro painel copia o
-      // conteúdo para cá, e não sequestra o registro de lá.
-      alterar({ ...nova, id: formId });
-    } catch (e) {
-      setErro(
-        e instanceof Error ? `Não foi possível importar:\n${e.message}` : 'Arquivo inválido.',
-      );
-    }
-  };
-
   if (erro && !definicao) return <Erro detalhe={erro} />;
   if (!definicao) return <Carregando mensagem="Abrindo o checklist…" />;
 
@@ -303,32 +287,7 @@ export function ConstrutorChecklist({
             </span>
           </span>
         </label>
-        <div className="flex flex-wrap gap-2">
-          <Botao
-            onClick={() =>
-              baixarBlob(
-                new Blob([JSON.stringify(definicao, null, 2)], { type: 'application/json' }),
-                `${definicao.id}.json`,
-              )
-            }
-          >
-            Exportar JSON
-          </Botao>
-          <Botao onClick={() => entradaArquivo.current?.click()}>Importar JSON</Botao>
-        </div>
       </div>
-
-      <input
-        ref={entradaArquivo}
-        type="file"
-        accept="application/json,.json"
-        className="hidden"
-        onChange={(e) => {
-          const arquivo = e.target.files?.[0];
-          e.target.value = '';
-          if (arquivo) void importar(arquivo);
-        }}
-      />
 
       <input
         ref={entradaImagem}

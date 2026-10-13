@@ -32,6 +32,23 @@ export function dataHoraBr(valor: number | undefined): string {
   });
 }
 
+/**
+ * Data e hora de emissão com segundos e o fuso do aparelho, ex.:
+ * `13/10/2026 14:30:12 (UTC-03:00)`. É o que identifica no tempo um PDF
+ * usado como documentação de garantia. Só caracteres ASCII: entra também nas
+ * fontes padrão do PDF, sem substituição.
+ */
+export function dataHoraEmissao(data: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  const deslocamento = -data.getTimezoneOffset();
+  const sinal = deslocamento >= 0 ? '+' : '-';
+  const fuso = `UTC${sinal}${p(Math.floor(Math.abs(deslocamento) / 60))}:${p(Math.abs(deslocamento) % 60)}`;
+  return (
+    `${p(data.getDate())}/${p(data.getMonth() + 1)}/${data.getFullYear()} ` +
+    `${p(data.getHours())}:${p(data.getMinutes())}:${p(data.getSeconds())} (${fuso})`
+  );
+}
+
 /** Duração legível e curta: "2 d 4 h", "3 h 10 min", "45 min". */
 export function duracaoCurta(ms: number): string {
   const minutos = Math.floor(ms / 60_000);

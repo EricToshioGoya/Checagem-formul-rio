@@ -6,7 +6,9 @@ import { baixarBlob } from '../../shared/utils/download';
 import { Botao } from '../../shared/componentes/Botao';
 import { Modal } from '../../shared/componentes/Modal';
 import { Aviso, Erro } from '../../shared/componentes/Estado';
-import { ArquivosGerados, EscolhaFotos } from './PartesDialogoPdf';
+import { useSessao } from '../../core/api/SessaoContexto';
+import { registrarPdfs } from '../../core/sync/arquivoPdfs';
+import { ArquivosGerados, EscolhaFotos, type EstadoRegistro } from './PartesDialogoPdf';
 
 interface Props {
   aberto: boolean;
@@ -24,11 +26,14 @@ export function DialogoGerarPdf({ aberto, projetoId, painelSlug, onFechar }: Pro
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [concluido, setConcluido] = useState<string[] | null>(null);
+  const [registro, setRegistro] = useState<EstadoRegistro>(undefined);
+  const { usuario } = useSessao();
 
   useEffect(() => {
     if (!aberto) return;
     setErro(null);
     setConcluido(null);
+    setRegistro(undefined);
     (async () => {
       try {
         const lista = await formulariosDoPainel(painelSlug);
@@ -58,6 +63,12 @@ export function DialogoGerarPdf({ aberto, projetoId, painelSlug, onFechar }: Pro
       }
       for (const arquivo of arquivos) baixarBlob(arquivo.blob, arquivo.nome);
       setConcluido(arquivos.map((a) => a.nome));
+      // Todo PDF emitido vai para o arquivo do servidor (documentação de
+      // garantia). Sem rede, fica na fila do aparelho e segue depois.
+      if (usuario) {
+        setRegistro(null);
+        setRegistro(await registrarPdfs(usuario.id, arquivos));
+      }
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao gerar o PDF.');
     } finally {
@@ -117,7 +128,7 @@ export function DialogoGerarPdf({ aberto, projetoId, painelSlug, onFechar }: Pro
         <EscolhaFotos incluirFotos={incluirFotos} onChange={setIncluirFotos} />
 
         {erro ? <Erro detalhe={erro} /> : null}
-        {concluido ? <ArquivosGerados nomes={concluido} /> : null}
+        {concluido ? <ArquivosGerados nomes={concluido} registro={registro} /> : null}
       </div>
     </Modal>
   );

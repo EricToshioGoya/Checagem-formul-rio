@@ -4,3 +4,4 @@ export { PreenchimentoRepository } from './preenchimentoRepository';
 export { MidiaRepository, MAX_FOTOS_POR_ETAPA } from './midiaRepository';
 export { FormularioRepository } from './formularioRepository';
 export { ApoioRepository } from './apoioRepository';
+export { PdfPendenteRepository } from './pdfPendenteRepository';
