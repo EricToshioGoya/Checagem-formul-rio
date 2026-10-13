@@ -9,7 +9,6 @@ import { SincronizacaoAutomatica } from './SincronizacaoAutomatica';
 import { ProvedorSessao } from '../core/api/SessaoContexto';
 import { Entrar } from '../features/auth/Entrar';
 import { Paineis } from '../features/paineis/Paineis';
-import { Aprovacoes } from '../features/paineis/Aprovacoes';
 import { ListaProjetos } from '../features/projects/ListaProjetos';
 import { DetalheProjeto } from '../features/projects/DetalheProjeto';
 import { ProjetosDoPainel } from '../features/projects/ProjetosDoPainel';
@@ -43,7 +42,6 @@ export function App() {
               <Route element={<Layout />}>
                 <Route path="/" element={<Paineis />} />
                 <Route path="/paineis" element={<Paineis />} />
-                <Route path="/aprovacoes" element={<Aprovacoes />} />
                 <Route path="/projetos" element={<ListaProjetos />} />
                 {/* O projeto nasce dentro de um painel aprovado — é o que
                     garante que a pessoa preencha apenas aquilo que pediu e

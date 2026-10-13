@@ -1,3 +1,4 @@
+import { promoverAdmin } from './admin';
 import { banco } from './banco';
 import { fazerBackup } from './backup';
 import { desativarConta, excluirConta } from './contas';
@@ -50,18 +51,9 @@ function promover(bruto: string | undefined): void {
     console.log(`${conta.email} já é administrador.`);
     return;
   }
-  const agora = Date.now();
-  banco.prepare("UPDATE usuarios SET papel = 'admin', ativo = 1, desativadoEm = NULL WHERE id = ?").run(conta.id);
-  // Registra a promoção — sem quem decidiu, que é como a tela a reconhece
-  // como feita no servidor — e atende um pedido pendente, se houver.
-  banco
-    .prepare(
-      `INSERT INTO pedidos_admin (usuarioId, status, criadoEm, decididoEm, decididoPor)
-       VALUES (?, 'aprovado', ?, ?, NULL)
-       ON CONFLICT (usuarioId) DO UPDATE SET
-         status = 'aprovado', decididoEm = excluded.decididoEm, decididoPor = NULL`,
-    )
-    .run(conta.id, agora, agora);
+  // Mesma regra da tela, sem autor (o histórico mostra "Sistema"); o socorro
+  // também religa a conta, que a tela não faz.
+  promoverAdmin(conta.id, null, { reativar: true });
   console.log(`${conta.email} agora é administrador.`);
 }
 

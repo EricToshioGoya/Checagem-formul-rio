@@ -124,7 +124,7 @@ export function Paineis() {
         <div>
           <h1 className="text-2xl font-bold">Escolha o painel</h1>
           <p className="mt-1 text-base text-abb-gray">
-            Você preenche as checagens apenas dos painéis em que o responsável
+            Você preenche as checagens apenas dos painéis em que a administração
             aprovou o seu acesso.
           </p>
         </div>
@@ -215,11 +215,7 @@ export function Paineis() {
                   </Botao>
                 ) : p.meuAcesso === 'pendente' ? (
                   <p className="text-base text-abb-gray">
-                    Pedido enviado. Assim que{' '}
-                    {p.responsaveis.length === 1
-                      ? 'o responsável aprovar'
-                      : 'qualquer um dos responsáveis aprovar'}
-                    , o painel abre aqui.
+                    Pedido enviado. Assim que a administração aprovar, o painel abre aqui.
                   </p>
                 ) : (
                   <Botao disabled={trabalhando} onClick={() => solicitar(p.id)}>

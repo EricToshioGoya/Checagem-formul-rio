@@ -5,7 +5,8 @@ import {
 } from '../../../compartilhado/tiposChecklist';
 import { useCallback, useEffect, useState } from 'react';
 import type { EntradaCatalogo } from '../../core/forms/tipos';
-import { api, type PainelAdmin } from '../../core/api/cliente';
+import { api, type AdministradorApi, type PainelAdmin } from '../../core/api/cliente';
+import { useSessao } from '../../core/api/SessaoContexto';
 import { plural } from '../../../compartilhado/plural';
 import { ConstrutorChecklist } from './ConstrutorChecklist';
 import { Botao } from '../../shared/componentes/Botao';
@@ -22,7 +23,7 @@ interface Rascunho {
   responsaveis: string[];
 }
 
-const VAZIO: Rascunho = { id: null, nome: '', descricao: '', responsaveis: [''] };
+const VAZIO: Rascunho = { id: null, nome: '', descricao: '', responsaveis: [] };
 
 /** Checklist aberto no construtor, com o painel a que pertence. */
 interface Aberto {
@@ -49,6 +50,8 @@ export function GestaoPaineis() {
   const [paraExcluir, setParaExcluir] = useState<PainelAdmin | null>(null);
   const [checklistParaExcluir, setChecklistParaExcluir] = useState<EntradaCatalogo | null>(null);
   const [aberto, setAberto] = useState<Aberto | null>(null);
+  const [admins, setAdmins] = useState<AdministradorApi[]>([]);
+  const { usuario } = useSessao();
 
   const carregar = useCallback(async () => {
     try {
@@ -66,9 +69,24 @@ export function GestaoPaineis() {
     void carregar();
   }, [carregar]);
 
-  const alterarEmail = (i: number, valor: string) => {
+  // Responsável por painel é sempre administrador: a escolha é entre eles.
+  useEffect(() => {
+    api
+      .get<{ administradores: AdministradorApi[] }>('/api/admin/administradores')
+      .then((r) => setAdmins(r.administradores))
+      .catch(() => setAdmins([]));
+  }, []);
+
+  const alternarResponsavel = (email: string, marcado: boolean) => {
     setRascunho((r) =>
-      r ? { ...r, responsaveis: r.responsaveis.map((e, j) => (j === i ? valor : e)) } : r,
+      r
+        ? {
+            ...r,
+            responsaveis: marcado
+              ? [...r.responsaveis, email]
+              : r.responsaveis.filter((e) => e !== email),
+          }
+        : r,
     );
   };
 
@@ -82,9 +100,7 @@ export function GestaoPaineis() {
         // A descrição saiu da tela, mas a que já existe vai de volta intacta:
         // editar o nome não pode apagá-la sem aviso.
         descricao: rascunho.descricao || undefined,
-        // Linhas em branco são descartadas: o administrador acrescenta campos
-        // à vontade e só preenche os que for usar.
-        responsaveis: rascunho.responsaveis.map((e) => e.trim()).filter(Boolean),
+        responsaveis: rascunho.responsaveis,
       };
       if (rascunho.id === null) await api.post('/api/admin/paineis', corpo);
       else await api.put(`/api/admin/paineis/${rascunho.id}`, corpo);
@@ -181,7 +197,7 @@ export function GestaoPaineis() {
                   {p.montadoresAprovados === 0
                     ? 'Nenhum montador com acesso'
                     : `${p.montadoresAprovados} montador(es) com acesso`}
-                  {' · aprovam: '}
+                  {' · responsáveis: '}
                   {p.responsaveis.join(', ') || '—'}
                 </p>
               </div>
@@ -193,7 +209,7 @@ export function GestaoPaineis() {
                       id: p.id,
                       nome: p.nome,
                       descricao: p.descricao ?? '',
-                      responsaveis: p.responsaveis.length ? [...p.responsaveis] : [''],
+                      responsaveis: [...p.responsaveis],
                     })
                   }
                 >
@@ -285,57 +301,62 @@ export function GestaoPaineis() {
               obrigatorio
             />
 
-            <div>
-              <p className="mb-1 text-base font-semibold">
-                E-mails dos responsáveis<span className="text-abb-red"> *</span>
+            <fieldset>
+              <legend className="mb-1 text-base font-semibold">
+                Administradores responsáveis<span className="text-abb-red"> *</span>
                 <span className="block text-sm font-normal text-abb-gray">
-                  Qualquer um deles aprova os montadores deste painel. Pode
-                  acrescentar quantos quiser.
+                  Recebem os avisos de pedido de acesso e preenchem este painel sem pedir
+                  acesso. Quem aprova ou recusa pedidos é qualquer administrador, em Acessos.
                 </span>
-              </p>
-              <div className="space-y-2">
-                {rascunho.responsaveis.map((email, i) => (
-                  <div key={i} className="flex gap-2">
+              </legend>
+              <div className="space-y-1.5">
+                {admins.map((a) => (
+                  <label
+                    key={a.id}
+                    className="flex min-h-12 items-center gap-3 rounded-md border border-abb-line bg-white px-3"
+                  >
                     <input
-                      type="email"
-                      inputMode="email"
-                      aria-label={`E-mail do responsável ${i + 1}`}
-                      className="min-h-12 w-full rounded-md border border-abb-line bg-white px-3 text-base placeholder:text-neutral-400 focus:border-abb-red"
-                      value={email}
-                      placeholder="nome@empresa.com"
-                      onChange={(e) => alterarEmail(i, e.target.value)}
+                      type="checkbox"
+                      className="h-5 w-5 shrink-0"
+                      checked={rascunho.responsaveis.includes(a.email)}
+                      onChange={(e) => alternarResponsavel(a.email, e.target.checked)}
                     />
-                    <Botao
-                      variante="perigo"
-                      className="shrink-0 px-3"
-                      aria-label={`Remover responsável ${i + 1}`}
-                      disabled={rascunho.responsaveis.length === 1}
-                      onClick={() =>
-                        setRascunho({
-                          ...rascunho,
-                          responsaveis: rascunho.responsaveis.filter((_, j) => j !== i),
-                        })
-                      }
-                    >
-                      Remover
-                    </Botao>
-                  </div>
+                    <span className="min-w-0">
+                      <span className="block truncate text-base font-semibold">
+                        {a.nome}
+                        {a.email === usuario?.email ? ' (você)' : ''}
+                      </span>
+                      <span className="block truncate text-sm text-abb-gray">{a.email}</span>
+                    </span>
+                  </label>
                 ))}
+                {/* Quem já não é administrador continua marcado, só para poder ser desmarcado. */}
+                {rascunho.responsaveis
+                  .filter((e) => !admins.some((a) => a.email === e))
+                  .map((e) => (
+                    <label
+                      key={e}
+                      className="flex min-h-12 items-center gap-3 rounded-md border border-abb-red/60 bg-red-50 px-3"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-5 w-5 shrink-0"
+                        checked
+                        onChange={() => alternarResponsavel(e, false)}
+                      />
+                      <span className="min-w-0 text-base">
+                        {e}
+                        <span className="block text-sm text-abb-red">Não é mais administrador</span>
+                      </span>
+                    </label>
+                  ))}
               </div>
-              <Botao
-                className="mt-2"
-                onClick={() =>
-                  setRascunho({ ...rascunho, responsaveis: [...rascunho.responsaveis, ''] })
-                }
-              >
-                Acrescentar e-mail
-              </Botao>
-            </div>
+            </fieldset>
 
             <Aviso>
               {rascunho.id === null
                 ? 'O painel nasce com um checklist de montagem em branco, pronto para você montar as verificações.'
-                : 'O responsável não precisa ter conta ainda. Quando criar a conta com esse e-mail, os pedidos que estiverem esperando aparecem para ele.'}
+                : 'Só contas de administrador podem ser responsáveis. Quem deixa de ser administrador precisa ser desmarcado aqui.'}
             </Aviso>
 
             {erroForm ? <Erro detalhe={erroForm} /> : null}

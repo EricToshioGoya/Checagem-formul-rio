@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { api, type PainelApi, type ResumoAdmin } from '../core/api/cliente';
+import { api, type ResumoAdmin } from '../core/api/cliente';
 import { useSessao } from '../core/api/SessaoContexto';
 import { plural } from '../../compartilhado/plural';
 import { LogoAbb } from '../shared/componentes/LogoAbb';
@@ -31,7 +31,6 @@ export function Layout() {
   const { pathname } = useLocation();
   const { usuario, perfil, sair } = useSessao();
   const navegar = useNavigate();
-  const [pendentes, setPendentes] = useState(0);
   const [pendentesAdmin, setPendentesAdmin] = useState(0);
   const ehAdmin = perfil === 'admin';
 
@@ -54,28 +53,6 @@ export function Layout() {
       ativo = false;
     };
   }, [ehAdmin, pathname]);
-
-  // Contador de pedidos aguardando o dono. Relê a cada troca de tela, que é
-  // quando ele pode ter mudado — evita ficar batendo no servidor em laço.
-  useEffect(() => {
-    if (!usuario) {
-      setPendentes(0);
-      return;
-    }
-    let ativo = true;
-    api
-      .get<{ paineis: PainelApi[] }>('/api/paineis')
-      .then(({ paineis }) => {
-        if (ativo) setPendentes(paineis.reduce((s, p) => s + p.pendentes, 0));
-      })
-      .catch(() => {
-        // Sem rede o contador some; não é motivo para interromper a tela.
-        if (ativo) setPendentes(0);
-      });
-    return () => {
-      ativo = false;
-    };
-  }, [usuario, pathname]);
 
   const encerrar = async () => {
     await sair();
@@ -113,10 +90,6 @@ export function Layout() {
               <Link to="/paineis" className={classeAba({ isActive: emPaineis })}>
                 Painéis
               </Link>
-              <NavLink to="/aprovacoes" className={classeAba}>
-                Aprovações
-                <Selo n={pendentes} rotulo={`${pendentes} aguardando decisão`} />
-              </NavLink>
               {ehAdmin ? (
                 <NavLink to="/admin" className={classeAba}>
                   <span className="sm:hidden">Admin</span>

@@ -79,7 +79,7 @@ export const painelSchema = z.object({
   descricao: z.string().transform(limparLinha).pipe(z.string().max(500)).optional(),
   responsaveis: z
     .array(emailSchema)
-    .min(1, 'Informe ao menos um e-mail de responsável.')
+    .min(1, 'Escolha ao menos um administrador responsável.')
     .max(50, 'São no máximo 50 responsáveis por painel.')
     .transform((lista) => [...new Set(lista)]),
 });

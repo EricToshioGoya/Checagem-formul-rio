@@ -190,8 +190,8 @@ export function Sistema({ onSessaoVencida }: { onSessaoVencida: () => void }) {
               </Situacao>
             </div>
             <p className="mt-2 text-sm text-abb-gray">
-              Pedidos de acesso avisam os responsáveis do painel e os administradores; pedidos para ser administrador
-              avisam os administradores. {dados.avisos.pendentes ? `${dados.avisos.pendentes} na fila.` : ''}{' '}
+              Pedidos de acesso e pedidos para ser administrador avisam os administradores (os de acesso, em
+              primeiro lugar, os responsáveis pelo painel). {dados.avisos.pendentes ? `${dados.avisos.pendentes} na fila.` : ''}{' '}
               {dados.avisos.falharam
                 ? `${plural(dados.avisos.falharam, 'aviso não saiu', 'avisos não saíram')} depois de 6 tentativas.`
                 : ''}

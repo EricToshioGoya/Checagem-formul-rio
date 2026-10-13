@@ -455,8 +455,14 @@ export function semearPaineis(): void {
  * `.transaction()` do better-sqlite3, então o BEGIN/COMMIT é explícito —
  * qualquer erro desfaz tudo, e um painel nunca fica gravado sem responsável.
  */
+let profundidade = 0;
+
 export function emTransacao<T>(corpo: () => T): T {
+  // Chamada dentro de outra transação (uma função que se protege sozinha,
+  // usada por quem já abriu a sua): entra na que já está aberta.
+  if (profundidade > 0) return corpo();
   banco.exec('BEGIN');
+  profundidade++;
   try {
     const resultado = corpo();
     banco.exec('COMMIT');
@@ -464,6 +470,8 @@ export function emTransacao<T>(corpo: () => T): T {
   } catch (erro) {
     banco.exec('ROLLBACK');
     throw erro;
+  } finally {
+    profundidade--;
   }
 }
 

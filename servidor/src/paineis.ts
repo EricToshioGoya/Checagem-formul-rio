@@ -1,13 +1,10 @@
 /**
- * Os painéis do sistema e quem aprova o acesso a cada um.
+ * Os painéis iniciais — só a semente do primeiro boot. Depois dela os painéis
+ * vivem no banco e se cadastram na aba Painéis da administração.
  *
- * São fixos: não há cadastro de painel pela interface. Quem aprova é o
- * responsável da linha, identificado pelo e-mail — assim trocar o responsável
- * é trocar uma linha aqui, sem mexer em banco nem em conta de usuário.
- *
- * O vínculo é por e-mail, e não por id de usuário, de propósito: o responsável
- * pode ainda não ter criado a conta. Quando criar, os pedidos acumulados
- * aparecem para ele.
+ * O responsável de um painel é sempre um administrador, identificado pelo
+ * e-mail: recebe os avisos de pedido de acesso e preenche o painel sem pedir
+ * acesso. Quem aprova ou recusa os pedidos é qualquer administrador.
  */
 
 /** Responsável usado enquanto os definitivos de cada linha não são informados. */

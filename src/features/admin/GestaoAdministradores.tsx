@@ -7,7 +7,7 @@ import { Botao } from '../../shared/componentes/Botao';
 import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { Carregando, Erro } from '../../shared/componentes/Estado';
 import { IconeChave } from '../../shared/componentes/Icones';
-import { dataBr, dataHoraBr, duracaoCurta } from '../../shared/utils/texto';
+import { dataBr, duracaoCurta } from '../../shared/utils/texto';
 import { sessaoAdminAcabou } from './sessaoAdmin';
 
 const RELEITURA_MS = 30_000;
@@ -20,6 +20,8 @@ interface Dados {
 interface Props {
   onSessaoVencida: () => void;
   onAlterado?: () => void;
+  /** Abre a aba Histórico, onde ficam as decisões anteriores. */
+  onAbrirHistorico?: () => void;
 }
 
 /**
@@ -29,7 +31,7 @@ interface Props {
  * como pedido, e outro administrador aprova ou recusa. Tirar alguém do papel
  * derruba a sessão de administrador dessa pessoa na hora.
  */
-export function GestaoAdministradores({ onSessaoVencida, onAlterado }: Props) {
+export function GestaoAdministradores({ onSessaoVencida, onAlterado, onAbrirHistorico }: Props) {
   const { usuario } = useSessao();
   const [dados, setDados] = useState<Dados | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -107,7 +109,6 @@ export function GestaoAdministradores({ onSessaoVencida, onAlterado }: Props) {
   if (!dados && !erro) return <Carregando mensagem="Lendo os administradores…" />;
 
   const pendentes = dados?.pedidos.filter((p) => p.status === 'pendente') ?? [];
-  const historico = dados?.pedidos.filter((p) => p.status !== 'pendente') ?? [];
 
   return (
     <div className="space-y-5">
@@ -226,26 +227,18 @@ export function GestaoAdministradores({ onSessaoVencida, onAlterado }: Props) {
             </ul>
           </section>
 
-          {historico.length > 0 ? (
-            <section className="space-y-2">
-              <h3 className="text-base font-semibold text-abb-gray">Decisões recentes</h3>
-              <ul className="space-y-1.5">
-                {historico.map((p) => (
-                  <li
-                    key={p.id}
-                    className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-xl bg-white/60 px-3 py-2 text-sm"
-                  >
-                    <span className="font-semibold">{p.usuario.nome}</span>
-                    <span className="text-abb-gray">{p.usuario.email}</span>
-                    <span className="text-abb-gray">
-                      · {p.status === 'recusado' ? 'pedido recusado' : 'removido do papel'}
-                      {p.decididoPor ? ` por ${p.decididoPor}` : ''} em{' '}
-                      {dataHoraBr(p.decididoEm ?? undefined)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
+          {onAbrirHistorico ? (
+            <p className="text-sm text-abb-gray">
+              Aprovações, recusas e remoções anteriores estão no{' '}
+              <button
+                type="button"
+                className="font-semibold text-abb-red underline"
+                onClick={onAbrirHistorico}
+              >
+                Histórico
+              </button>
+              .
+            </p>
           ) : null}
         </>
       ) : null}

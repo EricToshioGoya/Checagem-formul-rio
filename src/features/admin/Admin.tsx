@@ -155,7 +155,11 @@ export function Admin() {
         ) : aba === 'contas' ? (
           <GestaoContas onSessaoVencida={sessaoVencida} onAlterado={lerResumo} />
         ) : aba === 'administradores' ? (
-          <GestaoAdministradores onSessaoVencida={sessaoVencida} onAlterado={lerResumo} />
+          <GestaoAdministradores
+            onSessaoVencida={sessaoVencida}
+            onAlterado={lerResumo}
+            onAbrirHistorico={() => setParametros({ aba: 'historico' }, { replace: true })}
+          />
         ) : aba === 'historico' ? (
           <Historico onSessaoVencida={sessaoVencida} />
         ) : aba === 'sistema' ? (

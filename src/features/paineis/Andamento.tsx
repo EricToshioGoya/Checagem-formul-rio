@@ -9,8 +9,8 @@ import { DetalheAndamento } from './DetalheAndamento';
 const RELEITURA_MS = 60_000;
 
 /**
- * Andamento dos montadores, do que eles sincronizaram. O administrador vê
- * todos os painéis; o responsável, os dele — quem decide é o servidor.
+ * Andamento dos montadores, do que eles sincronizaram, em todos os painéis
+ * (só administradores).
  * Quem tem acesso e ainda não enviou nada aparece em 0%. Tocar num projeto
  * abre o que já foi concluído, seção por seção e etapa por etapa.
  */
@@ -52,7 +52,7 @@ export function Andamento({ onSessaoVencida }: { onSessaoVencida?: () => void })
 
       {dados && dados.paineis.length === 0 ? (
         <p className="rounded-xl border border-dashed border-abb-line bg-white p-6 text-center text-sm text-abb-gray">
-          Você não é responsável por nenhum painel, então não há andamento para acompanhar.
+          Ainda não há painéis cadastrados.
         </p>
       ) : dados ? (
         <>

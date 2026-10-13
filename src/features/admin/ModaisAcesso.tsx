@@ -78,9 +78,11 @@ export function ModalLiberarAcesso({ aberto, paineis, agora, onFechar, onLiberad
     let ativo = true;
     const espera = window.setTimeout(() => {
       api
-        .get<{ usuarios: ContaAdmin[] }>(`/api/admin/usuarios${consulta({ busca: busca.trim() })}`)
+        .get<{ contas: ContaAdmin[] }>(
+          `/api/admin/contas${consulta({ busca: busca.trim(), filtro: 'ativas', porPagina: 20 })}`,
+        )
         .then((r) => {
-          if (ativo) setContas(r.usuarios);
+          if (ativo) setContas(r.contas);
         })
         .catch((e) => {
           if (ativo) setErro(e instanceof Error ? e.message : 'Não foi possível buscar as contas.');

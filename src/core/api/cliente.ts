@@ -266,7 +266,6 @@ export interface PainelApi extends PainelPublico {
   podePreencher: boolean;
   /** Até quando o acesso aprovado vale, ou quando venceu; nulo é sem prazo. */
   acessoExpiraEm: number | null;
-  pendentes: number;
   /** Checklists ativos do painel; zero mostra o aviso no cartão. */
   formularios: number;
 }

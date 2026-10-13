@@ -8,7 +8,7 @@ import type { DocumentoProjeto } from './esquemas';
 import { uidValido } from './midias';
 import { lerPagina, padraoBusca } from './paginacao';
 import { verificarPublicacao } from './publicacao';
-import { ErroHttp, exigirAdmin, exigirSessao, type Contexto } from './rotas';
+import { ErroHttp, exigirAdmin, type Contexto } from './rotas';
 
 /**
  * Gestão: contas (desativar e excluir), histórico, a tela Sistema (backup,
@@ -31,17 +31,6 @@ const FILTROS_HISTORICO: Record<string, TipoAlvo[]> = {
   contas: ['conta', 'administrador'],
   sistema: ['sistema'],
 };
-
-/** Painéis cujo andamento a pessoa vê: todos, para o administrador; os dela, para o responsável. */
-function paineisDoAndamento(ctx: Contexto, eu: Usuario): number[] {
-  const ehAdmin = eu.papel === 'admin' && ctx.perfil === 'admin';
-  const visiveis = (
-    ehAdmin
-      ? banco.prepare('SELECT id FROM paineis').all()
-      : banco.prepare('SELECT painelId AS id FROM painel_responsaveis WHERE email = ?').all(eu.email)
-  ) as Array<{ id: number }>;
-  return visiveis.map((v) => Number(v.id));
-}
 
 export const rotasGestao: Record<string, Manipulador> = {
   // ------------------------------------------------------------ contas
@@ -136,28 +125,6 @@ export const rotasGestao: Record<string, Manipulador> = {
   'DELETE /api/admin/contas/:id': (ctx) => {
     const eu = exigirAdmin(ctx);
     return { ok: true, ...excluirConta(contaAlvo(ctx, eu).id, eu) };
-  },
-
-  /** Busca de contas ativas para o "Liberar acesso" — a lista inteira não vem mais de uma vez. */
-  'GET /api/admin/usuarios': (ctx) => {
-    exigirAdmin(ctx);
-    const busca = (ctx.consulta.get('busca') ?? '').trim();
-    const linhas = (
-      busca
-        ? banco
-            .prepare(
-              `SELECT id, nome, email, criadoEm FROM usuarios
-                WHERE ativo = 1 AND (lower(nome) LIKE ? ESCAPE '\\' OR lower(email) LIKE ? ESCAPE '\\')
-                ORDER BY lower(nome) LIMIT 20`,
-            )
-            .all(padraoBusca(busca), padraoBusca(busca))
-        : banco
-            .prepare('SELECT id, nome, email, criadoEm FROM usuarios WHERE ativo = 1 ORDER BY lower(nome) LIMIT 20')
-            .all()
-    ) as Array<{ id: number; nome: string; email: string; criadoEm: number }>;
-    return {
-      usuarios: linhas.map((u) => ({ id: Number(u.id), nome: u.nome, email: u.email, criadoEm: Number(u.criadoEm) })),
-    };
   },
 
   /** Situação de uma conta em cada painel: o modal mostra "já tem acesso até…". */
@@ -273,28 +240,23 @@ export const rotasGestao: Record<string, Manipulador> = {
   // --------------------------------------------------------- andamento
 
   /**
-   * Andamento dos montadores: o administrador vê todos os painéis; o
-   * responsável, os painéis dele. Entra quem tem acesso valendo e quem já
-   * sincronizou algo — quem tem acesso e nunca enviou aparece em 0%.
+   * Andamento dos montadores, de todos os painéis (só administradores).
+   * Entra quem tem acesso valendo e quem já sincronizou algo — quem tem
+   * acesso e nunca enviou aparece em 0%.
    */
   'GET /api/andamento': (ctx) => {
-    const eu = exigirSessao(ctx);
-    const ehAdmin = eu.papel === 'admin' && ctx.perfil === 'admin';
-    let ids = paineisDoAndamento(ctx, eu);
+    exigirAdmin(ctx);
+    let ids = (banco.prepare('SELECT id FROM paineis').all() as Array<{ id: number }>).map((p) =>
+      Number(p.id),
+    );
     const painelFiltro = Number(ctx.consulta.get('painel')) || null;
     if (painelFiltro) ids = ids.filter((id) => id === painelFiltro);
 
     const { pagina, porPagina, deslocamento } = lerPagina(ctx.consulta, 25);
-    const paineis = (
-      ehAdmin
-        ? banco.prepare('SELECT id, nome FROM paineis ORDER BY ordem, id').all()
-        : banco
-            .prepare(
-              `SELECT p.id, p.nome FROM paineis p JOIN painel_responsaveis r ON r.painelId = p.id
-                WHERE r.email = ? ORDER BY p.ordem, p.id`,
-            )
-            .all(eu.email)
-    ) as Array<{ id: number; nome: string }>;
+    const paineis = banco.prepare('SELECT id, nome FROM paineis ORDER BY ordem, id').all() as Array<{
+      id: number;
+      nome: string;
+    }>;
     if (!ids.length) return { pagina, porPagina, total: 0, itens: [], paineis };
 
     const agora = Date.now();
@@ -354,11 +316,11 @@ export const rotasGestao: Record<string, Manipulador> = {
 
   /**
    * Detalhe de um projeto: TAG → checklist → seção → etapa, com o que já foi
-   * respondido. Mesma visibilidade da lista; o projeto é lido do que o
+   * respondido (só administradores). O projeto é lido do que o
    * montador sincronizou, então reflete o último envio do aparelho.
    */
   'GET /api/andamento/:usuarioId/:projetoUid': (ctx) => {
-    const eu = exigirSessao(ctx);
+    exigirAdmin(ctx);
     const usuarioId = Number(ctx.params.usuarioId);
     const projetoUid = ctx.params.projetoUid.toLowerCase();
     if (!Number.isInteger(usuarioId) || !uidValido(projetoUid)) {
@@ -371,10 +333,7 @@ export const rotasGestao: Record<string, Manipulador> = {
       .get(usuarioId, projetoUid) as
       | { painelId: number; documento: string; enviadoEm: number }
       | undefined;
-    // Projeto de painel que a pessoa não acompanha responde como inexistente.
-    if (!linha || !paineisDoAndamento(ctx, eu).includes(Number(linha.painelId))) {
-      throw new ErroHttp(404, 'Projeto não encontrado.');
-    }
+    if (!linha) throw new ErroHttp(404, 'Projeto não encontrado.');
     const documento = JSON.parse(linha.documento) as DocumentoProjeto;
     return {
       enviadoEm: Number(linha.enviadoEm),
