@@ -45,6 +45,12 @@ interface Pendente {
   ativo: boolean;
 }
 
+/**
+ * Não são oferecidos ao criar uma etapa nova. Continuam válidos no esquema e
+ * aparecem na etapa que já os usa, para os checklists existentes não quebrarem.
+ */
+const TIPOS_RESPOSTA_OCULTOS: readonly TipoResposta[] = ['anexo_pdf', 'grade_numerica'];
+
 const campoSelect =
   'min-h-12 w-full rounded-md border border-abb-line bg-white px-3 text-base text-abb-black focus:border-abb-red';
 
@@ -463,11 +469,13 @@ export function ConstrutorChecklist({
                           });
                         }}
                       >
-                        {tiposResposta.map((t) => (
-                          <option key={t} value={t}>
-                            {ROTULOS_TIPO_RESPOSTA[t]}
-                          </option>
-                        ))}
+                        {tiposResposta
+                          .filter((t) => !TIPOS_RESPOSTA_OCULTOS.includes(t) || t === etapa.tipoResposta)
+                          .map((t) => (
+                            <option key={t} value={t}>
+                              {ROTULOS_TIPO_RESPOSTA[t]}
+                            </option>
+                          ))}
                       </select>
                       <p id={`tipo-ajuda-${etapa.id}`} className="mt-1 text-sm text-abb-gray">
                         {DESCRICOES_TIPO_RESPOSTA[etapa.tipoResposta]}
