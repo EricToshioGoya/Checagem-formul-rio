@@ -10,3 +10,9 @@ export const SENHA_ADMIN = import.meta.env.VITE_SENHA_ADMIN ?? 'abb-admin';
 
 /** Nome do produto exibido nas telas e no PDF. */
 export const NOME_APLICACAO = 'Verificação de Montagem de Painéis';
+
+/**
+ * Endereço do servidor do arquivo central de PDFs (`cmd/arquivo`), definido no
+ * build com `VITE_URL_ARQUIVO`. Vazio desativa o envio e a aba de consulta.
+ */
+export const URL_ARQUIVO = String(import.meta.env.VITE_URL_ARQUIVO ?? '').replace(/\/+$/, '');

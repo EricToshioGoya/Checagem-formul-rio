@@ -7,9 +7,12 @@ conformidade é feito **fora do sistema**.
 
 Implementa a especificação técnica v1.0 (02/09/2026).
 
-- **Sem backend.** A saída do build é um diretório estático.
+- A saída do build é um diretório estático.
 - **Offline integral** após o primeiro carregamento (PWA com service worker).
-- **Dados só no aparelho** (IndexedDB via Dexie). Ver [Limitação conhecida](#limitação-conhecida--sem-sincronização).
+- **Dados de preenchimento só no aparelho** (IndexedDB via Dexie). Ver [Limitação conhecida](#limitação-conhecida--sem-sincronização).
+- **Arquivo central de PDFs:** todo PDF gerado é enviado a um servidor
+  (`cmd/arquivo`) e pode ser consultado na aba **Arquivo**. Ver
+  [Arquivo central de PDFs](#arquivo-central-de-pdfs).
 
 ---
 
@@ -114,13 +117,16 @@ src/
     forms/                motor: schema Zod, catálogo, progresso
     media/                compressão e normalização de imagem
     export/               ExportTarget, dossiê, PDF, backup .zip
+    arquivo/              cliente da API do arquivo central e fila de envio
   features/
     projects/             listagem, criação, TAGs
     fill/                 preenchimento e registro de tipos de campo
     pdf/                  diálogo de geração
     admin/                aba de administração
+    arquivo/              aba de consulta ao arquivo central de PDFs
   shared/                 componentes de UI, ícones, hooks, utilidades
 cmd/servidor/             servidor portátil em Go (modalidade B)
+cmd/arquivo/              servidor do arquivo central de PDFs (Go + SQLite)
 scripts/                  validação de formulários, build portátil, fumaça
 ```
 
@@ -152,6 +158,7 @@ tags:              ++id, projetoId, nome, ordem, [projetoId+ordem]
 preenchimentos:    ++id, tagId, formId, atualizadoEm, [tagId+formId]
 midias:            ++id, preenchimentoId, etapaId, [preenchimentoId+etapaId]
 formulariosCustom: id, atualizadoEm
+enviosPendentes:   ++id, &idEnvio, criadoEm
 ```
 
 Fotos são gravadas como **Blob**, nunca base64. `respostas` é um mapa
@@ -195,12 +202,11 @@ automaticamente antes do build.
 
 Acesso em **Administração**, no cabeçalho. Permite, sem programação: editar
 descrição e detalhes de qualquer etapa, ativar e desativar etapas, reordenar
-etapas dentro de uma seção, trocar o conteúdo de apoio, exportar o JSON e
-importar um JSON com validação e mensagem de erro legível.
+etapas dentro de uma seção e trocar o conteúdo de apoio.
 
 As edições ficam no IndexedDB do aparelho e têm precedência sobre o arquivo
-publicado. Para distribuir uma alteração a todos, exporte o JSON e substitua o
-arquivo em `public/forms` na próxima publicação. O botão **Restaurar original**
+publicado. Para distribuir uma alteração a todos, altere o arquivo em
+`public/forms` na próxima publicação. O botão **Restaurar original**
 descarta as edições locais.
 
 A senha fica em `src/core/config.ts` (constante `SENHA_ADMIN`) e pode ser
@@ -221,6 +227,9 @@ VITE_SENHA_ADMIN='senha-do-cliente' npm run build
 - Sempre disponível, independentemente de pendências.
 - Etapas sem resposta são impressas como **“Não verificado”**.
 - Primeira página: capa com dados do projeto e resumo de pendências por TAG.
+- **Data e hora de emissão** com o fuso do aparelho
+  (`13/10/2026 14:30:12 (UTC-03:00)`) na capa, no rodapé de todas as páginas
+  e nos metadados do arquivo (data de criação e assunto em ISO 8601).
 - Um PDF por tipo de verificação, com todas as TAGs, separadas por seção.
 - Colunas `Etapa | Descrição | Aferido | Status | Data | Operador`, cabeçalhos de
   seção destacados e numeração de páginas no rodapé.
@@ -229,7 +238,35 @@ VITE_SENHA_ADMIN='senha-do-cliente' npm run build
   com as imagens nomeadas `TAG_ETAPA_N.jpg`.
 - Nome do arquivo: `EMPRESA_PROJETO_TIPO-VERIFICACAO_AAAA-MM-DD.pdf`.
 
-O envio por e-mail é feito manualmente pelo montador.
+O envio por e-mail é feito manualmente pelo montador. Além disso, cada PDF
+gerado é registrado automaticamente no arquivo central.
+
+---
+
+## Arquivo central de PDFs
+
+Os PDFs são a documentação usada para validar a garantia ABB em caso de falha
+ou quebra do material, por isso ficam guardados em um servidor central
+(`cmd/arquivo`, ver [README do servidor](cmd/arquivo/README.md)).
+
+- **Envio automático:** ao gerar, cada PDF entra na fila `enviosPendentes` do
+  aparelho e é enviado na hora. Sem conexão, ele permanece na fila e segue
+  quando a aplicação abrir de novo ou a rede voltar. O envio é idempotente
+  (`idEnvio`): uma queda no meio do envio não duplica o registro. O ZIP de
+  fotos não é enviado.
+- **Aba Arquivo** (no cabeçalho): exige a senha de administração, conferida
+  pelo servidor. Busca por trecho do nome da empresa ou do projeto e por
+  período de emissão; baixa o PDF original.
+- **Imutável:** o servidor não tem rota para excluir ou alterar um PDF e guarda
+  o SHA-256 de cada arquivo.
+
+Configuração no build do aplicativo:
+
+```bash
+VITE_URL_ARQUIVO=https://arquivo.exemplo.com VITE_SENHA_ADMIN='senha' npm run build
+```
+
+Sem `VITE_URL_ARQUIVO`, o envio fica desativado e a aba mostra um aviso.
 
 ---
 
@@ -264,6 +301,7 @@ persistência já está atrás dos repositórios para que a troca não afete as 
 Sem julgamento de conformidade no sistema (não existem estados “OK” e “Não OK”:
 a etapa é respondida ou fica em branco); sem estado “não aplicável”; PDF sempre
 gerável; ordem de preenchimento livre; operador e data informados uma vez e
-replicados em todas as etapas; dados exclusivamente no aparelho; sem
+replicados em todas as etapas; dados de preenchimento exclusivamente no
+aparelho, com os PDFs gerados copiados para o arquivo central; sem
 autenticação; sem marca d'água nas fotos; sem trilha de auditoria além da data
 da última alteração.

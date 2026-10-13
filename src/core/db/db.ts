@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import type {
+  EnvioPendente,
   FormularioCustomizado,
   Midia,
   Preenchimento,
@@ -18,6 +19,7 @@ class BancoVerificacao extends Dexie {
   preenchimentos!: Table<Preenchimento, number>;
   midias!: Table<Midia, number>;
   formulariosCustom!: Table<FormularioCustomizado, string>;
+  enviosPendentes!: Table<EnvioPendente, number>;
 
   constructor() {
     super('verificacao-montagem');
@@ -27,6 +29,9 @@ class BancoVerificacao extends Dexie {
       preenchimentos: '++id, tagId, formId, atualizadoEm, [tagId+formId]',
       midias: '++id, preenchimentoId, etapaId, [preenchimentoId+etapaId]',
       formulariosCustom: 'id, atualizadoEm',
+    });
+    this.version(2).stores({
+      enviosPendentes: '++id, &idEnvio, criadoEm',
     });
   }
 }

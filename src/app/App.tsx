@@ -7,6 +7,7 @@ import { NovoProjeto } from '../features/projects/NovoProjeto';
 import { DetalheProjeto } from '../features/projects/DetalheProjeto';
 import { Preenchimento } from '../features/fill/Preenchimento';
 import { Admin } from '../features/admin/Admin';
+import { ArquivoPdfs } from '../features/arquivo/ArquivoPdfs';
 
 /**
  * HashRouter: a saída é estática e roda tanto em servidor HTTPS (modalidade A)
@@ -24,6 +25,7 @@ export function App() {
           <Route path="/projetos/novo" element={<NovoProjeto />} />
           <Route path="/projetos/:projetoId" element={<DetalheProjeto />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/arquivo" element={<ArquivoPdfs />} />
         </Route>
         <Route
           path="/projetos/:projetoId/tags/:tagId/formularios/:formId"

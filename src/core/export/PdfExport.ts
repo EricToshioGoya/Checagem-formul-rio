@@ -7,6 +7,13 @@ import { nomeArquivoExportacao, normalizarParaArquivo } from '../../shared/utils
 export interface ArquivoGerado {
   nome: string;
   blob: Blob;
+  /** Presente nos PDFs: dados com que o arquivo é registrado no arquivo central. */
+  registro?: {
+    empresa: string;
+    projeto: string;
+    tipo: string;
+    emitidoEm: Date;
+  };
 }
 
 function rotuloTipo(tipo: 'montagem' | 'rotina'): string {
@@ -81,6 +88,12 @@ export async function gerarArquivos(
         dossie.geradoEm,
       ),
       blob: pdf,
+      registro: {
+        empresa: dossie.projeto.empresa,
+        projeto: dossie.projeto.nomeProjeto,
+        tipo: tipo === 'montagem' ? 'MONTAGEM' : 'ROTINA',
+        emitidoEm: dossie.geradoEm,
+      },
     });
 
     if (!opcoes.incluirFotos) {

@@ -17,3 +17,8 @@ cmd/servidor/web/*
 !cmd/servidor/web/.gitkeep
 cmd/servidor/servidor
 cmd/servidor/servidor.exe
+
+# Servidor do arquivo central: binário e dados locais
+cmd/arquivo/arquivo
+cmd/arquivo/arquivo.exe
+cmd/arquivo/dados/

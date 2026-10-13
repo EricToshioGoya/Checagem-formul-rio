@@ -3,7 +3,7 @@ import { quebrarLinhas, sanitizar, truncar } from './texto';
 import { etapaRespondida } from '../../forms/progresso';
 import type { Dossie, FormularioDoDossie } from '../dossie';
 import type { Etapa, ValorGrade } from '../../forms/tipos';
-import { dataBr } from '../../../shared/utils/texto';
+import { dataBr, dataHoraEmissao } from '../../../shared/utils/texto';
 
 const PAGINA = { largura: 595.28, altura: 841.89 };
 const MARGEM = 30;
@@ -508,7 +508,7 @@ function desenharCapa(folha: Folha, dossie: Dossie, tituloTipo: string): void {
     ['Operador', dossie.projeto.operador],
     ['Número do pedido', dossie.projeto.numeroPedido ?? ''],
     ['Quantidade de TAGs', String(dossie.tags.length)],
-    ['Documento gerado em', dataBr(dossie.geradoEm)],
+    ['Documento emitido em', dataHoraEmissao(dossie.geradoEm)],
   ]);
 
   folha.titulo('Resumo de pendências por TAG', 12);
@@ -634,6 +634,8 @@ export async function gerarPdf(dossie: Dossie, opcoes: OpcoesPdf): Promise<Blob>
   doc.setTitle(`${dossie.projeto.empresa} — ${dossie.projeto.nomeProjeto}`);
   doc.setProducer('Sistema de Verificação de Montagem de Painéis');
   doc.setCreationDate(dossie.geradoEm);
+  doc.setModificationDate(dossie.geradoEm);
+  doc.setSubject(`Emitido em ${dossie.geradoEm.toISOString()}`);
 
   const folha = new Folha(doc, fontes);
   folha.tituloCorrente = `${dossie.projeto.empresa} • ${dossie.projeto.nomeProjeto}`;
@@ -683,7 +685,8 @@ export async function gerarPdf(dossie: Dossie, opcoes: OpcoesPdf): Promise<Blob>
   numerarPaginas(
     doc,
     fontes.normal,
-    `${dossie.projeto.empresa} • ${dossie.projeto.nomeProjeto} • gerado em ${dataBr(dossie.geradoEm)}`,
+    // A emissão vem primeiro: se o rodapé for truncado, perde-se o nome, não a data.
+    `Emitido em ${dataHoraEmissao(dossie.geradoEm)} • ${dossie.projeto.empresa} • ${dossie.projeto.nomeProjeto}`,
   );
 
   const bytes = await doc.save();

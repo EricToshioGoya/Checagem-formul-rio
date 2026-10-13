@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { formulariosAtivos } from '../../core/forms/catalogo';
 import { progressoDoProjeto } from '../../core/forms/progressoProjeto';
 import type { EntradaCatalogo } from '../../core/forms/tipos';
+import { arquivoConfigurado, registrarNoArquivo } from '../../core/arquivo/clienteArquivo';
 import { baixarBlob } from '../../shared/utils/download';
 import { Botao } from '../../shared/componentes/Botao';
 import { Modal } from '../../shared/componentes/Modal';
@@ -21,11 +22,14 @@ export function DialogoGerarPdf({ aberto, projetoId, onFechar }: Props) {
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [concluido, setConcluido] = useState<string[] | null>(null);
+  /** PDFs ainda não recebidos pelo arquivo central; null enquanto envia. */
+  const [pendentesEnvio, setPendentesEnvio] = useState<number | null>(null);
 
   useEffect(() => {
     if (!aberto) return;
     setErro(null);
     setConcluido(null);
+    setPendentesEnvio(null);
     (async () => {
       try {
         const lista = await formulariosAtivos();
@@ -40,6 +44,7 @@ export function DialogoGerarPdf({ aberto, projetoId, onFechar }: Props) {
 
   const gerar = async () => {
     setGerando(true);
+    setPendentesEnvio(null);
     setErro(null);
     try {
       const { gerarArquivos } = await import('../../core/export/PdfExport');
@@ -53,6 +58,9 @@ export function DialogoGerarPdf({ aberto, projetoId, onFechar }: Props) {
       }
       for (const arquivo of arquivos) baixarBlob(arquivo.blob, arquivo.nome);
       setConcluido(arquivos.map((a) => a.nome));
+      // O registro no arquivo central não bloqueia o download: sem conexão,
+      // os PDFs ficam na fila do aparelho e seguem quando a rede voltar.
+      setPendentesEnvio(await registrarNoArquivo(arquivos));
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao gerar o PDF.');
     } finally {
@@ -152,6 +160,17 @@ export function DialogoGerarPdf({ aberto, projetoId, onFechar }: Props) {
             <p className="mt-2 text-sm text-abb-gray">
               Envie o PDF por e-mail ao inspetor da ABB.
             </p>
+            {arquivoConfigurado() ? (
+              <p className="mt-2 text-sm text-abb-gray">
+                {pendentesEnvio === null
+                  ? 'Registrando no arquivo central…'
+                  : pendentesEnvio === 0
+                    ? 'Registrado no arquivo central da ABB.'
+                    : `Ainda não recebido pelo arquivo central: ${pendentesEnvio} PDF${
+                        pendentesEnvio === 1 ? '' : 's'
+                      } aguardando envio automático.`}
+              </p>
+            ) : null}
           </div>
         ) : null}
       </div>

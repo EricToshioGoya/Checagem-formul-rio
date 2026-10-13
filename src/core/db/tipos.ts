@@ -52,3 +52,23 @@ export interface FormularioCustomizado {
   definicao: unknown;
   atualizadoEm: number;
 }
+
+/**
+ * PDF gerado que ainda não chegou ao arquivo central. Fica no aparelho até o
+ * servidor confirmar o recebimento: a geração funciona offline e o envio
+ * acontece quando houver conexão.
+ */
+export interface EnvioPendente {
+  id?: number;
+  /** Chave de idempotência: reenviar após uma queda não duplica o registro. */
+  idEnvio: string;
+  empresa: string;
+  projeto: string;
+  tipo: string;
+  nomeArquivo: string;
+  /** Instante de emissão em ISO 8601 — o mesmo impresso no PDF. */
+  emitidoEm: string;
+  blob: Blob;
+  criadoEm: number;
+  ultimoErro?: string;
+}

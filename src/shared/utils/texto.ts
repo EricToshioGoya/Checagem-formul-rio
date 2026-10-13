@@ -33,6 +33,22 @@ export function dataHoraBr(valor: number | undefined): string {
 }
 
 /**
+ * Data e hora de emissão com o fuso do aparelho, ex.:
+ * `13/10/2026 14:30:12 (UTC-03:00)`. Só caracteres ASCII: entra na fonte
+ * padrão do PDF sem substituição.
+ */
+export function dataHoraEmissao(data: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  const deslocamento = -data.getTimezoneOffset();
+  const sinal = deslocamento >= 0 ? '+' : '-';
+  const fuso = `UTC${sinal}${p(Math.floor(Math.abs(deslocamento) / 60))}:${p(Math.abs(deslocamento) % 60)}`;
+  return (
+    `${p(data.getDate())}/${p(data.getMonth() + 1)}/${data.getFullYear()} ` +
+    `${p(data.getHours())}:${p(data.getMinutes())}:${p(data.getSeconds())} (${fuso})`
+  );
+}
+
+/**
  * Nome do arquivo exportado:
  * `EMPRESA_PROJETO_TIPO-VERIFICACAO_AAAA-MM-DD`.
  */

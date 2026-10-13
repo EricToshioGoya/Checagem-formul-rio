@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom';
 export function Layout() {
   const { pathname } = useLocation();
   const naAdmin = pathname.startsWith('/admin');
+  const naArquivo = pathname.startsWith('/arquivo');
 
   return (
     <div className="min-h-dvh">
@@ -13,14 +14,21 @@ export function Layout() {
             <span className="hidden text-base font-semibold sm:inline">
               Verificação de Montagem de Painéis
             </span>
-            <span className="text-base font-semibold sm:hidden">Verificação</span>
           </Link>
-          <Link
-            to={naAdmin ? '/' : '/admin'}
-            className="flex min-h-12 items-center rounded-md px-3 text-base font-semibold hover:bg-white/15"
-          >
-            {naAdmin ? 'Sair da administração' : 'Administração'}
-          </Link>
+          <nav className="flex items-center gap-1">
+            <Link
+              to={naArquivo ? '/' : '/arquivo'}
+              className="flex min-h-12 items-center rounded-md px-2 text-base font-semibold whitespace-nowrap hover:bg-white/15 sm:px-3"
+            >
+              {naArquivo ? 'Sair do arquivo' : 'Arquivo'}
+            </Link>
+            <Link
+              to={naAdmin ? '/' : '/admin'}
+              className="flex min-h-12 items-center rounded-md px-2 text-base font-semibold whitespace-nowrap hover:bg-white/15 sm:px-3"
+            >
+              {naAdmin ? 'Sair da administração' : 'Administração'}
+            </Link>
+          </nav>
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-5 pb-16">
