@@ -75,6 +75,7 @@ interface TextoProps {
   /** Escolhe o teclado do celular: `email` e `telefone` evitam digitação manual. */
   formato?: 'texto' | 'email' | 'telefone';
   invalido?: boolean;
+  maxLength?: number;
 }
 
 const TECLADO = {
@@ -96,6 +97,7 @@ export function CampoTexto({
   senha,
   formato = 'texto',
   invalido,
+  maxLength,
 }: TextoProps) {
   // Sem id informado, um id gerado mantém o rótulo associado ao campo —
   // exigência de acessibilidade e do leitor de tela.
@@ -119,6 +121,7 @@ export function CampoTexto({
           aria-invalid={invalido || undefined}
           className={`${borda} min-h-24 py-2`}
           value={valor}
+          maxLength={maxLength}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -144,6 +147,7 @@ export function CampoTexto({
           autoFocus={autoFoco}
           className={borda}
           value={valor}
+          maxLength={maxLength}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
         />

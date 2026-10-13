@@ -1,3 +1,4 @@
+import { codigoDe } from '../../../compartilhado/formulario';
 import { useState } from 'react';
 import { Modal } from '../../shared/componentes/Modal';
 import { Aviso } from '../../shared/componentes/Estado';
@@ -33,7 +34,7 @@ export function ModalApoio({ etapa, onFechar }: Props) {
   const midias = etapa.midiaApoio ?? [];
 
   return (
-    <Modal aberto titulo={`Ajuda — etapa ${etapa.id}`} largura="larga" onFechar={onFechar}>
+    <Modal aberto titulo={`Ajuda — etapa ${codigoDe(etapa)}`} largura="larga" onFechar={onFechar}>
       <div className="space-y-4">
         <p className="text-base font-semibold">{etapa.descricao}</p>
 
@@ -72,7 +73,7 @@ export function ModalApoio({ etapa, onFechar }: Props) {
                 ) : m.tipo === 'imagem' ? (
                   <ImagemApoio
                     src={m.src}
-                    alt={m.legenda ?? `Referência da etapa ${etapa.id}`}
+                    alt={m.legenda ?? `Referência da etapa ${codigoDe(etapa)}`}
                     className="w-full rounded-md border border-abb-line bg-white"
                     onFalha={() => setFalhas((f) => (f[m.src] ? f : { ...f, [m.src]: true }))}
                   />

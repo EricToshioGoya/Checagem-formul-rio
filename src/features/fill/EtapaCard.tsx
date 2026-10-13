@@ -1,3 +1,4 @@
+import { codigoDe } from '../../../compartilhado/formulario';
 import { useState } from 'react';
 import type { Etapa, Resposta, ValorResposta } from '../../core/forms/tipos';
 import { componenteDoTipo } from './campos/registro';
@@ -46,7 +47,7 @@ export function EtapaCard({
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="rounded bg-abb-black px-2 py-1 text-sm font-bold text-white">
-              {etapa.id}
+              {codigoDe(etapa)}
             </span>
             {respondida ? (
               <span className="flex items-center gap-1 text-sm font-bold text-green-700">
@@ -61,7 +62,7 @@ export function EtapaCard({
             <button
               type="button"
               onClick={onAbrirAjuda}
-              aria-label={`Ver ajuda da etapa ${etapa.id}`}
+              aria-label={`Ver ajuda da etapa ${codigoDe(etapa)}`}
               className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-abb-line text-abb-red hover:bg-red-50"
             >
               <IconeAjuda />
@@ -78,12 +79,12 @@ export function EtapaCard({
                 <button
                   type="button"
                   onClick={onAbrirAjuda}
-                  aria-label={`Ampliar imagem de referência da etapa ${etapa.id}`}
+                  aria-label={`Ampliar imagem de referência da etapa ${codigoDe(etapa)}`}
                   className="block w-full overflow-hidden rounded-md border border-abb-line bg-white"
                 >
                   <ImagemApoio
                     src={m.src}
-                    alt={m.legenda ?? `Referência da etapa ${etapa.id}`}
+                    alt={m.legenda ?? `Referência da etapa ${codigoDe(etapa)}`}
                     className="max-h-64 w-full object-contain"
                     onFalha={() => setSemImagem((f) => (f[m.src] ? f : { ...f, [m.src]: true }))}
                   />

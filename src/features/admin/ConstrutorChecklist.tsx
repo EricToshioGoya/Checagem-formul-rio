@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   DESCRICOES_TIPO_RESPOSTA,
+  codigoDe,
   ROTULOS_TIPO_RESPOSTA,
   novaEtapa,
   novaSecao,
@@ -373,7 +374,7 @@ export function ConstrutorChecklist({
                 className="flex flex-1 items-center gap-2 py-2 text-left"
               >
                 <span className="rounded bg-abb-black px-2 py-1 text-sm font-bold text-white">
-                  {secao.id}
+                  {codigoDe(secao)}
                 </span>
                 <span className="text-base font-bold">{secao.titulo}</span>
                 <span className="text-sm text-abb-gray">
@@ -403,11 +404,20 @@ export function ConstrutorChecklist({
 
             {aberta ? (
               <div className="space-y-4 border-t border-abb-line p-4">
-                <CampoTexto
-                  rotulo="Título da seção"
-                  valor={secao.titulo}
-                  onChange={(v) => alterarSecao(secao.id, { titulo: v })}
-                />
+                <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
+                  <CampoTexto
+                    rotulo="Código da seção"
+                    valor={secao.codigo ?? ''}
+                    placeholder={secao.id}
+                    maxLength={20}
+                    onChange={(v) => alterarSecao(secao.id, { codigo: v.trim() ? v : undefined })}
+                  />
+                  <CampoTexto
+                    rotulo="Título da seção"
+                    valor={secao.titulo}
+                    onChange={(v) => alterarSecao(secao.id, { titulo: v })}
+                  />
+                </div>
 
                 {secao.etapas.map((etapa, indiceEtapa) => (
                   <article
@@ -421,7 +431,7 @@ export function ConstrutorChecklist({
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="rounded bg-abb-black px-2 py-1 text-sm font-bold text-white">
-                        {etapa.id}
+                        {codigoDe(etapa)}
                       </span>
                       <div className="flex flex-wrap gap-1">
                         <Botao
@@ -465,6 +475,18 @@ export function ConstrutorChecklist({
                           Excluir
                         </Botao>
                       </div>
+                    </div>
+
+                    <div className="sm:max-w-[10rem]">
+                      <CampoTexto
+                        rotulo="Código da verificação"
+                        valor={etapa.codigo ?? ''}
+                        placeholder={etapa.id}
+                        maxLength={20}
+                        onChange={(v) =>
+                          alterarEtapa(secao.id, etapa.id, { codigo: v.trim() ? v : undefined })
+                        }
+                      />
                     </div>
 
                     <CampoTexto
