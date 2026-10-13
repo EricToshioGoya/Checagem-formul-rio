@@ -208,7 +208,10 @@ nos aparelhos.
 ### Controle de acesso
 
 Na aba de administração → **Acessos**, a administração vê todos os acessos de
-todos os painéis e decide sem esperar o responsável:
+todos os painéis e decide sem esperar o responsável. A lista tem **uma linha
+por conta**, com o resumo dos painéis dela (quantos, situação e o próximo
+vencimento); **Ver painéis** abre cada painel com a validade e as ações. A
+paginação é por conta: uma conta nunca fica dividida entre duas páginas.
 
 | Ação | O que faz |
 |---|---|

@@ -323,12 +323,14 @@ export interface ContaAdmin extends UsuarioSessao {
   criadoEm: number;
 }
 
+/** `total` conta contas, e não registros de acesso. */
 export interface RespostaAcessosAdmin extends Paginado {
   /** Relógio do servidor no momento da leitura. */
   agora: number;
   /** Contagem de todos os acessos, para os cartões do topo — não só da página. */
   contagem: { ativos: number; temporarios: number; vencendo: number; pendentes: number; encerrados: number };
-  acessos: AcessoAdmin[];
+  /** A página é de contas: cada uma com todos os seus acessos que passam nos filtros. */
+  contas: Array<{ usuario: UsuarioSessao; acessos: AcessoAdmin[] }>;
   paineis: Array<{ id: number; nome: string }>;
 }
 
