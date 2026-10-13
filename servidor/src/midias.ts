@@ -93,7 +93,9 @@ export function faxinarMidias(): void {
     const conhecidas = new Set(
       (
         banco
-          .prepare('SELECT uid FROM sync_midias UNION SELECT uid FROM apoio_midias')
+          .prepare(
+            'SELECT uid FROM sync_midias UNION SELECT uid FROM apoio_midias UNION SELECT uid FROM pdfs_emitidos',
+          )
           .all() as Array<{ uid: string }>
       ).map((m) => m.uid.toLowerCase()),
     );

@@ -17,6 +17,14 @@ import {
 export interface ArquivoGerado {
   nome: string;
   blob: Blob;
+  /** Só nos PDFs: os dados com que o arquivo é guardado no servidor. */
+  registro?: {
+    empresa: string;
+    nomeProjeto: string;
+    titulo: string;
+    painelSlug?: string;
+    emitidoEm: number;
+  };
 }
 
 function rotuloTipo(tipo: TipoChecklist): string {
@@ -85,6 +93,13 @@ async function arquivosDoDossie(
       arquivoFotos: nomeZip,
       fontes,
     }),
+    registro: {
+      empresa: dossie.empresa,
+      nomeProjeto: dossie.nomeProjeto,
+      titulo: opcoes.titulo,
+      painelSlug: dossie.painelSlug,
+      emitidoEm: dossie.geradoEm.getTime(),
+    },
   });
   if (zip && nomeZip) arquivos.push({ nome: nomeZip, blob: zip });
   return arquivos;

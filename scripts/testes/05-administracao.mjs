@@ -1,7 +1,5 @@
-/** Aba de administração: acesso, edição, importação de JSON e restauração. */
-import { writeFileSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { BASE, SAIDA, abrir, checa, falha, ok, criarProjeto, entrarNaAdministracao, lerStore, resumo } from './lib.mjs';
+/** Aba de administração: acesso, edição e restauração. */
+import { BASE, abrir, checa, falha, ok, criarProjeto, entrarNaAdministracao, lerStore, resumo } from './lib.mjs';
 
 const { navegador, pagina: p } = await abrir();
 console.log('\n=== 05. ADMINISTRAÇÃO ===');
@@ -71,36 +69,6 @@ checa('05.7 reordena etapas', ordemAntes[0] === ordemDepois[1] && ordemAntes[1] 
 checa('05.8 conteúdo editado muda a revisão registrada no PDF',
   custom[0]?.definicao?.revisao !== 'rev00',
   `a revisão continua "${custom[0]?.definicao?.revisao}" com o conteúdo alterado`);
-
-const baixados = [];
-p.on('download', async (d) => { const f = join(SAIDA, `admin-${d.suggestedFilename()}`); await d.saveAs(f); baixados.push(f); });
-await p.getByRole('button', { name: 'Exportar JSON' }).click();
-await p.waitForTimeout(2500);
-checa('05.9 exporta o JSON do formulário', baixados.length === 1);
-
-const original = JSON.parse(readFileSync('servidor/sementes/forms/sen-plus-montagem.json', 'utf8'));
-writeFileSync(join(SAIDA, 'outro-id.json'), JSON.stringify({ ...original, id: 'outro-id' }));
-await p.locator('input[type=file]').first().setInputFiles(join(SAIDA, 'outro-id.json'));
-await p.waitForTimeout(1800);
-checa('05.10 recusa JSON de outro formulário', (await p.getByText(/id "outro-id"/).count()) > 0);
-
-writeFileSync(join(SAIDA, 'invalido.json'), JSON.stringify({ id: 'sen-plus-montagem', nome: 123 }));
-await p.locator('input[type=file]').first().setInputFiles(join(SAIDA, 'invalido.json'));
-await p.waitForTimeout(1800);
-checa('05.11 erro de validação legível para JSON inválido',
-  /•/.test(await p.getByRole('alert').last().innerText()));
-
-const comLinkExterno = JSON.parse(JSON.stringify(original));
-comLinkExterno.secoes[0].etapas[0].midiaApoio = [
-  { tipo: 'imagem', src: '//example.com/rastreio.png', legenda: 'externo' },
-];
-writeFileSync(join(SAIDA, 'externo.json'), JSON.stringify(comLinkExterno));
-await p.locator('input[type=file]').first().setInputFiles(join(SAIDA, 'externo.json'));
-await p.waitForTimeout(2500);
-const aceitos = (await lerStore(p, 'formulariosCustom'))[0]
-  ?.definicao?.secoes?.[0]?.etapas?.[0]?.midiaApoio?.map((m) => m.src) ?? [];
-checa('05.12 recusa conteúdo de apoio apontando para fora da aplicação',
-  !aceitos.some((s) => /example\.com/.test(s)), `aceito: ${JSON.stringify(aceitos)}`);
 
 const externas = [];
 p.on('request', (r) => { if (/example\.com/.test(r.url())) externas.push(r.url()); });

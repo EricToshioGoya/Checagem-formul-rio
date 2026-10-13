@@ -221,9 +221,12 @@ function desenharBloco(
   }
 }
 
-function desenharRodape(doc: PDFDocument, fonte: PDFFont, rodape: string): void {
-  if (!rodape) return;
-  const texto = sanitizar(rodape);
+/** Rodapé do template e, abaixo dele, a data e a hora em que o certificado foi emitido. */
+function desenharRodape(doc: PDFDocument, fonte: PDFFont, rodape: string, emissao: string): void {
+  const linhas = [rodape, emissao ? `Certificado emitido em ${emissao}` : '']
+    .map((l) => sanitizar(l))
+    .filter(Boolean);
+  if (!linhas.length) return;
   for (const pagina of doc.getPages()) {
     pagina.drawLine({
       start: { x: MARGEM, y: MARGEM - 8 },
@@ -231,13 +234,15 @@ function desenharRodape(doc: PDFDocument, fonte: PDFFont, rodape: string): void 
       thickness: 0.7,
       color: CINZA_CLARO,
     });
-    const largura = fonte.widthOfTextAtSize(texto, 8);
-    pagina.drawText(texto, {
-      x: (PAGINA.largura - largura) / 2,
-      y: MARGEM - 20,
-      size: 8,
-      font: fonte,
-      color: CINZA,
+    linhas.forEach((texto, i) => {
+      const largura = fonte.widthOfTextAtSize(texto, 8);
+      pagina.drawText(texto, {
+        x: (PAGINA.largura - largura) / 2,
+        y: MARGEM - 20 - i * 11,
+        size: 8,
+        font: fonte,
+        color: CINZA,
+      });
     });
   }
 }
@@ -263,7 +268,7 @@ export async function gerarCertificado(
   const folha = new Folha(doc, fontes, template, contexto);
   for (const bloco of template.blocos) desenharBloco(folha, bloco, contexto);
 
-  desenharRodape(doc, fontes.normal, template.rodape);
+  desenharRodape(doc, fontes.normal, template.rodape, contexto.dataHoraEmissao ?? '');
 
   const bytes = await doc.save();
   return new Blob([bytes as unknown as ArrayBuffer], { type: 'application/pdf' });

@@ -1,3 +1,6 @@
+import type { SituacaoRegistro } from '../../core/sync/arquivoPdfs';
+import { plural } from '../../../compartilhado/plural';
+
 /** Peças comuns aos diálogos de geração de PDF: do projeto e de um checklist. */
 
 const opcao =
@@ -39,7 +42,19 @@ export function EscolhaFotos({
   );
 }
 
-export function ArquivosGerados({ nomes }: { nomes: string[] }) {
+/** `null` enquanto envia; ausente quando não há conta para registrar. */
+export type EstadoRegistro = SituacaoRegistro | null | undefined;
+
+function textoRegistro(registro: SituacaoRegistro | null): string {
+  if (registro === null) return 'Guardando no arquivo da ABB…';
+  if (registro.recusas.length) return `O arquivo da ABB recusou o PDF: ${registro.recusas[0]}`;
+  if (registro.pendentes) {
+    return `Sem conexão com o servidor: ${plural(registro.pendentes, 'PDF será guardado', 'PDFs serão guardados')} no arquivo da ABB na próxima sincronização.`;
+  }
+  return 'Guardado no arquivo da ABB.';
+}
+
+export function ArquivosGerados({ nomes, registro }: { nomes: string[]; registro?: EstadoRegistro }) {
   return (
     <div className="rounded-md border border-green-600 bg-green-50 p-3 text-base">
       <p className="font-bold text-green-800">Arquivos gerados:</p>
@@ -51,6 +66,11 @@ export function ArquivosGerados({ nomes }: { nomes: string[] }) {
         ))}
       </ul>
       <p className="mt-2 text-sm text-abb-gray">Envie o PDF por e-mail ao inspetor da ABB.</p>
+      {registro !== undefined ? (
+        <p className="mt-1 text-sm text-abb-gray" role="status">
+          {textoRegistro(registro)}
+        </p>
+      ) : null}
     </div>
   );
 }

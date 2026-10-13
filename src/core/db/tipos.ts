@@ -204,3 +204,28 @@ export interface ImagemApoioCache {
   blob: Blob;
   baixadoEm: number;
 }
+
+/**
+ * PDF de checklist emitido que ainda não chegou ao arquivo do servidor, onde
+ * fica como documentação de garantia. A geração funciona offline: o PDF
+ * espera aqui e segue na próxima sincronização.
+ */
+export interface PdfPendente {
+  id?: number;
+  /** Identidade do PDF no servidor: reenviar depois de uma queda não duplica. */
+  uid: string;
+  /** Conta que emitiu: num aparelho compartilhado, só ela envia este PDF. */
+  usuarioId: number;
+  empresa: string;
+  nomeProjeto: string;
+  /** Tipo de verificação ou nome do checklist, como no título do PDF. */
+  titulo: string;
+  painelSlug?: string;
+  nomeArquivo: string;
+  /** Instante de emissão impresso no PDF. */
+  emitidoEm: number;
+  blob: Blob;
+  criadoEm: number;
+  /** O servidor recusou o arquivo (ex.: grande demais); não se tenta de novo sozinho. */
+  recusa?: string;
+}

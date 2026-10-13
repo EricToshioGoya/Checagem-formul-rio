@@ -253,6 +253,7 @@ sincronização traz o projeto de volta.
 | Painéis e seus donos | Fotos e anexos |
 | Solicitações e decisões | Formulários customizados |
 | Sessões | Token da sessão |
+| PDFs de checklist emitidos (arquivo de garantia) | Fila dos PDFs ainda não enviados |
 
 Ao abrir um painel aprovado pela primeira vez, o aparelho cria um projeto local
 amarrado àquele painel **e àquele usuário**. A **empresa** do projeto — que vai
@@ -394,6 +395,7 @@ solicitacoes:      ++id, tipoPainel, usuarioId, estado, numeroCertificado,
                    criadoEm, atualizadoEm
 certificados:      ++id, &numero, solicitacaoId, tipoPainel, emitidoEm
 contadores:        id
+pdfsPendentes:     ++id, &uid, usuarioId, criadoEm
 ```
 
 Um preenchimento pertence a uma TAG (verificação) **ou** a uma solicitação
@@ -411,6 +413,8 @@ solicitacoes  id, painelId, usuarioId, status, mensagem, criadoEm,
               decididoEm, decididoPor, expiraEm  único (painelId, usuarioId)
 pedidos_admin id, usuarioId (único), status, criadoEm, decididoEm, decididoPor
 sessoes       token, usuarioId, criadoEm, expiraEm, perfil
+pdfs_emitidos uid, usuarioId, painelId, painelNome, empresa, nomeProjeto,
+              titulo, nomeArquivo, emitidoEm, recebidoEm, tamanho, sha256, busca
 ```
 
 `status` é `pendente`, `aprovada`, `recusada` ou `revogada`; uma aprovação com
@@ -601,6 +605,11 @@ administrador. As seções principais:
   (`apoio_midias`, mesma pasta e mesmo backup das fotos) e referenciada no
   checklist como `/api/apoio/<uid>`; o aparelho do montador a baixa junto com o
   checklist e a mostra dentro da etapa, também sem rede.
+- **Arquivo de PDFs** — todo PDF de checklist emitido pelos montadores, como
+  saiu do aparelho: a documentação que valida a garantia ABB em caso de falha
+  ou quebra do material. Busca por empresa ou projeto (sem diferenciar
+  maiúsculas e acentos) e por período de emissão; **Baixar** entrega o arquivo
+  original. Ver [Arquivo de PDFs](#arquivo-de-pdfs).
 - **Administradores** — quem administra, e quem pediu para administrar.
 
 ### Quem é administrador
@@ -677,6 +686,11 @@ O documento:
   leitor de PDF).
 - Escolha entre fotos incorporadas ao PDF ou PDF sem fotos acompanhado de um ZIP
   com as imagens nomeadas `TAG_ETAPA_N.jpg`.
+- **Data e hora de emissão** com segundos e o fuso do aparelho
+  (`13/10/2026 14:30:12 (UTC-03:00)`) na capa, no topo da capa, no rodapé de
+  todas as páginas e nos metadados do arquivo (data de criação e palavra-chave
+  em ISO 8601). O certificado de produto traz, no rodapé, a data e a hora em
+  que foi emitido.
 - Nome do arquivo: `EMPRESA_PROJETO_TIPO-VERIFICACAO_AAAA-MM-DD.pdf`; o de um
   checklist só leva a TAG: `EMPRESA_PROJETO_TAG-ROTINA_AAAA-MM-DD.pdf`.
 - Tipografia Inter (subconjunto Latin, licença OFL) em `src/core/export/pdf/fontes`,
@@ -689,6 +703,27 @@ tipos de resposta e campos vêm da definição. Um checklist montado depois na
 administração sai no mesmo padrão.
 
 O envio por e-mail é feito manualmente pelo montador.
+
+### Arquivo de PDFs
+
+Todo PDF de checklist gerado — do projeto, de uma TAG ou de uma solicitação —
+é guardado também no servidor, como documentação de garantia:
+
+- **Envio automático.** Ao gerar, o PDF entra na fila `pdfsPendentes` do
+  aparelho e segue na hora. Sem rede, fica na fila e vai na próxima
+  sincronização (ao voltar a rede, a cada 3 minutos, ao reabrir o aplicativo).
+  O diálogo diz se o PDF já foi guardado. O ZIP de fotos não é enviado.
+- **Idempotente.** Cada PDF tem `uid` próprio: um reenvio depois de queda de
+  conexão não duplica o registro.
+- **Imutável.** Não há rota para alterar nem excluir um PDF arquivado; o
+  servidor grava o SHA-256 de cada um no recebimento. O arquivo fica na pasta
+  das mídias, com o `uid` como nome, e entra no mesmo espelho do backup diário.
+- **Sobrevive à conta e ao painel.** Excluir a conta de quem emitiu ou o painel
+  não apaga o PDF: o vínculo vira nulo e a lista mostra "conta excluída".
+- **Só administradores consultam** (`GET /api/admin/pdfs`, aba **Arquivo de
+  PDFs**). Qualquer conta logada envia (`PUT /api/pdfs/:uid`), sem exigir o
+  acesso ao painel valendo: o PDF pode ter sido gerado offline antes de o prazo
+  vencer. O servidor recusa o que não for PDF ou passar de 100 MB.
 
 ---
 

@@ -45,7 +45,7 @@ for (let i = 1; i <= doc.numPages; i += 1) {
     if (Math.abs(x - X_DESCRICAO) < 2 && item.str.trim() !== 'Descrição') {
       coluna.push({ pagina: i, y, texto: item.str });
     }
-    const noRodape = /Página \d+ de|gerado em/.test(item.str);
+    const noRodape = /Página \d+ de|[Ee]mitido em/.test(item.str);
     if (!noRodape && (y < MARGEM_RODAPE || y > altura)) {
       foraDaArea += 1;
       if (amostras.length < 3) {

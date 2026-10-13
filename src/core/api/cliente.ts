@@ -372,6 +372,27 @@ export interface RespostaHistorico extends Paginado {
   registros: RegistroHistorico[];
 }
 
+/** PDF de checklist guardado no arquivo do servidor (documentação de garantia). */
+export interface PdfArquivado {
+  uid: string;
+  empresa: string;
+  nomeProjeto: string;
+  /** Tipo de verificação ou nome do checklist. */
+  titulo: string;
+  painel: string | null;
+  /** Nulo quando a conta de quem emitiu foi excluída. */
+  montador: string | null;
+  nomeArquivo: string;
+  emitidoEm: number;
+  recebidoEm: number;
+  tamanho: number;
+  sha256: string;
+}
+
+export interface RespostaPdfs extends Paginado {
+  pdfs: PdfArquivado[];
+}
+
 /** Andamento de um projeto de um montador num painel, do que ele sincronizou. */
 export interface ItemAndamento {
   painel: { id: number; nome: string };

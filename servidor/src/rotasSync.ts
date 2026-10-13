@@ -254,6 +254,14 @@ export const rotasSync: Record<string, Manipulador> = {
       | { usuarioId: number }
       | undefined;
     if (registrada && registrada.usuarioId !== eu.id) throw new ErroHttp(409, 'Identificador de mídia já usado.');
+    // Mesma pasta das imagens de apoio e dos PDFs emitidos: o `uid` de um deles
+    // sobrescreveria o arquivo.
+    if (
+      banco.prepare('SELECT 1 FROM apoio_midias WHERE uid = ?').get(uid) ??
+      banco.prepare('SELECT 1 FROM pdfs_emitidos WHERE uid = ?').get(uid)
+    ) {
+      throw new ErroHttp(409, 'Identificador de mídia já usado.');
+    }
 
     gravarMidia(uid, dados);
     banco
