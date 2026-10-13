@@ -183,7 +183,7 @@ partir de [`servidor/src/paineis.ts`](servidor/src/paineis.ts):
 | SAFR | certificação | ensaios de rotina NBR IEC 61439 |
 | MNS | verificação | — ainda não cadastrado |
 
-Os checklists também são semente: o servidor importa `public/forms` só com a
+Os checklists também são semente: o servidor importa `servidor/sementes/forms` só com a
 tabela vazia. Um arquivo citado por vários painéis vira uma cópia por painel —
 os ensaios 61439 entram como `ensaios-rotina-61439`,
 `ensaios-rotina-61439-system-pro-e-power` e `ensaios-rotina-61439-safr` —,
@@ -202,7 +202,7 @@ nos aparelhos.
 > **Linha sem checklist abre vazia.** O painel abre, mas sem
 > formulário nenhum e com um aviso na tela. Não se reaproveita o checklist do
 > SEN Plus: as etapas de uma linha não valem para outra. Para cadastrar uma
-> delas, acrescente o JSON em `public/forms` e cite o `slug` do painel no campo
+> delas, acrescente o JSON em `servidor/sementes/forms` e cite o `slug` do painel no campo
 > `paineis` do catálogo — sem alteração de código.
 
 ### Controle de acesso
@@ -242,7 +242,8 @@ no aparelho. A sessão só é descartada quando o servidor a recusa (401) — e,
 quando isso acontece no meio do uso, o aplicativo volta sozinho para o login.
 
 A tela **Projetos neste aparelho** (link na tela de painéis) lista os projetos
-locais e é onde se importa um projeto exportado de outro aparelho.
+locais. Para levar um projeto a outro aparelho, entre com a mesma conta: a
+sincronização traz o projeto de volta.
 
 ### O que fica em cada lado
 
@@ -273,9 +274,6 @@ não por pessoa.
 - **Não há redefinição de senha.** Sem servidor de e-mail, não há para onde
   mandar o link. Se nenhum administrador conseguir entrar, o socorro é
   `npm run admin -- promover <e-mail>` na máquina do servidor.
-- **Importar projeto ignora a aprovação.** Um `.zip` exportado de outro aparelho
-  é recriado localmente sem passar pelos painéis. É o preço da mitigação manual
-  de sincronização; fechar isso exige amarrar o pacote ao painel de origem.
 - **Todo administrador pode tudo.** Não há níveis dentro da administração:
   quem tem o papel libera acessos, cadastra painéis, edita checklists e aprova
   outros administradores. O que fica registrado é quem decidiu cada acesso e
@@ -285,8 +283,10 @@ não por pessoa.
 - **A modalidade portátil não guarda contas.** O binário Go entrega os
   arquivos estáticos e repassa `/api` ao servidor de acesso indicado em
   `-api`; sem alcançar esse servidor pela rede, ninguém entra.
-- **Solicitações de certificação ficam no aparelho.** A validação ABB vê só as
-  do aparelho em que a administração é aberta — ver
+- **Enviar uma solicitação de certificação exige o servidor.** A solicitação é
+  preparada offline no aparelho; ao pedir a validação ela sobe inteira e, dali em
+  diante, o estado e o número do certificado são do servidor. Rascunhos ainda
+  não enviados existem só no aparelho que os criou — ver
   [Fluxo de certificação](#fluxo-de-certificação).
 
 ### Configuração
@@ -318,17 +318,11 @@ servidor/src/            API de acesso (Node + node:sqlite, sem framework)
   esquemas.ts            validação Zod de tudo que chega
   rotas.ts               contas, painéis, solicitações, administração
   index.ts               roteador HTTP
+  (sementes/forms/       sementes dos checklists — importadas na primeira subida)
 public/
-  forms/                  sementes dos checklists — importadas pelo servidor
-    index.json            catálogo das sementes e dos painéis de cada uma
-    sen-plus-montagem.json
-    rotina-bt.json
-    ensaios-rotina-61439.json
   paineis/
-    index.json            fluxo por slug de painel: certificação, template
-                          do certificado, responsável ABB e campos
-  certificados/           templates de certificado, um por painel
-    spee.json  spep.json  safr.json
+    index.json            campos padrão da solicitação de certificação
+  certificados/           modelos de certificado (hoje um só: 61439.json)
   docs/                   PDF de instruções exibido nas telas de certificação
   media/                  conteúdo de apoio — editável sem build
     sen-plus/             (ver LEIA-ME.md: lista das imagens esperadas)
@@ -362,7 +356,7 @@ scripts/                  validação dos dados, ícones, build portátil, fuma�
 
 **Princípio central:** o motor de formulários não conhece nenhum formulário
 específico. Todo formulário é um JSON carregado em tempo de execução a partir de
-`public/forms`. Acrescentar a linha System Pro E Energy é acrescentar um arquivo
+`servidor/sementes/forms`. Acrescentar a linha System Pro E Energy é acrescentar um arquivo
 JSON e suas mídias — sem alteração de código.
 
 Uma diferença em relação ao desenho da especificação: a montagem do documento
@@ -374,16 +368,16 @@ diálogo de geração.
 
 | Extensão | O que fazer |
 |---|---|
-| Novo formulário para uma linha | Acrescentar o JSON em `public/forms`, registrá-lo em `index.json` e citar no campo `paineis` o `slug` das linhas que o usam. Nenhuma alteração de código. |
+| Novo formulário para uma linha | Acrescentar o JSON em `servidor/sementes/forms`, registrá-lo em `index.json` e citar no campo `paineis` o `slug` das linhas que o usam. Nenhuma alteração de código. |
 | Novo painel, ou trocar quem aprova | Aba de administração → Painéis. Sem programação e sem reiniciar nada. |
 | Novo tipo de checklist (ex.: recebimento, inspeção final) | Acrescentar uma entrada em `TIPOS_CHECKLIST` (`compartilhado/tiposChecklist.ts`): `id`, `rotulo`, `tituloPdf`, `sufixoArquivo`. O botão "+" do painel, os rótulos, o PDF (um por tipo) e a validação do servidor passam a incluí-lo. |
 | Novo tipo de campo | Implementar o componente e registrá-lo em `src/features/fill/campos/registro.tsx`. |
 | Novo destino de exportação | Implementar `ExportTarget` (`src/core/export/ExportTarget.ts`). `PdfExport` é a implementação da v1. |
 | Trocar a persistência | Todo acesso ao Dexie passa por `ProjetoRepository`, `PreenchimentoRepository`, `MidiaRepository` e `FormularioRepository`. Nenhuma tela importa Dexie. |
 | Conteúdo de apoio | Imagem: enviar pela administração, na etapa. Vídeo e PDF: arquivo em `public/media`, com o caminho no JSON. |
-| Painel de certificação | Acrescentar a entrada em `public/paineis/index.json` com o `slug` do painel, `fluxo: "certificacao"`, o template em `public/certificados` e o responsável ABB. Nenhuma alteração de código. |
+| Painel de certificação | Cadastrar o painel na administração com o fluxo *Solicitação de certificação*, o modelo do certificado (um JSON de `public/certificados`) e quem assina. Nenhuma alteração de código. |
 | Novos campos da solicitação | Editar `camposPadrao` em `public/paineis/index.json`, ou dar ao painel a sua própria lista `campos`. |
-| Solicitações no servidor | Trocar o que `src/core/certificacao/index.ts` aponta em `solicitacaoStore` e `servicoValidacao`. Nenhuma tela muda. |
+| Validação ABB | Servidor: `servidor/src/certificacoes.ts`; cliente: `src/core/certificacao/` (sincronização, serviço do montador e `validacaoServidor.ts` da administração). |
 
 ### Modelo de dados
 
@@ -526,28 +520,31 @@ rascunho ──enviar──> enviada ──aprovar──> aprovada ──gerar�
   todo o preenchimento já feito.
 - **O certificado só é gerado após a aprovação explícita** do responsável ABB,
   na aba **Validação ABB** da administração.
-- **As solicitações ficam no aparelho.** Diferente das checagens de projeto,
-  elas não sincronizam: a validação ABB enxerga as solicitações gravadas no
-  aparelho em que é aberta. Levá-las ao servidor é trocar a implementação em
-  `src/core/certificacao/index.ts` — as telas não mudam.
+- **Quem decide é o servidor.** O rascunho é preparado no aparelho, offline.
+  **Enviar** sobe a solicitação (dados, respostas e fotos) e exige conexão; aprovar,
+  devolver e o **número do certificado** — de um contador único, gravado na mesma
+  transação do certificado — são do servidor, e a validação ABB enxerga as
+  solicitações enviadas por qualquer aparelho. O aparelho do montador atualiza a
+  cópia ao abrir a lista ou a solicitação (e a cada minuto, enquanto aguarda).
+  Aprovar, devolver e emitir ficam no **Histórico** (filtro *Certificados*).
 
 ### Responsáveis e numeração
 
 | Painel (`slug`) | Responsável ABB | Template |
 |---|---|---|
-| System Pro E Energy (`system-pro-e-energy`) | Tainá Gioia | `certificados/spee.json` |
-| System Pro E Power (`system-pro-e-power`) | Carlos Eduardo Silva | `certificados/spep.json` |
-| SAFR (`safr`) | Tainá Gioia | `certificados/safr.json` |
+| System Pro E Energy (`system-pro-e-energy`) | Tainá Gioia | `certificados/61439.json` |
+| System Pro E Power (`system-pro-e-power`) | Carlos Eduardo Silva | `certificados/61439.json` |
+| SAFR (`safr`) | Tainá Gioia | `certificados/61439.json` |
 
-O fluxo de cada painel vem de `public/paineis/index.json`, pelo `slug` do painel
-no servidor. Painel sem entrada ali — todo painel novo da administração — segue
-a verificação. Quem pode abrir as solicitações de um painel é a mesma regra dos
-projetos: acesso aprovado pelo responsável ou liberado pela administração,
-reconferido a cada entrada.
+O fluxo de cada painel (verificação ou certificação), o modelo do certificado e
+quem o assina são cadastrados na aba **Painéis e checklists** da administração —
+inclusive em painéis novos. `public/paineis/index.json` guarda só os campos padrão
+da solicitação. Quem pode abrir as solicitações de um painel segue a mesma regra
+dos projetos: acesso liberado pela administração, reconferido a cada entrada.
 
-O responsável ABB (quem assina o certificado) e o responsável do painel (quem
-aprova o acesso do montador) são coisas diferentes: o primeiro mora no
-catálogo de fluxos, o segundo no cadastro de painéis do servidor.
+Quem assina o certificado (ABB) e o responsável do painel (administrador que recebe
+os avisos de pedido de acesso e preenche o painel sem pedir) são coisas
+diferentes; as duas ficam no cadastro do painel.
 
 Na aprovação, a camada de validação atribui um número **sequencial global, único
 e imutável** (`0001`, `0002`, …) resolvido em transação, com índice único em
@@ -701,10 +698,9 @@ O servidor sincroniza **o acesso**, não as checagens. Cada aparelho mantém a s
 própria base de respostas e fotos: um preenchimento iniciado no celular **não
 aparece** no notebook, mesmo com a mesma conta e o mesmo painel aprovado.
 
-Mitigação da v1: **Exportar projeto** (na tela do projeto) grava um `.zip` com o
-JSON dos dados e as fotos; **Importar projeto** (na tela de projetos) lê esse
-arquivo e recria o projeto no outro aparelho, com o sufixo “(importado)” no
-nome. A transferência é manual.
+**Exportar projeto** (na tela do projeto) grava um `.zip` com o JSON dos dados e as
+fotos, como cópia de arquivo. Não existe importação: a troca de aparelho é a
+sincronização com a conta.
 
 Solução definitiva: subir também as respostas, em versão futura. A infraestrutura
 para isso já existe — servidor, contas e sessões — e a camada de persistência

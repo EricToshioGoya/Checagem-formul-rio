@@ -40,12 +40,11 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Formulários, painéis, templates de certificado, instruções e mídias
+        // Painéis, templates de certificado, instruções e mídias
         // entram no precache: o aplicativo abre offline já com todo o conteúdo
         // de apoio disponível.
         globPatterns: [
           '**/*.{js,css,html,svg,png,ico,woff2,ttf}',
-          'forms/**/*.json',
           'paineis/**/*.json',
           'certificados/**/*.json',
           'docs/**/*.pdf',

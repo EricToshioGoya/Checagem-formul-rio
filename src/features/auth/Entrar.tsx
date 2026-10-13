@@ -17,13 +17,13 @@ const textos: Record<Perfil, Record<Modo, { titulo: string; descricao: string; b
     entrar: {
       titulo: 'Entrar',
       descricao:
-        'Identifique-se e escolha o painel que vai montar. O responsável pelo painel precisa aprovar o seu acesso.',
+        'Identifique-se e escolha o painel que vai montar. A administração precisa aprovar o seu acesso.',
       botao: 'Entrar',
     },
     cadastrar: {
       titulo: 'Criar conta',
       descricao:
-        'Identifique-se e escolha o painel que vai montar. O responsável pelo painel precisa aprovar o seu acesso.',
+        'Identifique-se e escolha o painel que vai montar. A administração precisa aprovar o seu acesso.',
       botao: 'Criar conta e entrar',
     },
   },

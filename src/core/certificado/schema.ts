@@ -35,9 +35,8 @@ export const blocoSchema = z.discriminatedUnion('tipo', [
 
 export const templateCertificadoSchema = z.object({
   id: z.string().min(1),
-  painelId: z.string().min(1),
-  /** Único texto que difere entre os painéis, junto do bloco de assinatura. */
-  tituloProduto: z.string().min(1),
+  /** Título do certificado; ausente, é "Certificado de produto" e o nome do painel. */
+  tituloProduto: z.string().min(1).optional(),
   numero: z.string().min(1).optional().default('Nº {{numeroCertificado}}'),
   rodape: z.string().optional().default(''),
   blocos: z.array(blocoSchema).min(1),

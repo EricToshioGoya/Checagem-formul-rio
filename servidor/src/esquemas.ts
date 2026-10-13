@@ -1,3 +1,4 @@
+import { UID } from './midias';
 import { IDS_TIPOS_CHECKLIST } from '../../compartilhado/tiposChecklist';
 import { z } from 'zod';
 
@@ -74,15 +75,34 @@ export const pedidoAdminSchema = z.object({
  * que podem aprovar montadores naquele painel — pelo menos um, sem limite
  * acima disso, sem repetição.
  */
-export const painelSchema = z.object({
-  nome: linha(2, 120, 'Informe o nome do painel.', 'Nome do painel longo demais.'),
-  descricao: z.string().transform(limparLinha).pipe(z.string().max(500)).optional(),
-  responsaveis: z
-    .array(emailSchema)
-    .min(1, 'Informe ao menos um e-mail de responsável.')
-    .max(50, 'São no máximo 50 responsáveis por painel.')
-    .transform((lista) => [...new Set(lista)]),
+/** Quem assina o certificado (ABB), nos painéis do fluxo de certificação. */
+export const signatarioSchema = z.object({
+  nome: linha(2, 120, 'Informe o nome de quem assina.', 'Nome longo demais.'),
+  cargo: linha(2, 160, 'Informe o cargo de quem assina.', 'Cargo longo demais.'),
+  area: z.string().transform(limparLinha).pipe(z.string().max(120)).optional().default(''),
+  empresa: z.string().transform(limparLinha).pipe(z.string().max(120)).optional().default(''),
+  email: z.string().transform(limparLinha).pipe(z.string().max(160)).optional().default(''),
 });
+
+export const painelSchema = z
+  .object({
+    nome: linha(2, 120, 'Informe o nome do painel.', 'Nome do painel longo demais.'),
+    descricao: z.string().transform(limparLinha).pipe(z.string().max(500)).optional(),
+    responsaveis: z
+      .array(emailSchema)
+      .min(1, 'Escolha ao menos um administrador responsável.')
+      .max(50, 'São no máximo 50 responsáveis por painel.')
+      .transform((lista) => [...new Set(lista)]),
+    /** `verificacao`: dossiê em PDF. `certificacao`: solicitação, validação e emissão. */
+    fluxo: z.enum(['verificacao', 'certificacao']).optional().default('verificacao'),
+    /** Modelo do certificado (`public/certificados/<id>.json`). */
+    certificado: z.string().regex(/^[a-z0-9-]{1,60}$/, 'Modelo de certificado inválido.').optional(),
+    signatario: signatarioSchema.optional(),
+  })
+  .refine((p) => p.fluxo !== 'certificacao' || (!!p.certificado && !!p.signatario), {
+    message: 'Painel de certificação exige o modelo do certificado e quem assina.',
+    path: ['certificado'],
+  });
 
 export const solicitarSchema = z.object({
   mensagem: z.string().transform(limparLinha).pipe(z.string().max(500)).optional(),
@@ -145,9 +165,7 @@ export const prazoAcessoSchema = z.object({
 
 // ---------------------------------------------------------- sincronização
 
-const uidSchema = z
-  .string()
-  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'Identificador inválido.');
+const uidSchema = z.string().regex(UID, 'Identificador inválido.');
 
 /** Tipos de arquivo que o aparelho grava: foto comprimida em JPEG e anexo em PDF. */
 export const MIMES_MIDIA = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'] as const;
@@ -232,6 +250,48 @@ export const envioProjetoSchema = z.object({
    */
   painelId: z.number().int().positive().optional(),
   documento: documentoProjetoSchema,
+});
+
+/**
+ * Solicitação de certificação enviada pelo montador para validação. O estado
+ * não vem daqui: quem muda é o servidor, pelas rotas de enviar, aprovar e
+ * devolver.
+ */
+export const envioCertificacaoSchema = z.object({
+  versaoBase: z.number().int().min(0),
+  painelId: z.number().int().positive(),
+  formId: textoCurto,
+  criadoEm: z.number(),
+  dados: z.record(z.string().max(200), z.string().max(5000)),
+  preenchimento: z.object({
+    formRevisao: textoCurto,
+    cabecalho: z.record(z.string().max(200), z.string().max(5000)),
+    respostas: z.record(
+      z.string().max(200),
+      z.object({ valor: z.unknown(), observacao: z.string().max(10_000).optional() }),
+    ),
+  }),
+  midias: z
+    .array(
+      z.object({
+        uid: uidSchema,
+        etapaId: textoCurto,
+        mime: z.enum(MIMES_MIDIA),
+        largura: z.number(),
+        altura: z.number(),
+        tamanho: z.number().int().min(0).max(TAMANHO_MAXIMO_MIDIA),
+        nomeOriginal: textoCurto.optional(),
+        criadoEm: z.number(),
+        ordem: z.number().int(),
+      }),
+    )
+    .max(2000),
+});
+
+export type EnvioCertificacao = z.output<typeof envioCertificacaoSchema>;
+
+export const devolucaoSchema = z.object({
+  apontamentos: z.string().trim().min(1, 'Informe os apontamentos da devolução.').max(2000),
 });
 
 /** Primeira mensagem de erro, em texto que cabe na tela do montador. */

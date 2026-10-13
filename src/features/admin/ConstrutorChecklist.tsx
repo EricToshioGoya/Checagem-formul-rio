@@ -16,12 +16,14 @@ import {
 import { api } from '../../core/api/cliente';
 import {
   ehApoioDoServidor,
+  ehPdfDeApoio,
   ehVideo,
   enviarImagemApoio,
+  enviarPdfApoio,
   enviarVideoApoio,
 } from '../../core/media/apoio';
 import { ehImagem } from '../../core/media/imagem';
-import { ImagemApoio, VideoApoio } from '../../shared/componentes/ImagemApoio';
+import { ImagemApoio, LinkPdfApoio, VideoApoio } from '../../shared/componentes/ImagemApoio';
 import { plural } from '../../../compartilhado/plural';
 import { useSalvamentoAutomatico } from '../../shared/hooks/useSalvamentoAutomatico';
 import { baixarBlob } from '../../shared/utils/download';
@@ -90,6 +92,7 @@ export function ConstrutorChecklist({
   const entradaArquivo = useRef<HTMLInputElement>(null);
   const entradaImagem = useRef<HTMLInputElement>(null);
   const entradaVideo = useRef<HTMLInputElement>(null);
+  const entradaPdf = useRef<HTMLInputElement>(null);
   /** Etapa que recebe a imagem escolhida no seletor de arquivo. */
   const alvoImagem = useRef<{ secaoId: string; etapaId: string } | null>(null);
   const [enviandoImagem, setEnviandoImagem] = useState<string | null>(null);
@@ -186,21 +189,29 @@ export function ConstrutorChecklist({
     alterarEtapa(secaoId, etapa.id, { midiaApoio: midias });
   };
 
-  const enviarMidia = async (arquivo: File, tipo: 'imagem' | 'video') => {
+  const enviarMidia = async (arquivo: File, tipo: 'imagem' | 'video' | 'pdf') => {
     const alvo = alvoImagem.current;
     alvoImagem.current = null;
     if (!alvo) return;
-    if (tipo === 'imagem' ? !ehImagem(arquivo) : !ehVideo(arquivo)) {
+    const confere = tipo === 'imagem' ? ehImagem(arquivo) : tipo === 'video' ? ehVideo(arquivo) : ehPdfDeApoio(arquivo);
+    if (!confere) {
       setErro(
         tipo === 'imagem'
           ? 'Escolha um arquivo de imagem (JPEG, PNG…).'
-          : 'Escolha um arquivo de vídeo (MP4, WebM ou MOV).',
+          : tipo === 'video'
+            ? 'Escolha um arquivo de vídeo (MP4, WebM ou MOV).'
+            : 'Escolha um arquivo PDF.',
       );
       return;
     }
     setEnviandoImagem(`${alvo.secaoId}/${alvo.etapaId}`);
     try {
-      const src = tipo === 'imagem' ? await enviarImagemApoio(arquivo) : await enviarVideoApoio(arquivo);
+      const src =
+        tipo === 'imagem'
+          ? await enviarImagemApoio(arquivo)
+          : tipo === 'video'
+            ? await enviarVideoApoio(arquivo)
+            : await enviarPdfApoio(arquivo);
       const d = atual.current;
       if (!d) return;
       alterar({
@@ -219,7 +230,7 @@ export function ConstrutorChecklist({
         ),
       });
     } catch (e) {
-      const nome = tipo === 'imagem' ? 'a imagem' : 'o vídeo';
+      const nome = tipo === 'imagem' ? 'a imagem' : tipo === 'video' ? 'o vídeo' : 'o PDF';
       setErro(
         e instanceof Error ? `Não foi possível enviar ${nome}: ${e.message}` : `Falha ao enviar ${nome}.`,
       );
@@ -342,6 +353,19 @@ export function ConstrutorChecklist({
           const arquivo = e.target.files?.[0];
           e.target.value = '';
           if (arquivo) void enviarMidia(arquivo, 'video');
+        }}
+      />
+
+      <input
+        ref={entradaPdf}
+        type="file"
+        accept="application/pdf,.pdf"
+        className="hidden"
+        aria-label="PDF de apoio"
+        onChange={(e) => {
+          const arquivo = e.target.files?.[0];
+          e.target.value = '';
+          if (arquivo) void enviarMidia(arquivo, 'pdf');
         }}
       />
 
@@ -592,7 +616,7 @@ export function ConstrutorChecklist({
 
                     <div className="space-y-2">
                       <p className="text-base font-semibold">
-                        Imagem ou vídeo de apoio{' '}
+                        Imagem, vídeo ou PDF de apoio{' '}
                         <span className="font-normal text-abb-gray">(opcional)</span>
                       </p>
                       <p className="text-sm text-abb-gray">
@@ -604,7 +628,16 @@ export function ConstrutorChecklist({
                             key={midia.src}
                             className="grid items-start gap-2 rounded border border-abb-line p-2 sm:grid-cols-[10rem_1fr_auto]"
                           >
-                            {midia.tipo === 'video' ? (
+                            {midia.tipo === 'pdf' ? (
+                              <div className="flex h-28 w-full items-center justify-center rounded border border-abb-line bg-neutral-50">
+                                <LinkPdfApoio
+                                  src={midia.src}
+                                  className="font-semibold text-abb-red underline"
+                                >
+                                  Abrir PDF
+                                </LinkPdfApoio>
+                              </div>
+                            ) : midia.tipo === 'video' ? (
                               <VideoApoio
                                 src={midia.src}
                                 className="h-28 w-full rounded border border-abb-line bg-black object-contain"
@@ -688,15 +721,13 @@ export function ConstrutorChecklist({
                           Adicionar vídeo
                         </Botao>
                         <Botao
-                          variante="texto"
-                          onClick={() =>
-                            alterarMidia(secao.id, etapa, (etapa.midiaApoio ?? []).length, {
-                              tipo: 'pdf',
-                              src: '',
-                            })
-                          }
+                          disabled={enviandoImagem !== null}
+                          onClick={() => {
+                            alvoImagem.current = { secaoId: secao.id, etapaId: etapa.id };
+                            entradaPdf.current?.click();
+                          }}
                         >
-                          PDF por endereço
+                          Adicionar PDF
                         </Botao>
                       </div>
                     </div>

@@ -5,6 +5,7 @@ import {
   type DetalheAndamento as Detalhe,
   type SecaoAndamento,
 } from '../../core/api/cliente';
+import { percentualDe } from '../../../compartilhado/progresso';
 import { plural } from '../../../compartilhado/plural';
 import { Carregando, Erro } from '../../shared/componentes/Estado';
 import { IconeCheck } from '../../shared/componentes/Icones';
@@ -18,7 +19,7 @@ interface Props {
 }
 
 function percentual(c: ContagemAndamento): number {
-  return c.total ? Math.round((c.respondidas / c.total) * 100) : 0;
+  return percentualDe(c.respondidas, c.total);
 }
 
 function Contagem({ c }: { c: ContagemAndamento }) {

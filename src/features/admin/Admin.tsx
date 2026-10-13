@@ -146,7 +146,7 @@ export function Admin() {
             <div>
               <h2 className="text-xl font-bold">Validação ABB</h2>
               <p className="text-sm text-abb-gray">
-                Solicitações de certificação gravadas neste aparelho: aprovar
+                Solicitações de certificação enviadas pelos montadores: aprovar
                 atribui o número do certificado, devolver reabre para o montador.
               </p>
             </div>
@@ -155,7 +155,11 @@ export function Admin() {
         ) : aba === 'contas' ? (
           <GestaoContas onSessaoVencida={sessaoVencida} onAlterado={lerResumo} />
         ) : aba === 'administradores' ? (
-          <GestaoAdministradores onSessaoVencida={sessaoVencida} onAlterado={lerResumo} />
+          <GestaoAdministradores
+            onSessaoVencida={sessaoVencida}
+            onAlterado={lerResumo}
+            onAbrirHistorico={() => setParametros({ aba: 'historico' }, { replace: true })}
+          />
         ) : aba === 'historico' ? (
           <Historico onSessaoVencida={sessaoVencida} />
         ) : aba === 'sistema' ? (

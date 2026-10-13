@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { solicitacaoStore } from '../../core/certificacao';
+import {
+  atualizarSolicitacoesDoServidor,
+  excluirSolicitacaoEmTodaParte,
+  solicitacaoStore,
+} from '../../core/certificacao';
 import { obterPainel } from '../../core/paineis/catalogo';
 import type { Painel } from '../../core/paineis/tipos';
 import type { Solicitacao } from '../../core/db/tipos';
@@ -29,6 +33,8 @@ export function ListaSolicitacoes() {
 
   const recarregar = useCallback(async () => {
     try {
+      // O que a validação decidiu (devolvida, aprovada…) chega antes da lista.
+      if (usuario) await atualizarSolicitacoesDoServidor(usuario.id);
       const [p, lista] = await Promise.all([
         obterPainel(tipoPainel),
         solicitacaoStore.listar({ tipoPainel, usuarioId: usuario?.id }),
@@ -131,13 +137,19 @@ export function ListaSolicitacoes() {
         titulo="Excluir solicitação"
         mensagem={
           paraExcluir
-            ? `A solicitação do painel “${paraExcluir.dados.tagPainel}” será apagada deste aparelho, junto com o checklist e as fotos.\n\nEsta ação não pode ser desfeita.`
+            ? `A solicitação do painel “${paraExcluir.dados.tagPainel}” será apagada deste aparelho e, se já foi enviada, do servidor, junto com o checklist e as fotos.\n\nEsta ação não pode ser desfeita.`
             : ''
         }
         onCancelar={() => setParaExcluir(null)}
         onConfirmar={async () => {
-          if (paraExcluir?.id) await solicitacaoStore.excluir(paraExcluir.id);
+          const alvo = paraExcluir;
           setParaExcluir(null);
+          try {
+            if (alvo?.id) await excluirSolicitacaoEmTodaParte(alvo);
+          } catch (e) {
+            setErro(e instanceof Error ? e.message : 'Não foi possível excluir a solicitação.');
+            return;
+          }
           await recarregar();
         }}
       />

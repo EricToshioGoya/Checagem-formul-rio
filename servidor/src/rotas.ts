@@ -1,3 +1,5 @@
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import type { z } from 'zod';
 import { plural } from '../../compartilhado/plural';
 import {
@@ -18,9 +20,11 @@ import {
   fecharSessoesAdmin,
   type Perfil,
 } from './auth';
-import { deveNascerAdmin, quantosAdmins } from './admin';
+import type { Signatario } from './paineis';
+import { deveNascerAdmin, promoverAdmin, quantosAdmins } from './admin';
 import { registrar, ultimasAlteracoes } from './auditoria';
 import { avisar } from './avisos';
+import { PASTA_APP } from './configuracao';
 import { chaveTentativa, esperaRestante, limparFalhas, registrarFalha } from './limite';
 import { moverParaLixeira, removerRegistrosDeMidias } from './midias';
 import { lerPagina, padraoBusca } from './paginacao';
@@ -158,7 +162,7 @@ function avisarPedidoAdmin(nome: string, email: string): void {
 /** Acesso com prazo dentro desta janela conta como "vencendo". */
 const JANELA_VENCENDO_MS = 48 * 3_600_000;
 
-function nomeDoPainel(id: number): string {
+export function nomeDoPainel(id: number): string {
   return (banco.prepare('SELECT nome FROM paineis WHERE id = ?').get(id) as { nome: string } | undefined)?.nome ?? `painel #${id}`;
 }
 
@@ -171,7 +175,7 @@ function nomeDaConta(id: number): string {
 }
 
 /** E-mails dos administradores ativos, para os avisos de pedido novo. */
-function emailsDosAdmins(): string[] {
+export function emailsDosAdmins(): string[] {
   return (
     banco.prepare("SELECT email FROM usuarios WHERE papel = 'admin' AND ativo = 1").all() as Array<{
       email: string;
@@ -230,22 +234,45 @@ function calcularExpiracao(validade: z.infer<typeof validadeSchema>, agora: numb
   return validade.ate;
 }
 
+/** Modelos de certificado disponíveis (`certificados/*.json` da publicação). */
+function modelosDeCertificado(): string[] {
+  for (const pasta of [join(PASTA_APP, 'certificados'), join('public', 'certificados')]) {
+    if (!existsSync(pasta)) continue;
+    return readdirSync(pasta)
+      .filter((n) => n.endsWith('.json'))
+      .map((n) => n.slice(0, -5))
+      .sort();
+  }
+  return [];
+}
+
+/** Fluxo, modelo e signatário do painel, como o cliente os lê. */
+function dadosDeFluxo(l: Record<string, unknown>) {
+  return {
+    fluxo: String(l.fluxo) as 'verificacao' | 'certificacao',
+    certificado: (l.certificado as string | null) ?? null,
+    signatario: l.signatario ? (JSON.parse(String(l.signatario)) as Signatario) : null,
+  };
+}
+
 interface PainelComAcesso {
   id: number;
   slug: string;
   nome: string;
   descricao: string | null;
+  fluxo: 'verificacao' | 'certificacao';
+  certificado: string | null;
+  signatario: Signatario | null;
   responsaveis: string[];
   meuAcesso: Acesso;
   podePreencher: boolean;
   /** Até quando o acesso aprovado vale, ou quando venceu; nulo é sem prazo. */
   acessoExpiraEm: number | null;
-  pendentes: number;
   /** Quantos checklists ativos o painel tem. Zero mostra o aviso no cartão. */
   formularios: number;
 }
 
-/** `painelId` → e-mails que aprovam naquele painel. */
+/** `painelId` → e-mails dos administradores responsáveis por aquele painel. */
 function mapaResponsaveis(): Map<number, string[]> {
   const linhas = banco
     .prepare('SELECT painelId, email FROM painel_responsaveis ORDER BY email')
@@ -257,6 +284,40 @@ function mapaResponsaveis(): Map<number, string[]> {
     else mapa.set(l.painelId, [l.email]);
   }
   return mapa;
+}
+
+/**
+ * Responsável por painel é sempre um administrador ativo: recusa e-mail de
+ * conta que não tem o papel (ou que ainda não existe).
+ */
+function exigirResponsaveisAdmin(emails: readonly string[]): void {
+  const admins = new Set(
+    (
+      banco.prepare("SELECT email FROM usuarios WHERE papel = 'admin' AND ativo = 1").all() as Array<{
+        email: string;
+      }>
+    ).map((a) => a.email),
+  );
+  const invalidos = emails.filter((e) => !admins.has(e));
+  if (invalidos.length) {
+    throw new ErroHttp(
+      400,
+      `Só administradores podem ser responsáveis por um painel. Não são administradores ativos: ${invalidos.join(', ')}.`,
+    );
+  }
+}
+
+/**
+ * Confere que o usuário pode preencher o painel agora — a mesma regra para
+ * baixar os checklists, sincronizar projetos e enviar solicitações. O código
+ * `sem-acesso` é o que o aparelho reconhece.
+ */
+export function exigirAcessoAoPainel(eu: Usuario, painelId: number): void {
+  const painel = listarPaineis(eu.id, eu.email).find((p) => p.id === painelId);
+  if (!painel) throw new ErroHttp(404, 'Painel não encontrado.');
+  if (!painel.podePreencher) {
+    throw new ErroHttp(403, 'O seu acesso a este painel não está liberado.', 'sem-acesso');
+  }
 }
 
 /** Gera um `slug` estável e único a partir do nome do painel. */
@@ -287,10 +348,8 @@ function gerarSlug(nome: string): string {
 export function listarPaineis(usuarioId: number, email: string): PainelComAcesso[] {
   const linhas = banco
     .prepare(
-      `SELECT p.id, p.slug, p.nome, p.descricao,
+      `SELECT p.id, p.slug, p.nome, p.descricao, p.fluxo, p.certificado, p.signatario,
               s.status AS statusSolicitacao, s.expiraEm AS acessoExpiraEm,
-              (SELECT COUNT(*) FROM solicitacoes x
-                WHERE x.painelId = p.id AND x.status = 'pendente') AS pendentes,
               (SELECT COUNT(*) FROM formularios f
                 WHERE f.painelId = p.id AND f.ativo = 1) AS formularios
          FROM paineis p
@@ -301,11 +360,16 @@ export function listarPaineis(usuarioId: number, email: string): PainelComAcesso
 
   const responsaveis = mapaResponsaveis();
   const agora = Date.now();
+  const ehAdmin =
+    (banco.prepare('SELECT papel FROM usuarios WHERE id = ?').get(usuarioId) as
+      | { papel: string }
+      | undefined)?.papel === 'admin';
 
   return linhas.map((l) => {
     const id = Number(l.id);
     const lista = responsaveis.get(id) ?? [];
-    const souResponsavel = lista.includes(email);
+    // Responsável é sempre administrador: quem perdeu o papel deixa de valer.
+    const souResponsavel = ehAdmin && lista.includes(email);
     const expiraEm = l.acessoExpiraEm === null ? null : Number(l.acessoExpiraEm);
     const status = l.statusSolicitacao as StatusSolicitacao | null;
     const meuAcesso: Acesso = souResponsavel
@@ -318,18 +382,67 @@ export function listarPaineis(usuarioId: number, email: string): PainelComAcesso
       slug: String(l.slug),
       nome: String(l.nome),
       descricao: (l.descricao as string | null) ?? null,
+      ...dadosDeFluxo(l),
       responsaveis: lista,
       meuAcesso,
-      // O responsável preenche o painel dele sem pedir nada a ninguém.
+      // O administrador responsável preenche o painel dele sem pedir nada a ninguém.
       podePreencher: meuAcesso === 'dono' || meuAcesso === 'aprovada',
       acessoExpiraEm: meuAcesso === 'aprovada' || meuAcesso === 'expirada' ? expiraEm : null,
-      pendentes: souResponsavel ? Number(l.pendentes) : 0,
       formularios: Number(l.formularios),
     };
   });
 }
 
 type Manipulador = (ctx: Contexto) => unknown;
+
+/**
+ * Único caminho que deixa um acesso aprovado, para o "Liberar acesso" (por
+ * pessoa e painel) e para o prazo de uma linha da lista: o histórico ganha o
+ * mesmo verbo para a mesma situação, seja qual for o botão usado.
+ *  - sem registro anterior ......... "liberou acesso"
+ *  - pedido pendente ............... "aprovou o pedido de acesso"
+ *  - acesso valendo ................ "alterou o prazo do acesso"
+ *  - vencido, retirado ou recusado . "reativou o acesso"
+ */
+function aprovarAcesso(
+  painelId: number,
+  usuarioId: number,
+  expiraEm: number | null,
+  autor: Usuario,
+  agora: number,
+): void {
+  const linha = banco
+    .prepare('SELECT id, status, expiraEm FROM solicitacoes WHERE painelId = ? AND usuarioId = ?')
+    .get(painelId, usuarioId) as Pick<Solicitacao, 'id' | 'status' | 'expiraEm'> | undefined;
+  const antes = linha ? statusEfetivo(linha.status, linha.expiraEm, agora) : null;
+
+  banco
+    .prepare(
+      `INSERT INTO solicitacoes
+         (painelId, usuarioId, status, criadoEm, decididoEm, decididoPor, expiraEm)
+       VALUES (?, ?, 'aprovada', ?, ?, ?, ?)
+       ON CONFLICT (painelId, usuarioId) DO UPDATE SET
+         status = 'aprovada', decididoEm = excluded.decididoEm,
+         decididoPor = excluded.decididoPor, expiraEm = excluded.expiraEm`,
+    )
+    .run(painelId, usuarioId, agora, agora, autor.id, expiraEm);
+
+  registrar({
+    autor,
+    acao:
+      antes === null
+        ? 'liberou acesso'
+        : antes === 'pendente'
+          ? 'aprovou o pedido de acesso'
+          : antes === 'aprovada'
+            ? 'alterou o prazo do acesso'
+            : 'reativou o acesso',
+    alvoTipo: 'acesso',
+    alvoId: usuarioId,
+    alvo: nomeDaConta(usuarioId),
+    detalhe: `${nomeDoPainel(painelId)} — ${descreverValidade(expiraEm, agora)}`,
+  });
+}
 
 export const rotas: Record<string, Manipulador> = {
   /**
@@ -454,7 +567,7 @@ export const rotas: Record<string, Manipulador> = {
    */
   'GET /api/paineis/publicos': () => {
     const linhas = banco
-      .prepare('SELECT id, slug, nome, descricao FROM paineis ORDER BY ordem')
+      .prepare('SELECT id, slug, nome, descricao, fluxo FROM paineis ORDER BY ordem')
       .all() as Array<Record<string, unknown>>;
     return {
       paineis: linhas.map((l) => ({
@@ -462,6 +575,7 @@ export const rotas: Record<string, Manipulador> = {
         slug: String(l.slug),
         nome: String(l.nome),
         descricao: (l.descricao as string | null) ?? null,
+        fluxo: String(l.fluxo),
       })),
     };
   },
@@ -476,11 +590,7 @@ export const rotas: Record<string, Manipulador> = {
   'GET /api/paineis/:id/formularios': (ctx) => {
     const eu = exigirSessao(ctx);
     const painelId = Number(ctx.params.id);
-    const painel = listarPaineis(eu.id, eu.email).find((p) => p.id === painelId);
-    if (!painel) throw new ErroHttp(404, 'Painel não encontrado.');
-    if (!painel.podePreencher) {
-      throw new ErroHttp(403, 'O seu acesso a este painel ainda não foi aprovado.');
-    }
+    exigirAcessoAoPainel(eu, painelId);
 
     const entradas = listarEntradasPorPainelId(painelId).filter((e) => e.ativo);
     return {
@@ -517,7 +627,7 @@ export const rotas: Record<string, Manipulador> = {
       throw new ErroHttp(400, 'Você já tem acesso a este painel.');
     }
     if (atual?.status === 'pendente') {
-      throw new ErroHttp(400, 'O seu pedido já está aguardando o dono.');
+      throw new ErroHttp(400, 'O seu pedido já está aguardando a decisão da administração.');
     }
 
     const agora = Date.now();
@@ -533,56 +643,20 @@ export const rotas: Record<string, Manipulador> = {
       )
       .run(painelId, eu.id, r.data.mensagem ?? null, agora);
 
-    // Responsáveis do painel e administradores decidem; os dois são avisados.
+    // Quem decide é a administração. Os responsáveis do painel (que são
+    // administradores) recebem o aviso; sem nenhum, vai a todos os administradores.
     const responsaveis = mapaResponsaveis().get(painelId) ?? [];
     avisar({
       assunto: `Pedido de acesso: ${painel.nome}`,
       texto:
         `${eu.nome} (${eu.email}) pediu acesso ao painel ${painel.nome}.` +
         (r.data.mensagem ? `\nMensagem: "${r.data.mensagem}"` : '') +
-        '\n\nAprove ou recuse em Aprovações (responsáveis) ou em Administração → Acessos.',
-      emails: [...responsaveis, ...emailsDosAdmins()],
-      rota: '#/aprovacoes',
+        '\n\nAprove ou recuse em Administração → Acessos.',
+      emails: [...new Set([...responsaveis, ...emailsDosAdmins()])],
+      rota: '#/admin?aba=acessos',
     });
 
     return { painel: listarPaineis(eu.id, eu.email).find((p) => p.id === painelId) };
-  },
-
-  /** Caixa de entrada do dono: pedidos aguardando decisão nos painéis dele. */
-  'GET /api/solicitacoes': (ctx) => {
-    const eu = exigirSessao(ctx);
-    const linhas = banco
-      .prepare(
-        `SELECT s.id, s.status, s.mensagem, s.criadoEm, s.decididoEm, s.expiraEm,
-                p.id AS painelId, p.nome AS painelNome,
-                u.nome AS solicitanteNome, u.email AS solicitanteEmail
-           FROM solicitacoes s
-           JOIN paineis  p ON p.id = s.painelId
-           JOIN usuarios u ON u.id = s.usuarioId
-           JOIN painel_responsaveis r ON r.painelId = p.id AND r.email = ?
-          ORDER BY s.status = 'pendente' DESC, s.criadoEm DESC`,
-      )
-      .all(eu.email) as Array<Record<string, unknown>>;
-
-    const agora = Date.now();
-    return {
-      solicitacoes: linhas.map((l) => {
-        const expiraEm = l.expiraEm === null ? null : Number(l.expiraEm);
-        return {
-          id: Number(l.id),
-          status: statusEfetivo(l.status as StatusSolicitacao, expiraEm, agora),
-          mensagem: (l.mensagem as string | null) ?? null,
-          criadoEm: Number(l.criadoEm),
-          decididoEm: l.decididoEm === null ? null : Number(l.decididoEm),
-          expiraEm,
-          painel: { id: Number(l.painelId), nome: String(l.painelNome) },
-          solicitante: {
-            nome: String(l.solicitanteNome),
-            email: String(l.solicitanteEmail),
-          },
-        };
-      }),
-    };
   },
 
   // ---------------------------------------------------------------- admin
@@ -621,8 +695,8 @@ export const rotas: Record<string, Manipulador> = {
            FROM pedidos_admin p
            JOIN usuarios u ON u.id = p.usuarioId
            LEFT JOIN usuarios d ON d.id = p.decididoPor
-          WHERE p.status <> 'aprovado'
-          ORDER BY p.status = 'pendente' DESC, COALESCE(p.decididoEm, p.criadoEm) DESC
+          WHERE p.status = 'pendente'
+          ORDER BY p.criadoEm DESC
           LIMIT 50`,
       )
       .all() as Array<Record<string, unknown>>;
@@ -672,15 +746,16 @@ export const rotas: Record<string, Manipulador> = {
         )
         .run(r.data.aprovar ? 'aprovado' : 'recusado', Date.now(), eu.id, id);
       if (r.data.aprovar) {
-        banco.prepare("UPDATE usuarios SET papel = 'admin' WHERE id = ?").run(pedido.usuarioId);
+        promoverAdmin(pedido.usuarioId, eu);
+      } else {
+        registrar({
+          autor: eu,
+          acao: 'recusou o pedido de administrador',
+          alvoTipo: 'administrador',
+          alvoId: pedido.usuarioId,
+          alvo: pessoa,
+        });
       }
-      registrar({
-        autor: eu,
-        acao: r.data.aprovar ? 'aprovou como administrador' : 'recusou o pedido de administrador',
-        alvoTipo: 'administrador',
-        alvoId: pedido.usuarioId,
-        alvo: pessoa,
-      });
     });
     return { ok: true };
   },
@@ -730,7 +805,9 @@ export const rotas: Record<string, Manipulador> = {
   'GET /api/admin/paineis': (ctx) => {
     exigirAdmin(ctx);
     const linhas = banco
-      .prepare('SELECT id, slug, nome, descricao, ordem, criadoEm FROM paineis ORDER BY ordem, id')
+      .prepare(
+        'SELECT id, slug, nome, descricao, fluxo, certificado, signatario, ordem, criadoEm FROM paineis ORDER BY ordem, id',
+      )
       .all() as Array<Record<string, unknown>>;
     const responsaveis = mapaResponsaveis();
     const contagem = banco
@@ -746,6 +823,7 @@ export const rotas: Record<string, Manipulador> = {
     const edicoesChecklist = ultimasAlteracoes('checklist');
 
     return {
+      modelosCertificado: modelosDeCertificado(),
       paineis: linhas.map((l) => {
         const id = Number(l.id);
         return {
@@ -753,6 +831,7 @@ export const rotas: Record<string, Manipulador> = {
           slug: String(l.slug),
           nome: String(l.nome),
           descricao: (l.descricao as string | null) ?? null,
+          ...dadosDeFluxo(l),
           responsaveis: responsaveis.get(id) ?? [],
           montadoresAprovados: aprovados.get(id) ?? 0,
           editado: edicoesPainel.get(String(id)) ?? null,
@@ -771,7 +850,8 @@ export const rotas: Record<string, Manipulador> = {
     const eu = exigirAdmin(ctx);
     const r = painelSchema.safeParse(ctx.corpo);
     if (!r.success) throw new ErroHttp(400, primeiroErro(r.error));
-    const { nome, descricao, responsaveis } = r.data;
+    const { nome, descricao, responsaveis, fluxo, certificado, signatario } = r.data;
+    exigirResponsaveisAdmin(responsaveis);
 
     const proxima = banco.prepare('SELECT COALESCE(MAX(ordem), -1) + 1 AS n FROM paineis').get() as {
       n: number;
@@ -781,9 +861,19 @@ export const rotas: Record<string, Manipulador> = {
       const slug = gerarSlug(nome);
       const info = banco
         .prepare(
-          'INSERT INTO paineis (slug, nome, descricao, ordem, criadoEm) VALUES (?, ?, ?, ?, ?)',
+          `INSERT INTO paineis (slug, nome, descricao, ordem, criadoEm, fluxo, certificado, signatario)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(slug, nome, descricao ?? null, Number(proxima.n), Date.now());
+        .run(
+          slug,
+          nome,
+          descricao ?? null,
+          Number(proxima.n),
+          Date.now(),
+          fluxo,
+          fluxo === 'certificacao' ? (certificado ?? null) : null,
+          fluxo === 'certificacao' && signatario ? JSON.stringify(signatario) : null,
+        );
       const painelId = Number(info.lastInsertRowid);
       const inserir = banco.prepare(
         'INSERT OR IGNORE INTO painel_responsaveis (painelId, email) VALUES (?, ?)',
@@ -802,7 +892,7 @@ export const rotas: Record<string, Manipulador> = {
         alvoTipo: 'painel',
         alvoId: painelId,
         alvo: nome,
-        detalhe: `Aprovam: ${responsaveis.join(', ')}`,
+        detalhe: `Responsáveis: ${responsaveis.join(', ')}`,
       });
       return { id: painelId, formularioId: checklist.id };
     });
@@ -814,11 +904,12 @@ export const rotas: Record<string, Manipulador> = {
     const eu = exigirAdmin(ctx);
     const r = painelSchema.safeParse(ctx.corpo);
     if (!r.success) throw new ErroHttp(400, primeiroErro(r.error));
-    const { nome, descricao, responsaveis } = r.data;
+    const { nome, descricao, responsaveis, fluxo, certificado, signatario } = r.data;
+    exigirResponsaveisAdmin(responsaveis);
 
     const id = Number(ctx.params.id);
-    const antes = banco.prepare('SELECT nome FROM paineis WHERE id = ?').get(id) as
-      | { nome: string }
+    const antes = banco.prepare('SELECT nome, fluxo, certificado FROM paineis WHERE id = ?').get(id) as
+      | { nome: string; fluxo: string; certificado: string | null }
       | undefined;
     if (!antes) throw new ErroHttp(404, 'Painel não encontrado.');
     const responsaveisAntes = mapaResponsaveis().get(id) ?? [];
@@ -827,8 +918,17 @@ export const rotas: Record<string, Manipulador> = {
     // catálogo e aos projetos já gravados nos aparelhos.
     emTransacao(() => {
       banco
-        .prepare('UPDATE paineis SET nome = ?, descricao = ? WHERE id = ?')
-        .run(nome, descricao ?? null, id);
+        .prepare(
+          'UPDATE paineis SET nome = ?, descricao = ?, fluxo = ?, certificado = ?, signatario = ? WHERE id = ?',
+        )
+        .run(
+          nome,
+          descricao ?? null,
+          fluxo,
+          fluxo === 'certificacao' ? (certificado ?? null) : null,
+          fluxo === 'certificacao' && signatario ? JSON.stringify(signatario) : null,
+          id,
+        );
       banco.prepare('DELETE FROM painel_responsaveis WHERE painelId = ?').run(id);
       const inserir = banco.prepare(
         'INSERT OR IGNORE INTO painel_responsaveis (painelId, email) VALUES (?, ?)',
@@ -838,10 +938,14 @@ export const rotas: Record<string, Manipulador> = {
       // O que mudou, em palavras: o histórico mostra o antes e o depois.
       const mudancas: string[] = [];
       if (antes.nome !== nome) mudancas.push(`nome: ${antes.nome} → ${nome}`);
+      if (antes.fluxo !== fluxo) mudancas.push(`fluxo: ${antes.fluxo} → ${fluxo}`);
+      if (fluxo === 'certificacao' && antes.certificado !== (certificado ?? null)) {
+        mudancas.push(`modelo do certificado: ${antes.certificado ?? '—'} → ${certificado ?? '—'}`);
+      }
       const entraram = responsaveis.filter((e) => !responsaveisAntes.includes(e));
       const sairam = responsaveisAntes.filter((e) => !responsaveis.includes(e));
-      if (entraram.length) mudancas.push(`passam a aprovar: ${entraram.join(', ')}`);
-      if (sairam.length) mudancas.push(`deixam de aprovar: ${sairam.join(', ')}`);
+      if (entraram.length) mudancas.push(`passam a ser responsáveis: ${entraram.join(', ')}`);
+      if (sairam.length) mudancas.push(`deixam de ser responsáveis: ${sairam.join(', ')}`);
       if (mudancas.length) {
         registrar({
           autor: eu,
@@ -1018,25 +1122,7 @@ export const rotas: Record<string, Manipulador> = {
     const agora = Date.now();
     const expiraEm = calcularExpiracao(validade, agora);
     emTransacao(() => {
-      const liberar = banco.prepare(
-        `INSERT INTO solicitacoes
-           (painelId, usuarioId, status, criadoEm, decididoEm, decididoPor, expiraEm)
-         VALUES (?, ?, 'aprovada', ?, ?, ?, ?)
-         ON CONFLICT (painelId, usuarioId) DO UPDATE SET
-           status = 'aprovada', decididoEm = excluded.decididoEm,
-           decididoPor = excluded.decididoPor, expiraEm = excluded.expiraEm`,
-      );
-      for (const painelId of painelIds) {
-        liberar.run(painelId, usuarioId, agora, agora, eu.id, expiraEm);
-      }
-      registrar({
-        autor: eu,
-        acao: 'liberou acesso',
-        alvoTipo: 'acesso',
-        alvoId: usuarioId,
-        alvo: nomeDaConta(usuarioId),
-        detalhe: `${nomes.join(', ')} — ${descreverValidade(expiraEm, agora)}`,
-      });
+      for (const painelId of painelIds) aprovarAcesso(painelId, usuarioId, expiraEm, eu, agora);
     });
 
     return { ok: true, expiraEm };
@@ -1059,29 +1145,7 @@ export const rotas: Record<string, Manipulador> = {
 
     const agora = Date.now();
     const expiraEm = calcularExpiracao(r.data.validade, agora);
-    const antes = statusEfetivo(linha.status, linha.expiraEm, agora);
-    emTransacao(() => {
-      banco
-        .prepare(
-          `UPDATE solicitacoes
-              SET status = 'aprovada', expiraEm = ?, decididoEm = ?, decididoPor = ?
-            WHERE id = ?`,
-        )
-        .run(expiraEm, agora, eu.id, id);
-      registrar({
-        autor: eu,
-        acao:
-          antes === 'pendente'
-            ? 'aprovou o pedido de acesso'
-            : antes === 'aprovada'
-              ? 'alterou o prazo do acesso'
-              : 'reativou o acesso',
-        alvoTipo: 'acesso',
-        alvoId: linha.usuarioId,
-        alvo: nomeDaConta(linha.usuarioId),
-        detalhe: `${nomeDoPainel(linha.painelId)} — ${descreverValidade(expiraEm, agora)}`,
-      });
-    });
+    emTransacao(() => aprovarAcesso(linha.painelId, linha.usuarioId, expiraEm, eu, agora));
 
     return { ok: true, expiraEm };
   },
@@ -1162,16 +1226,6 @@ export const rotas: Record<string, Manipulador> = {
   },
 
   // ------------------------------------------------ admin › formulários
-
-  /** Checklists de um painel, inclusive os desativados. */
-  'GET /api/admin/paineis/:id/formularios': (ctx) => {
-    exigirAdmin(ctx);
-    const painelId = Number(ctx.params.id);
-    if (!banco.prepare('SELECT 1 FROM paineis WHERE id = ?').get(painelId)) {
-      throw new ErroHttp(404, 'Painel não encontrado.');
-    }
-    return { formularios: listarEntradasPorPainelId(painelId) };
-  },
 
   /** Um checklist com a definição inteira: é o que o editor abre. */
   'GET /api/admin/formularios/:id': (ctx) => {
@@ -1257,47 +1311,6 @@ export const rotas: Record<string, Manipulador> = {
       throw new ErroHttp(404, 'Checklist não encontrado.');
     }
     registrar({ autor: eu, acao: 'excluiu o checklist', alvoTipo: 'checklist', alvoId: ctx.params.id, alvo: nome });
-    return { ok: true };
-  },
-
-  'POST /api/solicitacoes/:id/decisao': (ctx) => {
-    const eu = exigirSessao(ctx);
-    const r = decisaoSchema.safeParse(ctx.corpo);
-    if (!r.success) throw new ErroHttp(400, primeiroErro(r.error));
-
-    const id = Number(ctx.params.id);
-    // O JOIN com painel_responsaveis é o controle de autorização: a linha só
-    // aparece se o usuário for um dos responsáveis daquele painel. 404, e não
-    // 403, para que quem não responde por ele não descubra que existe.
-    const linha = banco
-      .prepare(
-        `SELECT s.* FROM solicitacoes s
-         JOIN painel_responsaveis r ON r.painelId = s.painelId AND r.email = ?
-        WHERE s.id = ?`,
-      )
-      .get(eu.email, id) as Solicitacao | undefined;
-
-    if (!linha) throw new ErroHttp(404, 'Solicitação não encontrada.');
-    if (linha.status !== 'pendente') throw new ErroHttp(409, 'Este pedido já foi decidido.');
-
-    // A aprovação pelo responsável é sem prazo; prazo é coisa da administração.
-    emTransacao(() => {
-      banco
-        .prepare(
-          `UPDATE solicitacoes SET status = ?, decididoEm = ?, decididoPor = ?, expiraEm = NULL
-            WHERE id = ?`,
-        )
-        .run(r.data.aprovar ? 'aprovada' : 'recusada', Date.now(), eu.id, id);
-      registrar({
-        autor: eu,
-        acao: r.data.aprovar ? 'aprovou o pedido de acesso' : 'recusou o pedido de acesso',
-        alvoTipo: 'acesso',
-        alvoId: linha.usuarioId,
-        alvo: nomeDaConta(linha.usuarioId),
-        detalhe: `${nomeDoPainel(linha.painelId)} — como responsável${r.data.aprovar ? ', sem prazo' : ''}`,
-      });
-    });
-
     return { ok: true };
   },
 };

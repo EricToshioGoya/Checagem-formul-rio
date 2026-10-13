@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { uidProjetoLegado } from '../../compartilhado/projeto';
-import { banco, emTransacao, type Usuario } from './banco';
+import { banco, emTransacao } from './banco';
 import {
   envioProjetoSchema,
   primeiroErro,
@@ -9,7 +9,7 @@ import {
 } from './esquemas';
 import { andamentoDoDocumento } from './andamento';
 import { caminhoMidia, gravarMidia, moverParaLixeira, uidValido } from './midias';
-import { ErroHttp, exigirSessao, listarPaineis, RespostaArquivo, type Contexto } from './rotas';
+import { ErroHttp, exigirAcessoAoPainel, exigirSessao, RespostaArquivo, type Contexto } from './rotas';
 
 /**
  * Sincronização das checagens: cada montador manda para o servidor os projetos
@@ -24,15 +24,6 @@ import { ErroHttp, exigirSessao, listarPaineis, RespostaArquivo, type Contexto }
  */
 
 type Manipulador = (ctx: Contexto) => unknown;
-
-/** Sincronizar exige o acesso valendo agora, como preencher. */
-function exigirAcessoAoPainel(eu: Usuario, painelId: number): void {
-  const painel = listarPaineis(eu.id, eu.email).find((p) => p.id === painelId);
-  if (!painel) throw new ErroHttp(404, 'Painel não encontrado.');
-  if (!painel.podePreencher) {
-    throw new ErroHttp(403, 'O seu acesso a este painel não está liberado.', 'sem-acesso');
-  }
-}
 
 /** Teto de projetos por conta: cada um é um documento inteiro guardado aqui. */
 const MAXIMO_PROJETOS_POR_CONTA = 500;
@@ -230,7 +221,20 @@ export const rotasSync: Record<string, Manipulador> = {
             .all(eu.id)
     ) as Array<{ projetoUid: string; painelId: number; documento: string }>;
     let dono: { projetoUid: string; painelId: number; mime: string } | null = null;
-    for (const p of projetos) {
+    // A foto também pode ser de uma solicitação de certificação (o `projeto`
+    // indicado é o `uid` dela), ainda editável.
+    if (indicado && uidValido(indicado)) {
+      const cert = banco
+        .prepare('SELECT painelId, midias, estado FROM certificacoes WHERE usuarioId = ? AND uid = ?')
+        .get(eu.id, indicado) as { painelId: number; midias: string; estado: string } | undefined;
+      if (cert) {
+        const citada = (JSON.parse(cert.midias) as Array<{ uid: string; mime: string }>).find(
+          (m) => m.uid.toLowerCase() === uid,
+        );
+        if (citada) dono = { projetoUid: indicado, painelId: Number(cert.painelId), mime: citada.mime };
+      }
+    }
+    for (const p of dono ? [] : projetos) {
       const citada = (JSON.parse(p.documento) as DocumentoProjeto).midias.find(
         (m) => m.uid.toLowerCase() === uid,
       );

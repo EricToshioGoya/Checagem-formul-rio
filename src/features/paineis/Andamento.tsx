@@ -1,3 +1,4 @@
+import { plural } from '../../../compartilhado/plural';
 import { useCallback, useEffect, useState } from 'react';
 import { api, consulta, ErroApi, type RespostaAndamento } from '../../core/api/cliente';
 import { Avatar } from '../../shared/componentes/Avatar';
@@ -9,8 +10,8 @@ import { DetalheAndamento } from './DetalheAndamento';
 const RELEITURA_MS = 60_000;
 
 /**
- * Andamento dos montadores, do que eles sincronizaram. O administrador vê
- * todos os painéis; o responsável, os dele — quem decide é o servidor.
+ * Andamento dos montadores, do que eles sincronizaram, em todos os painéis
+ * (só administradores).
  * Quem tem acesso e ainda não enviou nada aparece em 0%. Tocar num projeto
  * abre o que já foi concluído, seção por seção e etapa por etapa.
  */
@@ -52,13 +53,13 @@ export function Andamento({ onSessaoVencida }: { onSessaoVencida?: () => void })
 
       {dados && dados.paineis.length === 0 ? (
         <p className="rounded-xl border border-dashed border-abb-line bg-white p-6 text-center text-sm text-abb-gray">
-          Você não é responsável por nenhum painel, então não há andamento para acompanhar.
+          Ainda não há painéis cadastrados.
         </p>
       ) : dados ? (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-abb-gray">
-              {dados.total} {dados.total === 1 ? 'linha' : 'linhas'}: cada projeto enviado e
+              {plural(dados.total, 'linha', 'linhas')}: cada projeto enviado e
               quem tem acesso sem projeto ainda. Atualiza sozinho.
             </p>
             {dados.paineis.length > 1 ? (

@@ -21,6 +21,7 @@ import { ErroHttp, RespostaArquivo, rotas as rotasBase, type Contexto } from './
 import { rotasGestao } from './rotasGestao';
 import { rotasSync } from './rotasSync';
 import { rotasApoio, TAMANHO_MAXIMO_APOIO } from './rotasApoio';
+import { rotasCertificacoes } from './certificacoes';
 
 /**
  * Servidor de acesso: contas, painéis, aprovação, sincronização das
@@ -32,7 +33,7 @@ import { rotasApoio, TAMANHO_MAXIMO_APOIO } from './rotasApoio';
 
 const PORTA = Number(process.env.PORTA ?? 3001);
 
-const rotas = { ...rotasBase, ...rotasGestao, ...rotasSync, ...rotasApoio };
+const rotas = { ...rotasBase, ...rotasGestao, ...rotasSync, ...rotasApoio, ...rotasCertificacoes };
 
 /**
  * 1 MB para JSON. O de 64 KB não comportava um checklist grande: a partir de

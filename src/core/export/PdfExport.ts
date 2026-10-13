@@ -3,13 +3,11 @@ import {
   etapasImpressas,
   montarDossie,
   montarDossieSolicitacao,
-  somarProgresso,
   type Dossie,
 } from './dossie';
 import { formulariosDoPainel } from '../forms/catalogo';
-import type { ExportTarget, OpcoesExportacao } from './ExportTarget';
-import type { Projeto } from '../db/tipos';
-import { baixarBlob } from '../../shared/utils/download';
+import { somarProgresso } from '../forms/progresso';
+import type { OpcoesExportacao } from './ExportTarget';
 import {
   nomeArquivoExportacao,
   nomeSemRepetir,
@@ -160,21 +158,3 @@ export async function gerarArquivosChecklist(
     sufixo: `${tag.nome}-${doMesmoTipo > 1 ? formulario.definicao.id : sufixoTipo(formulario.definicao.tipo)}`,
   });
 }
-
-/** Implementação de `ExportTarget` da v1: gera e baixa os arquivos localmente. */
-export class PdfExport implements ExportTarget {
-  readonly nome = 'PDF para download';
-
-  async exportar(projeto: Projeto, opcoes: OpcoesExportacao = {}): Promise<void> {
-    if (!projeto.id) throw new Error('Projeto sem identificador.');
-    const arquivos = await gerarArquivos(projeto.id, {
-      formIds: opcoes.formIds,
-      incluirFotos: opcoes.incluirFotos ?? true,
-    });
-    for (const arquivo of arquivos) {
-      baixarBlob(arquivo.blob, arquivo.nome);
-    }
-  }
-}
-
-export const destinosDisponiveis: ExportTarget[] = [new PdfExport()];

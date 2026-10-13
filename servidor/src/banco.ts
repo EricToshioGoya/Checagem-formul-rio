@@ -239,6 +239,55 @@ banco.exec(`
     alvo      TEXT    NOT NULL,
     detalhe   TEXT
   );
+  -- Solicitações de certificação. O montador trabalha no aparelho e envia a
+  -- solicitação inteira (dados, respostas e a lista das fotos) ao pedir a
+  -- validação; o estado e o número do certificado são decididos aqui.
+  CREATE TABLE IF NOT EXISTS certificacoes (
+    id           INTEGER PRIMARY KEY,
+    uid          TEXT    NOT NULL,
+    usuarioId    INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    painelId     INTEGER NOT NULL REFERENCES paineis(id)  ON DELETE CASCADE,
+    formId       TEXT    NOT NULL,
+    estado       TEXT    NOT NULL CHECK (estado IN ('rascunho','enviada','devolvida','aprovada','emitida')),
+    dados        TEXT    NOT NULL,
+    preenchimento TEXT   NOT NULL,
+    midias       TEXT    NOT NULL,
+    apontamentos TEXT,
+    historico    TEXT    NOT NULL,
+    numero       TEXT    UNIQUE,
+    aprovadoEm   INTEGER,
+    aprovadoPor  TEXT,
+    versao       INTEGER NOT NULL,
+    criadoEm     INTEGER NOT NULL,
+    atualizadoEm INTEGER NOT NULL,
+    UNIQUE (usuarioId, uid)
+  );
+  CREATE INDEX IF NOT EXISTS idx_certificacoes_estado ON certificacoes (estado, atualizadoEm);
+
+  -- Registro das emissões: guarda uma cópia dos dados no momento da
+  -- aprovação, para alterar a solicitação depois não reescrever o certificado.
+  CREATE TABLE IF NOT EXISTS certificados (
+    numero          TEXT    PRIMARY KEY,
+    certificacaoId  INTEGER NOT NULL REFERENCES certificacoes(id) ON DELETE CASCADE,
+    painelSlug      TEXT    NOT NULL,
+    nomePainel      TEXT    NOT NULL,
+    projeto         TEXT    NOT NULL,
+    tagPainel       TEXT    NOT NULL,
+    clienteFinal    TEXT    NOT NULL,
+    montador        TEXT    NOT NULL,
+    correnteNominal TEXT    NOT NULL,
+    correnteCurtoCircuito TEXT NOT NULL,
+    responsavel     TEXT    NOT NULL,
+    emitidoEm       INTEGER NOT NULL
+  );
+
+  -- Contadores sequenciais. O do certificado é lido e incrementado na mesma
+  -- transação que grava o certificado: dois aprovadores nunca pegam o mesmo número.
+  CREATE TABLE IF NOT EXISTS contadores (
+    id      TEXT    PRIMARY KEY,
+    proximo INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_auditoria_em   ON auditoria (em);
   CREATE INDEX IF NOT EXISTS idx_auditoria_alvo ON auditoria (alvoTipo, alvoId);
 
@@ -426,6 +475,30 @@ function migrarResponsavelUnico(): void {
 
 migrarResponsavelUnico();
 
+// Fluxo, modelo de certificado e signatário moram no painel: antes vinham de um
+// arquivo de publicação, e renomear ou cadastrar um painel não os alcançava.
+garantirColuna('paineis', 'fluxo', "TEXT NOT NULL DEFAULT 'verificacao' CHECK (fluxo IN ('verificacao', 'certificacao'))");
+garantirColuna('paineis', 'certificado', 'TEXT');
+garantirColuna('paineis', 'signatario', 'TEXT');
+
+/**
+ * Bancos criados antes dessas colunas: os painéis iniciais conhecidos recebem
+ * o fluxo, o modelo e o signatário que o arquivo de publicação lhes dava.
+ */
+// Os três modelos de certificado eram idênticos fora do título: viraram um só.
+banco.exec("UPDATE paineis SET certificado = '61439' WHERE certificado IN ('spee', 'spep', 'safr')");
+
+(function completarPaineisIniciais(): void {
+  const completar = banco.prepare(
+    `UPDATE paineis SET fluxo = ?, certificado = ?, signatario = ?
+      WHERE slug = ? AND fluxo = 'verificacao' AND certificado IS NULL`,
+  );
+  for (const p of PAINEIS) {
+    if (p.fluxo !== 'certificacao') continue;
+    completar.run(p.fluxo, p.certificado ?? null, p.signatario ? JSON.stringify(p.signatario) : null, p.slug);
+  }
+})();
+
 /**
  * Cria os painéis iniciais **apenas na primeira subida**, quando a tabela está
  * vazia. Dali em diante quem manda é a aba de administração: ressemear a cada
@@ -438,13 +511,23 @@ export function semearPaineis(): void {
 
   const agora = Date.now();
   const inserirPainel = banco.prepare(
-    'INSERT INTO paineis (slug, nome, descricao, ordem, criadoEm) VALUES (?, ?, ?, ?, ?)',
+    `INSERT INTO paineis (slug, nome, descricao, ordem, criadoEm, fluxo, certificado, signatario)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const inserirResp = banco.prepare(
     'INSERT OR IGNORE INTO painel_responsaveis (painelId, email) VALUES (?, ?)',
   );
   for (const [i, p] of PAINEIS.entries()) {
-    const info = inserirPainel.run(p.slug, p.nome, p.descricao, i, agora);
+    const info = inserirPainel.run(
+      p.slug,
+      p.nome,
+      p.descricao,
+      i,
+      agora,
+      p.fluxo,
+      p.certificado ?? null,
+      p.signatario ? JSON.stringify(p.signatario) : null,
+    );
     inserirResp.run(Number(info.lastInsertRowid), p.responsavelEmail.toLowerCase());
   }
   console.log(`${PAINEIS.length} painéis iniciais cadastrados.`);
@@ -455,8 +538,14 @@ export function semearPaineis(): void {
  * `.transaction()` do better-sqlite3, então o BEGIN/COMMIT é explícito —
  * qualquer erro desfaz tudo, e um painel nunca fica gravado sem responsável.
  */
+let profundidade = 0;
+
 export function emTransacao<T>(corpo: () => T): T {
+  // Chamada dentro de outra transação (uma função que se protege sozinha,
+  // usada por quem já abriu a sua): entra na que já está aberta.
+  if (profundidade > 0) return corpo();
   banco.exec('BEGIN');
+  profundidade++;
   try {
     const resultado = corpo();
     banco.exec('COMMIT');
@@ -464,6 +553,8 @@ export function emTransacao<T>(corpo: () => T): T {
   } catch (erro) {
     banco.exec('ROLLBACK');
     throw erro;
+  } finally {
+    profundidade--;
   }
 }
 

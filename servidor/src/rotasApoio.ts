@@ -4,7 +4,7 @@ import { caminhoMidia, gravarMidia, uidValido } from './midias';
 import { ErroHttp, exigirAdmin, exigirSessao, RespostaArquivo, type Contexto } from './rotas';
 
 /**
- * Imagens e vídeos de apoio das etapas: a administração envia ao montar o
+ * Imagens, vídeos e PDFs de apoio das etapas: a administração envia ao montar o
  * checklist, e o montador vê na etapa — a foto do pino certo, o vídeo da
  * conexão correta.
  *
@@ -23,6 +23,9 @@ export const TAMANHO_MAXIMO_VIDEO_APOIO = 30 * 1024 * 1024;
 /** Maior corpo aceito pela rota; o limite de cada tipo é conferido no manipulador. */
 export const TAMANHO_MAXIMO_APOIO = TAMANHO_MAXIMO_VIDEO_APOIO;
 
+/** 15 MB: manual ou laudo em PDF. */
+export const TAMANHO_MAXIMO_PDF_APOIO = 15 * 1024 * 1024;
+
 const MIMES_IMAGEM = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MIMES_VIDEO = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
 
@@ -37,6 +40,7 @@ function assinaturaConfere(mime: string, dados: Buffer): boolean {
   if (mime === 'video/mp4' || mime === 'video/quicktime') {
     return dados.subarray(4, 8).toString('latin1') === 'ftyp';
   }
+  if (mime === 'application/pdf') return dados.subarray(0, 5).toString('latin1') === '%PDF-';
   if (mime === 'video/webm') {
     return dados.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
   }
@@ -52,11 +56,20 @@ export const rotasApoio: Record<string, Manipulador> = {
     if (!dados?.length) throw new ErroHttp(400, 'Arquivo vazio.');
     const mime = (ctx.tipoConteudo ?? '').split(';')[0].trim().toLowerCase();
     const ehVideo = MIMES_VIDEO.has(mime);
-    if ((!ehVideo && !MIMES_IMAGEM.has(mime)) || !assinaturaConfere(mime, dados)) {
-      throw new ErroHttp(400, 'Envie uma imagem (JPEG, PNG, WebP) ou um vídeo (MP4, WebM, MOV).');
+    const ehPdf = mime === 'application/pdf';
+    if ((!ehVideo && !ehPdf && !MIMES_IMAGEM.has(mime)) || !assinaturaConfere(mime, dados)) {
+      throw new ErroHttp(400, 'Envie uma imagem (JPEG, PNG, WebP), um vídeo (MP4, WebM, MOV) ou um PDF.');
     }
-    if (dados.length > (ehVideo ? TAMANHO_MAXIMO_VIDEO_APOIO : TAMANHO_MAXIMO_IMAGEM_APOIO)) {
-      throw new ErroHttp(413, ehVideo ? 'Vídeo grande demais (máximo 30 MB).' : 'Imagem grande demais.');
+    const limite = ehVideo
+      ? TAMANHO_MAXIMO_VIDEO_APOIO
+      : ehPdf
+        ? TAMANHO_MAXIMO_PDF_APOIO
+        : TAMANHO_MAXIMO_IMAGEM_APOIO;
+    if (dados.length > limite) {
+      throw new ErroHttp(
+        413,
+        ehVideo ? 'Vídeo grande demais (máximo 30 MB).' : ehPdf ? 'PDF grande demais (máximo 15 MB).' : 'Imagem grande demais.',
+      );
     }
     // O `uid` é a identidade da imagem e vai parar no checklist: não se troca
     // o conteúdo de um já usado, nem se toma o de uma foto de checagem.

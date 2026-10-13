@@ -1,5 +1,5 @@
 /**
- * Valida os JSON de `public/forms` contra o schema Zod do motor.
+ * Valida os JSON de `servidor/sementes/forms` contra o schema Zod do motor.
  *
  * Desde que os checklists passaram a morar no servidor, esta pasta é apenas a
  * semente: o que o servidor importa para o banco na primeira subida. Continua
@@ -17,6 +17,7 @@ import {
   definicaoFormularioSchema,
   descreverErro,
 } from '../compartilhado/formulario';
+import { PAINEIS } from '../servidor/src/paineis';
 import { catalogoPaineisSchema } from '../src/core/paineis/schema';
 import { templateCertificadoSchema } from '../src/core/certificado/schema';
 
@@ -34,7 +35,7 @@ const indiceSchema = z.object({
 });
 
 const raiz = join(process.cwd(), 'public');
-const pasta = join(raiz, 'forms');
+const pasta = join(process.cwd(), 'servidor', 'sementes', 'forms');
 let falhas = 0;
 
 function ler(arquivo: string): unknown {
@@ -135,18 +136,19 @@ if (orfaos.length) {
 
 // ---- catálogo de painéis e templates de certificado ----
 
-const paineis = catalogoPaineisSchema.safeParse(lerDe('paineis', 'index.json'));
-if (!paineis.success) {
-  console.error('\npaineis/index.json inválido:\n' + descreverErro(paineis.error));
+const catalogo = catalogoPaineisSchema.safeParse(lerDe('paineis', 'index.json'));
+if (!catalogo.success) {
+  console.error('\npaineis/index.json inválido:\n' + descreverErro(catalogo.error));
   process.exit(1);
 }
 
 const semeados = new Set(indice.data.formularios.flatMap((f) => f.paineis));
 
-for (const painel of paineis.data.paineis) {
-  if (painel.fluxo === 'certificacao' && !semeados.has(painel.id)) {
+// Os painéis vivem no banco; aqui se confere a semente do primeiro boot.
+for (const painel of PAINEIS) {
+  if (painel.fluxo === 'certificacao' && !semeados.has(painel.slug)) {
     console.warn(
-      `\npaineis/index.json: painel "${painel.id}" é de certificação e nenhuma ` +
+      `\npainel "${painel.slug}" é de certificação e nenhuma ` +
         'semente de forms/index.json o cita — ele nasce com checklist em branco.',
     );
   }
@@ -154,7 +156,7 @@ for (const painel of paineis.data.paineis) {
   const caminho = join(raiz, 'certificados', `${painel.certificado}.json`);
   if (!existsSync(caminho)) {
     console.error(
-      `\npaineis/index.json: painel "${painel.id}" aponta para o template ` +
+      `\npainel "${painel.slug}" aponta para o template ` +
         `"${painel.certificado}", que não existe em certificados/.`,
     );
     falhas += 1;
@@ -170,23 +172,12 @@ for (const painel of paineis.data.paineis) {
     falhas += 1;
     continue;
   }
-  if (template.data.painelId !== painel.id) {
-    console.error(
-      `\ncertificados/${painel.certificado}.json: painelId "${template.data.painelId}" ` +
-        `difere do painel "${painel.id}" que o usa.`,
-    );
-    falhas += 1;
-    continue;
-  }
   console.log(
     `certificados/${painel.certificado}.json: ${template.data.blocos.length} blocos — OK`,
   );
 }
 
-console.log(
-  `paineis/index.json: ${paineis.data.paineis.length} painéis, ` +
-    `${paineis.data.camposPadrao.length} campos padrão — OK`,
-);
+console.log(`paineis/index.json: ${catalogo.data.camposPadrao.length} campos padrão — OK`);
 
 if (falhas > 0) {
   console.error(`\n${falhas} problema(s) encontrado(s).`);

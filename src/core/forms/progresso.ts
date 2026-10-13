@@ -9,5 +9,8 @@ export {
   etapasAtivas,
   etapaVisivel,
   idsPendentes,
+  percentualDe,
+  progressoDe,
+  somarProgresso,
   type Progresso,
 } from '../../../compartilhado/progresso';

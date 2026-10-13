@@ -32,7 +32,12 @@ import {
   retangulo,
   type EstiloTexto,
 } from './desenho';
-import { etapaRespondida, etapaVisivel, type Progresso } from '../../forms/progresso';
+import {
+  etapaRespondida,
+  etapaVisivel,
+  progressoDe as progressoCompartilhado,
+  type Progresso,
+} from '../../forms/progresso';
 import {
   etapasForaDoChecklist,
   etapasImpressas,
@@ -507,14 +512,10 @@ function situacaoDaEtapa(etapa: Etapa, formulario: FormularioDoDossie): Situacao
 }
 
 function progressoDe(etapas: readonly Etapa[], formulario: FormularioDoDossie): Progresso {
-  const total = etapas.length;
-  const respondidas = etapas.filter((e) => situacaoDaEtapa(e, formulario) === 'verificado').length;
-  return {
-    total,
-    respondidas,
-    pendentes: total - respondidas,
-    percentual: total === 0 ? 0 : Math.round((respondidas / total) * 100),
-  };
+  return progressoCompartilhado(
+    etapas.filter((e) => situacaoDaEtapa(e, formulario) === 'verificado').length,
+    etapas.length,
+  );
 }
 
 interface Bloco {

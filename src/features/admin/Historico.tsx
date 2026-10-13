@@ -6,13 +6,14 @@ import { Paginacao } from '../../shared/componentes/Paginacao';
 import { dataHoraBr } from '../../shared/utils/texto';
 import { sessaoAdminAcabou } from './sessaoAdmin';
 
-type Tipo = 'todos' | 'acessos' | 'paineis' | 'contas' | 'sistema';
+type Tipo = 'todos' | 'acessos' | 'paineis' | 'contas' | 'certificados' | 'sistema';
 
 const TIPOS: Array<{ id: Tipo; rotulo: string }> = [
   { id: 'todos', rotulo: 'Tudo' },
   { id: 'acessos', rotulo: 'Acessos' },
   { id: 'paineis', rotulo: 'Painéis e checklists' },
   { id: 'contas', rotulo: 'Contas e administradores' },
+  { id: 'certificados', rotulo: 'Certificados' },
   { id: 'sistema', rotulo: 'Sistema' },
 ];
 
@@ -23,6 +24,7 @@ const COR: Record<string, string> = {
   checklist: 'bg-sky-500',
   conta: 'bg-amber-500',
   administrador: 'bg-abb-red',
+  certificado: 'bg-violet-500',
   sistema: 'bg-neutral-400',
 };
 

@@ -131,8 +131,28 @@ class BancoVerificacao extends Dexie {
       apoio: 'src',
     });
 
+    // v9: a solicitação de certificação ganha `uid`, o identificador que vale
+    // no servidor, onde a validação e a numeração acontecem. As que já existem
+    // recebem o seu agora.
+    this.version(9)
+      .stores({
+        solicitacoes:
+          '++id, tipoPainel, usuarioId, estado, numeroCertificado, criadoEm, atualizadoEm, uid',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('solicitacoes')
+          .toCollection()
+          .modify((s: Solicitacao) => {
+            if (!s.uid) s.uid = novoUid();
+          });
+      });
+
     // Todo projeto, TAG e mídia novo nasce com `uid`, venha de onde vier:
     // tela, importação de .zip ou a própria sincronização.
+    this.solicitacoes.hook('creating', (_chave, solicitacao) => {
+      if (!solicitacao.uid) solicitacao.uid = novoUid();
+    });
     this.projetos.hook('creating', (_chave, projeto) => {
       if (!projeto.uid) projeto.uid = novoUid();
     });

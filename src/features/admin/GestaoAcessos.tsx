@@ -1,3 +1,4 @@
+import { plural } from '../../../compartilhado/plural';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   api,
@@ -348,7 +349,7 @@ export function GestaoAcessos({ onSessaoVencida, onAlterado }: Props) {
 
           <div className="flex items-center justify-between gap-2 text-sm text-abb-gray">
             <span>
-              {dados.total} {dados.total === 1 ? 'registro' : 'registros'}
+              {plural(dados.total, 'registro', 'registros')}
               {filtrando ? ' com estes filtros' : ''}
             </span>
             {filtrando ? (

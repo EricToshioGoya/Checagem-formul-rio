@@ -90,6 +90,31 @@ export function VideoApoio({ src, className, onFalha }: PropsVideo) {
   );
 }
 
+interface PropsPdf {
+  src: string;
+  className?: string;
+  children: React.ReactNode;
+  onFalha?: () => void;
+}
+
+/** Link para abrir o PDF de apoio; o do servidor vem do aparelho, sem rede. */
+export function LinkPdfApoio({ src, className, children, onFalha }: PropsPdf) {
+  const { url, falhou } = useEnderecoApoio(src);
+  const aoFalhar = useRef(onFalha);
+  aoFalhar.current = onFalha;
+  useEffect(() => {
+    if (falhou) aoFalhar.current?.();
+  }, [falhou]);
+
+  if (falhou) return null;
+  if (!url) return <span className={`${className ?? ''} animate-pulse`}>Carregando…</span>;
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className={className}>
+      {children}
+    </a>
+  );
+}
+
 export function ImagemApoio({ src, alt, className, onFalha }: Props) {
   const { url, falhou } = useEnderecoApoio(src);
   // Pela referência: quem usa costuma passar uma função nova a cada render.
