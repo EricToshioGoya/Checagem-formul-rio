@@ -23,8 +23,40 @@ por todos os painéis: abre qualquer painel sem pedir acesso, e entra na
 **Administração** pelo "Entrar como administrador".
 
 Para testar o fluxo de um montador comum, crie outra conta com outro e-mail: o
-pedido de acesso aparece em **Aprovações** da primeira conta. O servidor do
-Codespaces não envia e-mail; os pedidos aparecem só na tela.
+pedido de acesso aparece em **Administração → Acessos** da primeira conta. Sem
+e-mail configurado (ver abaixo), os pedidos aparecem só na tela.
+
+No Codespaces, HTTPS e o endereço público (`APP_URL`) se configuram sozinhos:
+o GitHub entrega a porta 3001 em HTTPS, e os avisos levam ao endereço dela.
+
+### Avisos por e-mail
+
+O servidor avisa por e-mail os pedidos de acesso e de administrador, as
+solicitações de certificação e as aprovações e devoluções. Para ligar, informe
+uma conta de e-mail que envie pelo SMTP — por exemplo, um Gmail com
+[senha de app](https://myaccount.google.com/apppasswords) (exige verificação em
+duas etapas).
+
+**Pelos segredos do Codespaces (recomendado):** em
+[github.com/settings/codespaces](https://github.com/settings/codespaces) →
+**New secret**, crie cada um abaixo e marque este repositório em
+*Repository access*:
+
+| Segredo | Gmail | Office 365 |
+|---|---|---|
+| `SMTP_HOST` | `smtp.gmail.com` | `smtp.office365.com` |
+| `SMTP_PORTA` | `587` | `587` |
+| `SMTP_USUARIO` | o seu Gmail | a conta de envio |
+| `SMTP_SENHA` | a senha de app, sem espaços | a senha da conta |
+| `SMTP_REMETENTE` | o mesmo Gmail | a mesma conta |
+
+Depois, pare e inicie o codespace de novo (os segredos entram na partida).
+
+**Ou num arquivo:** copie `servidor/.env.exemplo` para `servidor/.env`,
+preencha e rode `bash scripts/codespace.sh`. O arquivo fica fora do Git.
+
+Para conferir: **Administração → Sistema → Enviar aviso de teste**. O e-mail
+chega para quem clicou, e a lista de avisos mostra o erro, se houver.
 
 ## 3. O que testar
 
@@ -50,11 +82,13 @@ No terminal do Codespaces:
 
 ```bash
 git pull
-bash scripts/codespace.sh --recompilar
+bash scripts/codespace.sh
 ```
 
-Se o aplicativo sair do ar, `bash scripts/codespace.sh` sobe de novo. O log do
-servidor fica em `/tmp/verificacao-servidor.log`.
+O script reinstala, recompila e reinicia só o que mudou; sem mudança, não mexe
+no que está no ar. `--recompilar` refaz tudo à força. Se o aplicativo sair do
+ar, o mesmo comando sobe de novo. O log do servidor fica em
+`/tmp/verificacao-servidor.log`.
 
 ## 6. Encerrar
 

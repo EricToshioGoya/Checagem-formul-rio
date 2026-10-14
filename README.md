@@ -303,6 +303,14 @@ não por pessoa.
 | `RESPONSAVEL_PADRAO` | servidor | `ericg10456@gmail.com` (só na semeadura) |
 | `RESPONSAVEL_SEN_PLUS` e as três irmãs | servidor | `RESPONSAVEL_PADRAO` (só na semeadura) |
 | `API_ALVO` | `vite dev` | `http://localhost:3001` |
+| `SMTP_HOST`, `SMTP_PORTA`, `SMTP_USUARIO`, `SMTP_SENHA`, `SMTP_REMETENTE` | servidor | — (sem eles, nenhum e-mail sai) |
+| `AVISO_WEBHOOK_URL`, `AVISO_WEBHOOK_FORMATO` | servidor | — (canal do Teams/Slack, opcional) |
+| `APP_URL` | servidor | no Codespaces, o endereço da porta encaminhada |
+| `CONFIAR_PROXY` | servidor | `1` no Codespaces, `0` fora dele |
+
+O servidor lê também `servidor/.env` (fora do Git; modelo em
+`servidor/.env.exemplo`). Uma variável já definida no ambiente vale mais que o
+arquivo.
 
 Em produção, publique a API sob `/api` na mesma origem do PWA — é o que o
 cliente assume, e o que evita CORS e cookie de terceiro.

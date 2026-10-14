@@ -20,6 +20,8 @@ cmd/servidor/servidor.exe
 
 # Base do servidor de acesso (contas e aprovações locais)
 servidor/dados/
+# Credenciais e configuração da máquina (modelo em servidor/.env.exemplo).
+servidor/.env
 
 # Saída da bateria de verificação
 saida-testes/

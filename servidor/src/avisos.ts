@@ -3,6 +3,7 @@ import net from 'node:net';
 import { hostname } from 'node:os';
 import tls from 'node:tls';
 import { banco } from './banco';
+import { URL_PUBLICA } from './configuracao';
 
 /**
  * Avisos de pedidos novos — de acesso a painel e para ser administrador —
@@ -56,7 +57,7 @@ function configWebhook(): { url: string; formato: FormatoWebhook } | null {
 
 /** Endereço público do aplicativo, para os avisos levarem direto à tela certa. */
 function urlApp(): string {
-  return (process.env.APP_URL ?? '').trim().replace(/\/+$/, '');
+  return URL_PUBLICA;
 }
 
 // ------------------------------------------------------------------ fila

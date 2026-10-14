@@ -5,7 +5,7 @@ import { banco } from './banco';
 import { ADMIN_INICIAL } from './admin';
 import { configuracaoBackup, listarBackups } from './backup';
 import { situacaoAvisos } from './avisos';
-import { CONFIAR_PROXY, HTTPS_ATIVO, PASTA_APP } from './configuracao';
+import { CONFIAR_PROXY, HTTPS_ATIVO, NO_CODESPACES, PASTA_APP } from './configuracao';
 
 /**
  * "Pronto para publicar?": a lista do que falta antes de pôr o sistema no ar
@@ -78,8 +78,10 @@ export function verificarPublicacao(): ItemPublicacao[] {
     ok: HTTPS_ATIVO || CONFIAR_PROXY > 0,
     detalhe: HTTPS_ATIVO
       ? 'O servidor atende em HTTPS (certificado próprio).'
-      : CONFIAR_PROXY > 0
-        ? 'Atrás de proxy: confirme que o proxy atende em HTTPS.'
+      : NO_CODESPACES && CONFIAR_PROXY > 0
+        ? 'No Codespaces: o GitHub entrega o endereço público em HTTPS.'
+        : CONFIAR_PROXY > 0
+          ? 'Atrás de proxy: confirme que o proxy atende em HTTPS.'
         : 'Sem HTTPS. Coloque um proxy com HTTPS na frente (ex.: Caddy) e defina CONFIAR_PROXY=1, ou use HTTPS_CERTIFICADO e HTTPS_CHAVE.',
   });
 
@@ -92,7 +94,7 @@ export function verificarPublicacao(): ItemPublicacao[] {
         ? `${[avisos.email.configurado && 'e-mail', avisos.webhook.configurado && 'Teams/webhook']
             .filter(Boolean)
             .join(' e ')} ${avisos.email.configurado && avisos.webhook.configurado ? 'configurados' : 'configurado'}.`
-        : 'Ninguém é avisado de pedidos novos: configure SMTP_* ou AVISO_WEBHOOK_URL.',
+        : 'Ninguém é avisado de pedidos novos: configure SMTP_* ou AVISO_WEBHOOK_URL (em servidor/.env ou nos segredos do Codespaces).',
   });
   itens.push({
     item: 'Endereço público (APP_URL)',

@@ -1,3 +1,5 @@
+// Primeiro de tudo: os módulos abaixo leem `process.env` ao carregar.
+import './ambiente';
 import { createReadStream, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createServer as createServerHttps } from 'node:https';
