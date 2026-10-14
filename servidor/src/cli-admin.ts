@@ -1,3 +1,4 @@
+import './ambiente';
 import { promoverAdmin } from './admin';
 import { banco } from './banco';
 import { fazerBackup } from './backup';
