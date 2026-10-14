@@ -1,13 +1,16 @@
 # Sistema de Verificação de Montagem de Painéis
 
 Aplicação para o montador do parceiro registrar, durante a montagem do painel,
-as verificações exigidas pelos protocolos ABB. O painel decide o que vem
-depois:
+as verificações exigidas pelos protocolos ABB. Todo painel é de verificação, e
+cada checklist dele decide o que vem depois:
 
-| Painel | Fluxo | Resultado |
-|---|---|---|
-| SEN Plus (e todo painel cadastrado na administração) | Verificação | Dossiê em PDF que o montador envia por e-mail ao inspetor. O julgamento de conformidade é feito **fora do sistema**. |
-| System Pro E Energy, System Pro E Power, SAFR | Certificação | Solicitação → validação ABB → **certificado de produto numerado**, gerado pelo próprio sistema. Ver [Fluxo de certificação](#fluxo-de-certificação). |
+| Checklist | Resultado |
+|---|---|
+| Sem "Emite certificado" (ex.: montagem e rotina do SEN Plus) | Preenchido por TAG dentro de um projeto. Gera o dossiê em PDF que o montador envia por e-mail ao inspetor. O julgamento de conformidade é feito **fora do sistema**. |
+| Com "Emite certificado" (ex.: ensaios de rotina de System Pro E Energy, System Pro E Power e SAFR) | Preenchido numa solicitação → validação ABB → **certificado de produto numerado**, gerado pelo próprio sistema. Ver [Fluxo de certificação](#fluxo-de-certificação). |
+
+Um mesmo painel pode ter os dois. Os tipos de verificação (montagem, rotina e os
+que a administração criar, com o nome que quiser) valem para todos os painéis.
 
 Implementa a especificação técnica v1.0 (02/09/2026), a extensão de
 certificação (04/09/2026) e o controle de acesso por painel descrito em
@@ -382,12 +385,12 @@ diálogo de geração.
 |---|---|
 | Novo formulário para uma linha | Acrescentar o JSON em `servidor/sementes/forms`, registrá-lo em `index.json` e citar no campo `paineis` o `slug` das linhas que o usam. Nenhuma alteração de código. |
 | Novo painel, ou trocar quem aprova | Aba de administração → Painéis. Sem programação e sem reiniciar nada. |
-| Novo tipo de checklist (ex.: recebimento, inspeção final) | Acrescentar uma entrada em `TIPOS_CHECKLIST` (`compartilhado/tiposChecklist.ts`): `id`, `rotulo`, `tituloPdf`, `sufixoArquivo`. O botão "+" do painel, os rótulos, o PDF (um por tipo) e a validação do servidor passam a incluí-lo. |
+| Novo tipo de checklist (ex.: comissionamento, inspeção final) | Administração → Painéis e checklists → **Novo tipo** (ou **Outro tipo…** no próprio painel, que já cria o checklist). O tipo ganha botão "+" em todos os painéis, e o nome aparece nas telas e no título do PDF (um PDF por tipo). Pode ser renomeado; só é excluído sem checklist que o use. Nenhuma alteração de código. |
 | Novo tipo de campo | Implementar o componente e registrá-lo em `src/features/fill/campos/registro.tsx`. |
 | Novo destino de exportação | Implementar `ExportTarget` (`src/core/export/ExportTarget.ts`). `PdfExport` é a implementação da v1. |
 | Trocar a persistência | Todo acesso ao Dexie passa por `ProjetoRepository`, `PreenchimentoRepository`, `MidiaRepository` e `FormularioRepository`. Nenhuma tela importa Dexie. |
 | Conteúdo de apoio | Imagem: enviar pela administração, na etapa. Vídeo e PDF: arquivo em `public/media`, com o caminho no JSON. |
-| Painel de certificação | Cadastrar o painel na administração com o fluxo *Solicitação de certificação*, o modelo do certificado (um JSON de `public/certificados`) e quem assina. Nenhuma alteração de código. |
+| Checklist com certificado | Em **Editar painel**, marcar *Certificado ABB* e informar o modelo do certificado (um JSON de `public/certificados`) e quem assina; depois, no checklist, marcar **Emite certificado ABB**. Nenhuma alteração de código. |
 | Novos campos da solicitação | Editar `camposPadrao` em `public/paineis/index.json`, ou dar ao painel a sua própria lista `campos`. |
 | Validação ABB | Servidor: `servidor/src/certificacoes.ts`; cliente: `src/core/certificacao/` (sincronização, serviço do montador e `validacaoServidor.ts` da administração). |
 
@@ -551,9 +554,10 @@ rascunho ──enviar──> enviada ──aprovar──> aprovada ──gerar�
 | System Pro E Power (`system-pro-e-power`) | Carlos Eduardo Silva | `certificados/61439.json` |
 | SAFR (`safr`) | Tainá Gioia | `certificados/61439.json` |
 
-O fluxo de cada painel (verificação ou certificação), o modelo do certificado e
-quem o assina são cadastrados na aba **Painéis e checklists** da administração —
-inclusive em painéis novos. `public/paineis/index.json` guarda só os campos padrão
+O modelo do certificado e quem o assina são cadastrados no painel, e a marca
+**Emite certificado ABB** em cada checklist, na aba **Painéis e checklists** da
+administração — inclusive em painéis novos. Com mais de um checklist que emite
+certificado no mesmo painel, o montador escolhe qual ao abrir a solicitação. `public/paineis/index.json` guarda só os campos padrão
 da solicitação. Quem pode abrir as solicitações de um painel segue a mesma regra
 dos projetos: acesso liberado pela administração, reconferido a cada entrada.
 

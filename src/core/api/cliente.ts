@@ -200,7 +200,7 @@ export interface PainelAdmin {
   slug: string;
   nome: string;
   descricao: string | null;
-  fluxo: 'verificacao' | 'certificacao';
+  /** Modelo do certificado e signatário, usados pelos checklists que emitem certificado. */
   certificado: string | null;
   signatario: Signatario | null;
   responsaveis: string[];
@@ -261,11 +261,9 @@ export interface PainelPublico {
   slug: string;
   nome: string;
   descricao: string | null;
-  /** `verificacao` (dossiê em PDF) ou `certificacao` (solicitação, validação e emissão). */
-  fluxo: 'verificacao' | 'certificacao';
 }
 
-/** Quem assina o certificado (ABB), nos painéis do fluxo de certificação. */
+/** Quem assina o certificado (ABB), nos checklists que emitem certificado. */
 export interface Signatario {
   nome: string;
   cargo: string;
@@ -275,7 +273,7 @@ export interface Signatario {
 }
 
 export interface PainelApi extends PainelPublico {
-  /** Modelo do certificado; só no fluxo de certificação. */
+  /** Modelo do certificado; só nos painéis com checklist que emite certificado. */
   certificado: string | null;
   signatario: Signatario | null;
   responsaveis: string[];
@@ -285,6 +283,18 @@ export interface PainelApi extends PainelPublico {
   acessoExpiraEm: number | null;
   /** Checklists ativos do painel; zero mostra o aviso no cartão. */
   formularios: number;
+  /** Dos ativos, quantos emitem certificado (preenchidos numa solicitação). */
+  formulariosCertificado: number;
+}
+
+/** Tipo de checklist como a administração o vê. */
+export interface TipoChecklistAdmin {
+  id: string;
+  rotulo: string;
+  /** Quantos checklists usam o tipo; com algum, não pode ser excluído. */
+  checklists: number;
+  /** O tipo com que todo painel novo nasce; não pode ser excluído. */
+  padrao: boolean;
 }
 
 export interface SolicitacaoApi {

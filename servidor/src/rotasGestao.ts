@@ -27,7 +27,7 @@ function contaAlvo(ctx: Contexto, eu: Usuario): Usuario {
 }
 
 const FILTROS_HISTORICO: Record<string, TipoAlvo[]> = {
-  paineis: ['painel', 'checklist'],
+  paineis: ['painel', 'checklist', 'tipo-checklist'],
   acessos: ['acesso'],
   contas: ['conta', 'administrador'],
   certificados: ['certificado'],

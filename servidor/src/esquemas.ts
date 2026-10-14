@@ -1,5 +1,5 @@
 import { UID } from './midias';
-import { IDS_TIPOS_CHECKLIST } from '../../compartilhado/tiposChecklist';
+import { PADRAO_ID_TIPO } from '../../compartilhado/tiposChecklist';
 import { z } from 'zod';
 
 /**
@@ -75,7 +75,7 @@ export const pedidoAdminSchema = z.object({
  * que podem aprovar montadores naquele painel — pelo menos um, sem limite
  * acima disso, sem repetição.
  */
-/** Quem assina o certificado (ABB), nos painéis do fluxo de certificação. */
+/** Quem assina o certificado (ABB), nos checklists que emitem certificado. */
 export const signatarioSchema = z.object({
   nome: linha(2, 120, 'Informe o nome de quem assina.', 'Nome longo demais.'),
   cargo: linha(2, 160, 'Informe o cargo de quem assina.', 'Cargo longo demais.'),
@@ -93,14 +93,15 @@ export const painelSchema = z
       .min(1, 'Escolha ao menos um administrador responsável.')
       .max(50, 'São no máximo 50 responsáveis por painel.')
       .transform((lista) => [...new Set(lista)]),
-    /** `verificacao`: dossiê em PDF. `certificacao`: solicitação, validação e emissão. */
-    fluxo: z.enum(['verificacao', 'certificacao']).optional().default('verificacao'),
-    /** Modelo do certificado (`public/certificados/<id>.json`). */
+    /**
+     * Modelo do certificado (`public/certificados/<id>.json`) e quem o assina.
+     * Opcionais: só os checklists marcados com "Emite certificado" os usam.
+     */
     certificado: z.string().regex(/^[a-z0-9-]{1,60}$/, 'Modelo de certificado inválido.').optional(),
     signatario: signatarioSchema.optional(),
   })
-  .refine((p) => p.fluxo !== 'certificacao' || (!!p.certificado && !!p.signatario), {
-    message: 'Painel de certificação exige o modelo do certificado e quem assina.',
+  .refine((p) => !!p.certificado === !!p.signatario, {
+    message: 'Para emitir certificado, informe o modelo e quem assina.',
     path: ['certificado'],
   });
 
@@ -110,8 +111,16 @@ export const solicitarSchema = z.object({
 
 /** Criação de um checklist: o conteúdo vem depois, pelo editor. */
 export const formularioNovoSchema = z.object({
-  tipo: z.enum(IDS_TIPOS_CHECKLIST),
+  tipo: z.string().regex(PADRAO_ID_TIPO, 'Tipo de checklist inválido.'),
   nome: linha(2, 200, 'Informe o nome do checklist.', 'Nome do checklist longo demais.').optional(),
+});
+
+/** Tipo de checklist criado ou renomeado pela administração. */
+export const tipoChecklistSchema = z.object({
+  rotulo: linha(2, 60, 'Informe o nome do tipo de verificação.', 'Nome do tipo longo demais.').refine(
+    (r) => /[\p{L}\p{N}]/u.test(r),
+    'O nome do tipo precisa ter letras ou números.',
+  ),
 });
 
 /**

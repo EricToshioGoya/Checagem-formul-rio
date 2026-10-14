@@ -24,9 +24,12 @@ export interface PainelFixo {
   nome: string;
   descricao: string;
   responsavelEmail: string;
-  /** `verificacao` (dossiê em PDF) ou `certificacao` (solicitação, validação e emissão). */
+  /**
+   * Só para a semente: `certificacao` faz os checklists semeados neste painel
+   * nascerem com "Emite certificado" (ver `migrarFluxoParaChecklists`).
+   */
   fluxo: 'verificacao' | 'certificacao';
-  /** Modelo do certificado, em `public/certificados`; só no fluxo de certificação. */
+  /** Modelo do certificado, em `public/certificados`; usado pelos checklists que emitem certificado. */
   certificado?: string;
   signatario?: Signatario;
 }

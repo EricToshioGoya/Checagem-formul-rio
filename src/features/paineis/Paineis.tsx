@@ -4,6 +4,8 @@ import { api, ErroApi, type AcessoPainel, type PainelApi } from '../../core/api/
 import { useSessao } from '../../core/api/SessaoContexto';
 import { guardarAcessos } from '../../core/api/acessoLocal';
 import { sincronizarPaineis } from '../../core/forms/catalogo';
+import { guardarTiposChecklist } from '../../core/forms/tiposChecklist';
+import type { TipoChecklistApi } from '../../../compartilhado/tiposChecklist';
 import { Botao } from '../../shared/componentes/Botao';
 import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
 import { dataHoraBr, duracaoCurta } from '../../shared/utils/texto';
@@ -37,7 +39,11 @@ export function Paineis() {
   const pedidoAutomatico = useRef(false);
   const carregar = useCallback(async () => {
     try {
-      const { paineis: lista } = await api.get<{ paineis: PainelApi[] }>('/api/paineis');
+      const { paineis: lista, tiposChecklist } = await api.get<{
+        paineis: PainelApi[];
+        tiposChecklist?: TipoChecklistApi[];
+      }>('/api/paineis');
+      guardarTiposChecklist(tiposChecklist);
       setPaineis(lista);
       setErro(null);
       setSemConexao(false);
@@ -89,15 +95,13 @@ export function Paineis() {
     if (painel && painel.meuAcesso === 'nenhum') void solicitar(painel.id);
   }, [parametros, paineis, setParametros, solicitar]);
 
-  /** Abre o painel aprovado: a lista de projetos dele, ou as solicitações na certificação. */
-  const abrir = (painel: PainelApi) => {
-    // Na certificação não há projeto: cada painel/quadro é uma solicitação.
-    if (painel.fluxo === 'certificacao') {
-      navegar(`/paineis/${painel.slug}/solicitacoes`);
-      return;
-    }
-    navegar(`/paineis/${painel.id}/projetos`);
-  };
+  /**
+   * O mesmo painel pode ter as duas coisas: checklists de verificação, que
+   * entram nos projetos (TAG → dossiê em PDF), e checklists que emitem
+   * certificado, preenchidos numa solicitação que a ABB valida.
+   */
+  const abrirChecagens = (painel: PainelApi) => navegar(`/paineis/${painel.id}/projetos`);
+  const abrirSolicitacoes = (painel: PainelApi) => navegar(`/paineis/${painel.slug}/solicitacoes`);
 
   if (!paineis && !erro && !semConexao) return <Carregando mensagem="Lendo os painéis…" />;
 
@@ -142,6 +146,9 @@ export function Paineis() {
           const rotulo = rotulos[p.meuAcesso];
           const trabalhando = ocupado === p.id;
           const vazio = p.formularios === 0;
+          const comCertificado = p.formulariosCertificado > 0;
+          // Painel em branco abre nos projetos, como sempre abriu.
+          const comVerificacao = vazio || p.formularios > p.formulariosCertificado;
           return (
             <li
               key={p.id}
@@ -151,9 +158,11 @@ export function Paineis() {
                 <div className="min-w-0">
                   <p className="text-lg font-bold">{p.nome}</p>
                   <p className="text-sm font-semibold tracking-wide text-abb-gray uppercase">
-                    {p.fluxo === 'certificacao'
-                      ? 'Solicitação de certificação'
-                      : 'Verificação de montagem'}
+                    {comVerificacao && comCertificado
+                      ? 'Verificação · emite certificado'
+                      : comCertificado
+                        ? 'Verificação com certificado'
+                        : 'Verificação'}
                   </p>
                   <p className="mt-1 text-sm text-abb-gray">
                     {p.responsaveis.length === 1 ? 'Responsável' : 'Responsáveis'}:{' '}
@@ -189,13 +198,22 @@ export function Paineis() {
 
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {p.podePreencher ? (
-                  <Botao variante="primario" disabled={trabalhando} onClick={() => abrir(p)}>
-                    {trabalhando
-                      ? 'Abrindo…'
-                      : p.fluxo === 'certificacao'
-                        ? 'Abrir solicitações'
-                        : 'Abrir checagens'}
-                  </Botao>
+                  <>
+                    {comVerificacao ? (
+                      <Botao variante="primario" disabled={trabalhando} onClick={() => abrirChecagens(p)}>
+                        Abrir checagens
+                      </Botao>
+                    ) : null}
+                    {comCertificado ? (
+                      <Botao
+                        variante={comVerificacao ? 'secundario' : 'primario'}
+                        disabled={trabalhando}
+                        onClick={() => abrirSolicitacoes(p)}
+                      >
+                        Solicitações de certificado
+                      </Botao>
+                    ) : null}
+                  </>
                 ) : p.meuAcesso === 'pendente' ? (
                   <p className="text-base text-abb-gray">
                     Pedido enviado. Assim que a administração aprovar, o painel abre aqui.

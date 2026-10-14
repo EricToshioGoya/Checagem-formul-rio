@@ -185,6 +185,12 @@ export const definicaoFormularioSchema = z.object({
   revisao: z.string().min(1),
   dataRevisao: z.string().min(1),
   emitidoPor: z.string().optional().default(''),
+  /**
+   * O checklist termina num certificado ABB: o montador o preenche numa
+   * solicitação de certificação, a ABB valida e o certificado é emitido.
+   * Desmarcado, é uma verificação comum (projeto → TAG → dossiê em PDF).
+   */
+  emiteCertificado: z.boolean().optional().default(false),
   cabecalho: z.array(campoCabecalhoSchema).default([]),
   secoes: z.array(secaoSchema).default([]),
 });
@@ -201,6 +207,8 @@ export const entradaCatalogoSchema = z.object({
   linhaProduto: z.string().min(1),
   painelSlug: z.string().min(1),
   ativo: z.boolean().optional().default(true),
+  /** Preenchido numa solicitação de certificação, e não num projeto. */
+  emiteCertificado: z.boolean().optional().default(false),
   /** Etapas ativas; zero significa checklist ainda em construção. */
   etapas: z.number().optional().default(0),
   atualizadoEm: z.number().optional().default(0),
@@ -290,6 +298,7 @@ export function formularioEmBranco(entrada: {
     revisao: 'rev00',
     dataRevisao: new Date().toISOString().slice(0, 10),
     emitidoPor: '',
+    emiteCertificado: false,
     cabecalho: [],
     secoes: [],
   };

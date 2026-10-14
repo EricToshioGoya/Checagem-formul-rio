@@ -22,6 +22,7 @@ const COR: Record<string, string> = {
   acesso: 'bg-green-500',
   painel: 'bg-sky-500',
   checklist: 'bg-sky-500',
+  'tipo-checklist': 'bg-sky-500',
   conta: 'bg-amber-500',
   administrador: 'bg-abb-red',
   certificado: 'bg-violet-500',
