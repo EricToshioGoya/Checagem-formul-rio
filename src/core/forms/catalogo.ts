@@ -33,6 +33,7 @@ function paraEntrada(f: FormularioCache): EntradaCatalogo {
     linhaProduto: f.linhaProduto,
     painelSlug: f.painelSlug,
     ativo: f.ativo,
+    emiteCertificado: f.emiteCertificado ?? f.definicao.emiteCertificado ?? false,
     etapas: f.etapas,
     atualizadoEm: f.atualizadoEm,
   };
@@ -61,6 +62,7 @@ export async function sincronizarPainel(
     tipo: f.tipo,
     linhaProduto: f.linhaProduto,
     ativo: f.ativo !== false,
+    emiteCertificado: f.emiteCertificado === true,
     etapas: f.etapas ?? 0,
     atualizadoEm: f.atualizadoEm ?? agora,
     // Revalida o que veio da rede: um checklist corrompido tem de falhar aqui,
@@ -95,12 +97,23 @@ export async function sincronizarPaineis(
 }
 
 /**
+ * Para que o checklist é usado: `verificacao` entra nos projetos (TAG →
+ * dossiê em PDF); `certificacao` é o que emite certificado, preenchido numa
+ * solicitação de certificação.
+ */
+export type UsoChecklist = 'verificacao' | 'certificacao';
+
+/**
  * Checklists do painel indicado. Um painel sem checklist cadastrado devolve
  * lista vazia, e a tela mostra o aviso em vez de oferecer o formulário de
  * outra linha — as etapas de um SEN Plus não valem para um MNS.
+ *
+ * Por padrão vêm só os de verificação: os que emitem certificado são
+ * preenchidos numa solicitação, e não numa TAG do projeto.
  */
 export async function formulariosDoPainel(
   painelSlug: string | undefined,
+  uso: UsoChecklist = 'verificacao',
 ): Promise<EntradaCatalogo[]> {
   // Projeto anterior aos painéis: não há a que restringir.
   const lista = painelSlug
@@ -109,8 +122,9 @@ export async function formulariosDoPainel(
 
   return lista
     .filter((f) => f.ativo)
-    .sort((a, b) => a.id.localeCompare(b.id))
-    .map(paraEntrada);
+    .map(paraEntrada)
+    .filter((f) => f.emiteCertificado === (uso === 'certificacao'))
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export async function carregarFormulario(

@@ -110,6 +110,11 @@ export interface FormularioCache {
   tipo: TipoChecklist;
   linhaProduto: string;
   ativo: boolean;
+  /**
+   * Preenchido numa solicitação de certificação, e não num projeto. Ausente
+   * nas cópias baixadas antes desta marca existir: vale a da definição.
+   */
+  emiteCertificado?: boolean;
   /** Etapas ativas; zero significa checklist ainda em construção. */
   etapas: number;
   /** Carimbo do servidor: muda quando a administração grava o checklist. */

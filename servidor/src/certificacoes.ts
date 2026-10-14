@@ -4,7 +4,7 @@ import { avisar } from './avisos';
 import { banco, emTransacao, type Usuario } from './banco';
 import { PREFIXO_CERTIFICADO } from './configuracao';
 import { devolucaoSchema, envioCertificacaoSchema, primeiroErro } from './esquemas';
-import { obterDefinicao } from './formularios';
+import { obterDefinicao, painelDoFormulario } from './formularios';
 import { moverParaLixeira, uidValido } from './midias';
 import {
   ErroHttp,
@@ -16,7 +16,7 @@ import {
 } from './rotas';
 
 /**
- * Solicitações de certificação (painéis do fluxo de certificação).
+ * Solicitações de certificação (checklists marcados com "Emite certificado").
  *
  * O montador prepara a solicitação no aparelho, offline, e envia o conjunto —
  * dados, respostas e a lista das fotos — ao pedir a validação. Dali em diante o
@@ -82,9 +82,9 @@ function linhaDoMontador(eu: Usuario, uid: string): Linha | undefined {
     .get(eu.id, uid) as Linha | undefined;
 }
 
-function nomeDoPainel(painelId: number): { slug: string; nome: string; fluxo: string } | undefined {
-  return banco.prepare('SELECT slug, nome, fluxo FROM paineis WHERE id = ?').get(painelId) as
-    | { slug: string; nome: string; fluxo: string }
+function nomeDoPainel(painelId: number): { slug: string; nome: string } | undefined {
+  return banco.prepare('SELECT slug, nome FROM paineis WHERE id = ?').get(painelId) as
+    | { slug: string; nome: string }
     | undefined;
 }
 
@@ -170,9 +170,6 @@ export const rotasCertificacoes: Record<string, Manipulador> = {
 
     const painel = nomeDoPainel(e.painelId);
     if (!painel) throw new ErroHttp(404, 'Painel não encontrado.');
-    if (painel.fluxo !== 'certificacao') {
-      throw new ErroHttp(400, 'Este painel não é do fluxo de certificação.');
-    }
     exigirAcessoAoPainel(eu, e.painelId);
 
     const citadas = e.midias.map((m) => m.uid.toLowerCase());
@@ -181,6 +178,17 @@ export const rotasCertificacoes: Record<string, Manipulador> = {
     const atual = linhaDoMontador(eu, uid);
     if (atual && Number(atual.painelId) !== e.painelId) {
       throw new ErroHttp(400, 'A solicitação pertence a outro painel.');
+    }
+    // Quem emite certificado é o checklist. Uma solicitação já aberta segue
+    // com o checklist dela mesmo que a marca seja tirada depois; uma nova, ou
+    // a troca de checklist, exige um checklist do painel que emite certificado.
+    if (!atual || atual.formId !== e.formId) {
+      if (painelDoFormulario(e.formId) !== e.painelId) {
+        throw new ErroHttp(400, 'O checklist não pertence a este painel.');
+      }
+      if (!obterDefinicao(e.formId)?.emiteCertificado) {
+        throw new ErroHttp(400, 'Este checklist não emite certificado.');
+      }
     }
     if (atual && !EDITAVEIS.includes(atual.estado)) {
       throw new ErroHttp(409, 'A solicitação já foi enviada e não pode mais ser alterada.', 'travada');

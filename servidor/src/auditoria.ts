@@ -11,6 +11,7 @@ import { banco, type Usuario } from './banco';
 export type TipoAlvo =
   | 'painel'
   | 'checklist'
+  | 'tipo-checklist'
   | 'acesso'
   | 'conta'
   | 'administrador'

@@ -53,6 +53,7 @@ function entradaDe(linha: LinhaFormulario): EntradaCatalogo {
     linhaProduto: d.linhaProduto,
     painelSlug: linha.painelSlug,
     ativo: linha.ativo === 1,
+    emiteCertificado: d.emiteCertificado,
     etapas: contarEtapasAtivas(d),
     atualizadoEm: linha.atualizadoEm,
   };
@@ -162,6 +163,14 @@ export function definirAtivo(id: string, ativo: boolean): void {
 
 export function excluir(id: string): boolean {
   return Number(banco.prepare('DELETE FROM formularios WHERE id = ?').run(id).changes) > 0;
+}
+
+/** Painel a que o checklist pertence; `null` se o checklist não existe. */
+export function painelDoFormulario(id: string): number | null {
+  const l = banco.prepare('SELECT painelId FROM formularios WHERE id = ?').get(id) as
+    | { painelId: number }
+    | undefined;
+  return l ? Number(l.painelId) : null;
 }
 
 export function existe(id: string): boolean {

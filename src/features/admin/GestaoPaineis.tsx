@@ -1,11 +1,14 @@
-import {
-  infoDoTipo,
-  TIPOS_CHECKLIST,
-  type TipoChecklist,
-} from '../../../compartilhado/tiposChecklist';
+import { infoDoTipo, type TipoChecklist } from '../../../compartilhado/tiposChecklist';
 import { useCallback, useEffect, useState } from 'react';
 import type { EntradaCatalogo } from '../../core/forms/tipos';
-import { api, type AdministradorApi, type PainelAdmin, type Signatario } from '../../core/api/cliente';
+import {
+  api,
+  type AdministradorApi,
+  type PainelAdmin,
+  type Signatario,
+  type TipoChecklistAdmin,
+} from '../../core/api/cliente';
+import { guardarTiposChecklist } from '../../core/forms/tiposChecklist';
 import { useSessao } from '../../core/api/SessaoContexto';
 import { plural } from '../../../compartilhado/plural';
 import { ConstrutorChecklist } from './ConstrutorChecklist';
@@ -21,7 +24,8 @@ interface Rascunho {
   nome: string;
   descricao: string;
   responsaveis: string[];
-  fluxo: 'verificacao' | 'certificacao';
+  /** O painel tem certificado ABB configurado (modelo e quem assina). */
+  comCertificado: boolean;
   certificado: string;
   signatario: Signatario;
 }
@@ -33,7 +37,7 @@ const VAZIO: Rascunho = {
   nome: '',
   descricao: '',
   responsaveis: [],
-  fluxo: 'verificacao',
+  comCertificado: false,
   certificado: '',
   signatario: SIGNATARIO_VAZIO,
 };
@@ -43,6 +47,20 @@ interface Aberto {
   formId: string;
   painelNome: string;
   ativo: boolean;
+  certificadoConfigurado: boolean;
+}
+
+/**
+ * Nome de tipo sendo digitado: criar um tipo novo (e, vindo de um painel, já
+ * o checklist dele) ou renomear um existente.
+ */
+interface EdicaoTipo {
+  modo: 'criar' | 'renomear';
+  /** No modo `renomear`, o tipo alterado. */
+  tipo: TipoChecklistAdmin | null;
+  /** No modo `criar` a partir de um painel: o painel que recebe o checklist. */
+  painel: PainelAdmin | null;
+  rotulo: string;
 }
 
 /**
@@ -65,14 +83,27 @@ export function GestaoPaineis() {
   const [aberto, setAberto] = useState<Aberto | null>(null);
   const [admins, setAdmins] = useState<AdministradorApi[]>([]);
   const [modelos, setModelos] = useState<string[]>([]);
+  const [tipos, setTipos] = useState<TipoChecklistAdmin[]>([]);
+  const [edicaoTipo, setEdicaoTipo] = useState<EdicaoTipo | null>(null);
+  const [erroTipo, setErroTipo] = useState<string | null>(null);
+  const [gravandoTipo, setGravandoTipo] = useState(false);
+  const [tipoParaExcluir, setTipoParaExcluir] = useState<TipoChecklistAdmin | null>(null);
   const { usuario } = useSessao();
 
   const carregar = useCallback(async () => {
     try {
-      const { paineis: lista, modelosCertificado: modelos } = await api.get<{
+      const {
+        paineis: lista,
+        modelosCertificado: modelos,
+        tiposChecklist,
+      } = await api.get<{
         paineis: PainelAdmin[];
         modelosCertificado: string[];
+        tiposChecklist: TipoChecklistAdmin[];
       }>('/api/admin/paineis');
+      // Os nomes valem para as telas e o PDF deste aparelho também.
+      guardarTiposChecklist(tiposChecklist);
+      setTipos(tiposChecklist);
       setPaineis(lista);
       setModelos(modelos);
       setErro(null);
@@ -117,9 +148,8 @@ export function GestaoPaineis() {
         // editar o nome não pode apagá-la sem aviso.
         descricao: rascunho.descricao || undefined,
         responsaveis: rascunho.responsaveis,
-        fluxo: rascunho.fluxo,
-        ...(rascunho.fluxo === 'certificacao'
-          ? { certificado: rascunho.certificado, signatario: rascunho.signatario }
+        ...(rascunho.comCertificado
+          ? { certificado: rascunho.certificado || undefined, signatario: rascunho.signatario }
           : {}),
       };
       if (rascunho.id === null) await api.post('/api/admin/paineis', corpo);
@@ -150,9 +180,52 @@ export function GestaoPaineis() {
         { tipo },
       );
       await carregar();
-      setAberto({ formId: formulario.id, painelNome: painel.nome, ativo: formulario.ativo });
+      setAberto({
+        formId: formulario.id,
+        painelNome: painel.nome,
+        ativo: formulario.ativo,
+        certificadoConfigurado: painel.certificado !== null,
+      });
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível criar o checklist.');
+    }
+  };
+
+  /** Grava o tipo digitado; vindo de um painel, já cria o checklist dele. */
+  const gravarTipo = async () => {
+    if (!edicaoTipo) return;
+    setErroTipo(null);
+    setGravandoTipo(true);
+    try {
+      if (edicaoTipo.modo === 'renomear' && edicaoTipo.tipo) {
+        await api.put(`/api/admin/tipos-checklist/${edicaoTipo.tipo.id}`, {
+          rotulo: edicaoTipo.rotulo,
+        });
+        setEdicaoTipo(null);
+        await carregar();
+        return;
+      }
+      const { tipo } = await api.post<{ tipo: TipoChecklistAdmin }>('/api/admin/tipos-checklist', {
+        rotulo: edicaoTipo.rotulo,
+      });
+      const painel = edicaoTipo.painel;
+      setEdicaoTipo(null);
+      if (painel) await criarChecklist(painel, tipo.id);
+      else await carregar();
+    } catch (e) {
+      setErroTipo(e instanceof Error ? e.message : 'Não foi possível gravar o tipo.');
+    } finally {
+      setGravandoTipo(false);
+    }
+  };
+
+  const excluirTipo = async (tipo: TipoChecklistAdmin) => {
+    setTipoParaExcluir(null);
+    try {
+      await api.delete(`/api/admin/tipos-checklist/${tipo.id}`);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível excluir o tipo.');
     }
   };
 
@@ -172,6 +245,8 @@ export function GestaoPaineis() {
         formId={aberto.formId}
         painelNome={aberto.painelNome}
         ativoInicial={aberto.ativo}
+        certificadoConfigurado={aberto.certificadoConfigurado}
+        tipos={tipos}
         onVoltar={() => {
           setAberto(null);
           void carregar();
@@ -199,6 +274,56 @@ export function GestaoPaineis() {
       </div>
 
       {erro ? <Erro detalhe={erro} /> : null}
+
+      <section className="rounded-2xl border border-abb-line bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-lg leading-tight font-bold">Tipos de verificação</p>
+            <p className="mt-0.5 text-xs text-abb-gray">
+              Valem para todos os painéis. O nome aparece nos botões, nas telas do
+              montador e no título do PDF.
+            </p>
+          </div>
+          <Botao
+            tamanho="compacto"
+            onClick={() => {
+              setErroTipo(null);
+              setEdicaoTipo({ modo: 'criar', tipo: null, painel: null, rotulo: '' });
+            }}
+          >
+            <IconeMais className="h-4 w-4" />
+            Novo tipo
+          </Botao>
+        </div>
+        <ul className="mt-3 flex flex-wrap gap-2">
+          {tipos.map((t) => (
+            <li
+              key={t.id}
+              className="flex items-center gap-1 rounded-lg border border-abb-line/70 bg-neutral-50 py-1 pr-1 pl-3"
+            >
+              <span className="text-sm font-semibold">{t.rotulo}</span>
+              <span className="text-xs text-abb-gray">
+                · {plural(t.checklists, 'checklist', 'checklists')}
+              </span>
+              <Botao
+                tamanho="compacto"
+                variante="texto"
+                onClick={() => {
+                  setErroTipo(null);
+                  setEdicaoTipo({ modo: 'renomear', tipo: t, painel: null, rotulo: t.rotulo });
+                }}
+              >
+                Renomear
+              </Botao>
+              {t.padrao || t.checklists > 0 ? null : (
+                <Botao tamanho="compacto" variante="texto" onClick={() => setTipoParaExcluir(t)}>
+                  Excluir
+                </Botao>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
 
       {paineis?.length === 0 ? (
         <Vazio titulo="Nenhum painel cadastrado">
@@ -230,7 +355,7 @@ export function GestaoPaineis() {
                       nome: p.nome,
                       descricao: p.descricao ?? '',
                       responsaveis: [...p.responsaveis],
-                      fluxo: p.fluxo,
+                      comCertificado: p.certificado !== null,
                       certificado: p.certificado ?? '',
                       signatario: p.signatario ?? SIGNATARIO_VAZIO,
                     })
@@ -248,7 +373,7 @@ export function GestaoPaineis() {
               <div className="flex flex-wrap items-center justify-between gap-2 px-1">
                 <p className="text-sm font-semibold">Checklists</p>
                 <div className="flex flex-wrap gap-2">
-                  {TIPOS_CHECKLIST.map((t) => (
+                  {tipos.map((t) => (
                     <Botao
                       key={t.id}
                       tamanho="compacto"
@@ -258,6 +383,16 @@ export function GestaoPaineis() {
                       {t.rotulo}
                     </Botao>
                   ))}
+                  <Botao
+                    tamanho="compacto"
+                    onClick={() => {
+                      setErroTipo(null);
+                      setEdicaoTipo({ modo: 'criar', tipo: null, painel: p, rotulo: '' });
+                    }}
+                  >
+                    <IconeMais className="h-4 w-4" />
+                    Outro tipo…
+                  </Botao>
                 </div>
               </div>
 
@@ -279,6 +414,7 @@ export function GestaoPaineis() {
                           {f.etapas === 0
                             ? 'em branco'
                             : plural(f.etapas, 'verificação', 'verificações')}
+                          {f.emiteCertificado ? ' · emite certificado' : ''}
                           {f.ativo ? '' : ' · desativado'}
                         </p>
                       </div>
@@ -287,7 +423,12 @@ export function GestaoPaineis() {
                           tamanho="compacto"
                           variante="primario"
                           onClick={() =>
-                            setAberto({ formId: f.id, painelNome: p.nome, ativo: f.ativo })
+                            setAberto({
+                              formId: f.id,
+                              painelNome: p.nome,
+                              ativo: f.ativo,
+                              certificadoConfigurado: p.certificado !== null,
+                            })
                           }
                         >
                           {f.etapas === 0 ? 'Montar checklist' : 'Editar checklist'}
@@ -324,28 +465,24 @@ export function GestaoPaineis() {
               obrigatorio
             />
 
-            <div>
-              <label htmlFor="fluxo-painel" className="mb-1 block text-base font-semibold">
-                Tipo de fluxo
-                <span className="block text-sm font-normal text-abb-gray">
-                  Verificação: o montador preenche e envia o dossiê em PDF. Certificação: o
-                  montador faz a solicitação, a ABB valida e o certificado é emitido.
+            <label className="flex items-start gap-3 rounded-md border border-abb-line bg-white p-3">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-5 w-5 shrink-0"
+                checked={rascunho.comCertificado}
+                onChange={(e) => setRascunho({ ...rascunho, comCertificado: e.target.checked })}
+              />
+              <span className="min-w-0">
+                <span className="block text-base font-semibold">Certificado ABB</span>
+                <span className="block text-sm text-abb-gray">
+                  Toda verificação gera o dossiê em PDF. Configure o certificado para que
+                  os checklists marcados com "Emite certificado" passem pela validação
+                  da ABB e terminem no certificado emitido.
                 </span>
-              </label>
-              <select
-                id="fluxo-painel"
-                className="min-h-12 w-full rounded-md border border-abb-line bg-white px-3 text-base focus:border-abb-red"
-                value={rascunho.fluxo}
-                onChange={(e) =>
-                  setRascunho({ ...rascunho, fluxo: e.target.value as Rascunho['fluxo'] })
-                }
-              >
-                <option value="verificacao">Verificação de montagem</option>
-                <option value="certificacao">Solicitação de certificação</option>
-              </select>
-            </div>
+              </span>
+            </label>
 
-            {rascunho.fluxo === 'certificacao' ? (
+            {rascunho.comCertificado ? (
               <div className="space-y-3 rounded-lg border border-abb-line bg-neutral-50 p-3">
                 <div>
                   <label htmlFor="modelo-certificado" className="mb-1 block text-base font-semibold">
@@ -460,6 +597,57 @@ export function GestaoPaineis() {
           </div>
         ) : null}
       </Modal>
+
+      <Modal
+        aberto={edicaoTipo !== null}
+        titulo={edicaoTipo?.modo === 'renomear' ? 'Renomear tipo de verificação' : 'Novo tipo de verificação'}
+        onFechar={() => setEdicaoTipo(null)}
+      >
+        {edicaoTipo ? (
+          <div className="space-y-4">
+            <CampoTexto
+              rotulo="Nome do tipo"
+              valor={edicaoTipo.rotulo}
+              onChange={(v) => setEdicaoTipo({ ...edicaoTipo, rotulo: v })}
+              placeholder="Ex.: Comissionamento, Inspeção final"
+              obrigatorio
+            />
+            <Aviso>
+              {edicaoTipo.modo === 'renomear'
+                ? 'O nome novo vale para todos os checklists deste tipo, nas telas e nos próximos PDFs.'
+                : edicaoTipo.painel
+                  ? `O tipo fica disponível para todos os painéis, e ${edicaoTipo.painel.nome} já recebe um checklist dele em branco.`
+                  : 'O tipo fica disponível como botão em todos os painéis.'}
+            </Aviso>
+            {erroTipo ? <Erro detalhe={erroTipo} /> : null}
+            <div className="flex gap-2">
+              <Botao variante="primario" disabled={gravandoTipo} onClick={() => void gravarTipo()}>
+                {gravandoTipo
+                  ? 'Gravando…'
+                  : edicaoTipo.modo === 'renomear'
+                    ? 'Gravar'
+                    : edicaoTipo.painel
+                      ? 'Criar e montar checklist'
+                      : 'Criar tipo'}
+              </Botao>
+              <Botao onClick={() => setEdicaoTipo(null)}>Cancelar</Botao>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Confirmacao
+        aberto={tipoParaExcluir !== null}
+        titulo="Excluir tipo de verificação"
+        mensagem={
+          tipoParaExcluir
+            ? `Excluir o tipo "${tipoParaExcluir.rotulo}"? Ele deixa de aparecer como opção nos painéis.`
+            : ''
+        }
+        textoConfirmar="Excluir"
+        onConfirmar={() => tipoParaExcluir && void excluirTipo(tipoParaExcluir)}
+        onCancelar={() => setTipoParaExcluir(null)}
+      />
 
       <Confirmacao
         aberto={paraExcluir !== null}

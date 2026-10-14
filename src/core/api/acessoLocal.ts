@@ -45,9 +45,9 @@ function ler(): Record<string, Registro> {
 
 const CHAVE_CATALOGO = 'catalogo-paineis';
 
-type DadosDoPainel = Pick<PainelApi, 'id' | 'slug' | 'nome' | 'descricao' | 'fluxo' | 'certificado' | 'signatario'>;
+type DadosDoPainel = Pick<PainelApi, 'id' | 'slug' | 'nome' | 'descricao' | 'certificado' | 'signatario'>;
 
-/** Painéis como o servidor os descreve (nome, fluxo, modelo, signatário), pelo `slug`. */
+/** Painéis como o servidor os descreve (nome, modelo, signatário), pelo `slug`. */
 export function lerCatalogoPaineis(): Record<string, DadosDoPainel> {
   try {
     return JSON.parse(localStorage.getItem(CHAVE_CATALOGO) ?? '{}') as Record<string, DadosDoPainel>;
@@ -65,7 +65,6 @@ export function guardarCatalogoPaineis(paineis: readonly PainelApi[]): void {
         slug: p.slug,
         nome: p.nome,
         descricao: p.descricao,
-        fluxo: p.fluxo,
         certificado: p.certificado,
         signatario: p.signatario,
       };

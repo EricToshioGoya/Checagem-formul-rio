@@ -218,6 +218,16 @@ banco.exec(`
     atualizadoEm INTEGER NOT NULL
   );
 
+  -- Tipos de checklist (montagem, rotina e os que a administração criar).
+  -- O id fica gravado em cada checklist; o rótulo é o nome que aparece nos
+  -- botões, nas telas e no PDF, e pode ser trocado sem mexer nos checklists.
+  CREATE TABLE IF NOT EXISTS tipos_checklist (
+    id       TEXT    PRIMARY KEY,
+    rotulo   TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+    ordem    INTEGER NOT NULL,
+    criadoEm INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_formularios_painel ON formularios (painelId, ordem);
   CREATE INDEX IF NOT EXISTS idx_resp_email          ON painel_responsaveis (email);
   CREATE INDEX IF NOT EXISTS idx_solicitacoes_painel ON solicitacoes (painelId, status);
@@ -358,12 +368,16 @@ banco.exec(`
   CREATE INDEX IF NOT EXISTS idx_pdfs_emitidos_em ON pdfs_emitidos (emitidoEm);
 `);
 
-/** Acrescenta a coluna se a tabela ainda não a tem — bancos de antes dos perfis. */
-function garantirColuna(tabela: string, coluna: string, definicao: string): void {
+/**
+ * Acrescenta a coluna se a tabela ainda não a tem — bancos de antes dos perfis.
+ * Devolve `true` quando a coluna acabou de nascer.
+ */
+function garantirColuna(tabela: string, coluna: string, definicao: string): boolean {
   const colunas = banco.prepare(`PRAGMA table_info(${tabela})`).all() as Array<{ name: string }>;
-  if (colunas.some((c) => c.name === coluna)) return;
+  if (colunas.some((c) => c.name === coluna)) return false;
   banco.exec(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${definicao}`);
   console.warn(`Coluna ${tabela}.${coluna} acrescentada.`);
+  return true;
 }
 
 garantirColuna(
@@ -500,20 +514,31 @@ function migrarResponsavelUnico(): void {
 
 migrarResponsavelUnico();
 
-// Fluxo, modelo de certificado e signatário moram no painel: antes vinham de um
+// Modelo de certificado e signatário moram no painel: antes vinham de um
 // arquivo de publicação, e renomear ou cadastrar um painel não os alcançava.
-garantirColuna('paineis', 'fluxo', "TEXT NOT NULL DEFAULT 'verificacao' CHECK (fluxo IN ('verificacao', 'certificacao'))");
+//
+// `fluxo` é legado: o painel era ou de verificação ou de certificação. Agora
+// quem emite certificado é o checklist (`emiteCertificado` na definição), e a
+// coluna só marca, até a próxima subida, os painéis cujos checklists precisam
+// receber a marca — ver `migrarFluxoParaChecklists`.
+const fluxoNovo = garantirColuna(
+  'paineis',
+  'fluxo',
+  "TEXT NOT NULL DEFAULT 'verificacao' CHECK (fluxo IN ('verificacao', 'certificacao'))",
+);
 garantirColuna('paineis', 'certificado', 'TEXT');
 garantirColuna('paineis', 'signatario', 'TEXT');
 
-/**
- * Bancos criados antes dessas colunas: os painéis iniciais conhecidos recebem
- * o fluxo, o modelo e o signatário que o arquivo de publicação lhes dava.
- */
 // Os três modelos de certificado eram idênticos fora do título: viraram um só.
 banco.exec("UPDATE paineis SET certificado = '61439' WHERE certificado IN ('spee', 'spep', 'safr')");
 
-(function completarPaineisIniciais(): void {
+/**
+ * Bancos criados antes dessas colunas: os painéis iniciais conhecidos recebem
+ * o fluxo, o modelo e o signatário que o arquivo de publicação lhes dava. Só
+ * na subida que cria a coluna: depois disso, tirar o certificado de um painel
+ * é decisão da administração e não pode voltar sozinho no reinício.
+ */
+if (fluxoNovo) (function completarPaineisIniciais(): void {
   const completar = banco.prepare(
     `UPDATE paineis SET fluxo = ?, certificado = ?, signatario = ?
       WHERE slug = ? AND fluxo = 'verificacao' AND certificado IS NULL`,
@@ -523,6 +548,36 @@ banco.exec("UPDATE paineis SET certificado = '61439' WHERE certificado IN ('spee
     completar.run(p.fluxo, p.certificado ?? null, p.signatario ? JSON.stringify(p.signatario) : null, p.slug);
   }
 })();
+
+/**
+ * O certificado deixou de ser do painel e passou a ser do checklist: um
+ * painel pode ter verificações que só geram o dossiê e outras que terminam
+ * em certificado. Os checklists dos painéis que eram "de certificação" recebem
+ * `emiteCertificado`, e o painel volta ao valor neutro da coluna legada.
+ *
+ * Roda a cada subida, depois das sementes, e só encontra trabalho uma vez por
+ * painel: a primeira subida desta versão e a que semeia uma base nova.
+ */
+export function migrarFluxoParaChecklists(): void {
+  const paineis = banco
+    .prepare("SELECT id, nome FROM paineis WHERE fluxo = 'certificacao'")
+    .all() as Array<{ id: number; nome: string }>;
+  if (paineis.length === 0) return;
+  emTransacao(() => {
+    for (const p of paineis) {
+      banco
+        .prepare(
+          `UPDATE formularios SET definicao = json_set(definicao, '$.emiteCertificado', json('true'))
+            WHERE painelId = ?`,
+        )
+        .run(p.id);
+      banco.prepare("UPDATE paineis SET fluxo = 'verificacao' WHERE id = ?").run(p.id);
+    }
+  });
+  console.warn(
+    `Certificado passou a ser do checklist: ${paineis.map((p) => p.nome).join(', ')} migrado(s).`,
+  );
+}
 
 /**
  * Cria os painéis iniciais **apenas na primeira subida**, quando a tabela está

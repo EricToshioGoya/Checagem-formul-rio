@@ -3,8 +3,9 @@ import './ambiente';
 import { createReadStream, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createServer as createServerHttps } from 'node:https';
-import { limparSessoesVencidas, semearPaineis } from './banco';
+import { limparSessoesVencidas, migrarFluxoParaChecklists, semearPaineis } from './banco';
 import { garantirFormularioPorPainel, semearFormularios } from './formularios';
+import { semearTipos } from './tiposChecklist';
 import { garantirAdminInicial } from './admin';
 import { sessaoDoToken, tokenDoCabecalho } from './auth';
 import { limparAvisosAntigos, processarFila } from './avisos';
@@ -256,6 +257,8 @@ const servidor = HTTPS_ATIVO
 semearPaineis();
 semearFormularios();
 garantirFormularioPorPainel();
+migrarFluxoParaChecklists();
+semearTipos();
 garantirAdminInicial();
 limparSessoesVencidas();
 

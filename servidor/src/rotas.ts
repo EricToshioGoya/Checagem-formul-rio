@@ -40,6 +40,7 @@ import {
   prazoAcessoSchema,
   primeiroErro,
   solicitarSchema,
+  tipoChecklistSchema,
   HORAS_MAXIMAS,
   type validadeSchema,
 } from './esquemas';
@@ -50,8 +51,18 @@ import {
   existe as formularioExiste,
   listarEntradasPorPainelId,
   obterDefinicao,
+  painelDoFormulario,
   salvarDefinicao,
 } from './formularios';
+import {
+  criarTipo,
+  ErroTipo,
+  excluirTipo,
+  listarTipos,
+  listarTiposAdmin,
+  obterTipo,
+  renomearTipo,
+} from './tiposChecklist';
 
 /** Erro com código HTTP; o servidor traduz em resposta JSON. */
 export class ErroHttp extends Error {
@@ -246,13 +257,23 @@ function modelosDeCertificado(): string[] {
   return [];
 }
 
-/** Fluxo, modelo e signatário do painel, como o cliente os lê. */
-function dadosDeFluxo(l: Record<string, unknown>) {
+/** Modelo do certificado e signatário do painel, como o cliente os lê. */
+function dadosDeCertificado(l: Record<string, unknown>) {
   return {
-    fluxo: String(l.fluxo) as 'verificacao' | 'certificacao',
     certificado: (l.certificado as string | null) ?? null,
     signatario: l.signatario ? (JSON.parse(String(l.signatario)) as Signatario) : null,
   };
+}
+
+/** Checklists do painel marcados com "Emite certificado", ativos ou não. */
+function checklistsComCertificado(painelId: number): number {
+  const l = banco
+    .prepare(
+      `SELECT COUNT(*) AS n FROM formularios
+        WHERE painelId = ? AND json_extract(definicao, '$.emiteCertificado') = 1`,
+    )
+    .get(painelId) as { n: number };
+  return Number(l.n);
 }
 
 interface PainelComAcesso {
@@ -260,7 +281,6 @@ interface PainelComAcesso {
   slug: string;
   nome: string;
   descricao: string | null;
-  fluxo: 'verificacao' | 'certificacao';
   certificado: string | null;
   signatario: Signatario | null;
   responsaveis: string[];
@@ -270,6 +290,8 @@ interface PainelComAcesso {
   acessoExpiraEm: number | null;
   /** Quantos checklists ativos o painel tem. Zero mostra o aviso no cartão. */
   formularios: number;
+  /** Dos ativos, quantos emitem certificado (preenchidos numa solicitação). */
+  formulariosCertificado: number;
 }
 
 /** `painelId` → e-mails dos administradores responsáveis por aquele painel. */
@@ -348,10 +370,13 @@ function gerarSlug(nome: string): string {
 export function listarPaineis(usuarioId: number, email: string): PainelComAcesso[] {
   const linhas = banco
     .prepare(
-      `SELECT p.id, p.slug, p.nome, p.descricao, p.fluxo, p.certificado, p.signatario,
+      `SELECT p.id, p.slug, p.nome, p.descricao, p.certificado, p.signatario,
               s.status AS statusSolicitacao, s.expiraEm AS acessoExpiraEm,
               (SELECT COUNT(*) FROM formularios f
-                WHERE f.painelId = p.id AND f.ativo = 1) AS formularios
+                WHERE f.painelId = p.id AND f.ativo = 1) AS formularios,
+              (SELECT COUNT(*) FROM formularios f
+                WHERE f.painelId = p.id AND f.ativo = 1
+                  AND json_extract(f.definicao, '$.emiteCertificado') = 1) AS formulariosCertificado
          FROM paineis p
          LEFT JOIN solicitacoes s ON s.painelId = p.id AND s.usuarioId = ?
         ORDER BY p.ordem, p.id`,
@@ -382,18 +407,29 @@ export function listarPaineis(usuarioId: number, email: string): PainelComAcesso
       slug: String(l.slug),
       nome: String(l.nome),
       descricao: (l.descricao as string | null) ?? null,
-      ...dadosDeFluxo(l),
+      ...dadosDeCertificado(l),
       responsaveis: lista,
       meuAcesso,
       // O administrador responsável preenche o painel dele sem pedir nada a ninguém.
       podePreencher: meuAcesso === 'dono' || meuAcesso === 'aprovada',
       acessoExpiraEm: meuAcesso === 'aprovada' || meuAcesso === 'expirada' ? expiraEm : null,
       formularios: Number(l.formularios),
+      formulariosCertificado: Number(l.formulariosCertificado),
     };
   });
 }
 
 type Manipulador = (ctx: Contexto) => unknown;
+
+/** Traduz a regra de negócio dos tipos de checklist em resposta 400. */
+function comErroDeTipo<T>(corpo: () => T): T {
+  try {
+    return corpo();
+  } catch (erro) {
+    if (erro instanceof ErroTipo) throw new ErroHttp(400, erro.message);
+    throw erro;
+  }
+}
 
 /**
  * Único caminho que deixa um acesso aprovado, para o "Liberar acesso" (por
@@ -557,7 +593,9 @@ export const rotas: Record<string, Manipulador> = {
 
   'GET /api/paineis': (ctx) => {
     const eu = exigirSessao(ctx);
-    return { paineis: listarPaineis(eu.id, eu.email) };
+    // Os nomes dos tipos de checklist vão junto: o aparelho guarda e usa
+    // nas telas e no PDF, também sem rede.
+    return { paineis: listarPaineis(eu.id, eu.email), tiposChecklist: listarTipos() };
   },
 
   /**
@@ -567,7 +605,7 @@ export const rotas: Record<string, Manipulador> = {
    */
   'GET /api/paineis/publicos': () => {
     const linhas = banco
-      .prepare('SELECT id, slug, nome, descricao, fluxo FROM paineis ORDER BY ordem')
+      .prepare('SELECT id, slug, nome, descricao FROM paineis ORDER BY ordem')
       .all() as Array<Record<string, unknown>>;
     return {
       paineis: linhas.map((l) => ({
@@ -575,7 +613,6 @@ export const rotas: Record<string, Manipulador> = {
         slug: String(l.slug),
         nome: String(l.nome),
         descricao: (l.descricao as string | null) ?? null,
-        fluxo: String(l.fluxo),
       })),
     };
   },
@@ -806,7 +843,7 @@ export const rotas: Record<string, Manipulador> = {
     exigirAdmin(ctx);
     const linhas = banco
       .prepare(
-        'SELECT id, slug, nome, descricao, fluxo, certificado, signatario, ordem, criadoEm FROM paineis ORDER BY ordem, id',
+        'SELECT id, slug, nome, descricao, certificado, signatario, ordem, criadoEm FROM paineis ORDER BY ordem, id',
       )
       .all() as Array<Record<string, unknown>>;
     const responsaveis = mapaResponsaveis();
@@ -824,6 +861,7 @@ export const rotas: Record<string, Manipulador> = {
 
     return {
       modelosCertificado: modelosDeCertificado(),
+      tiposChecklist: listarTiposAdmin(),
       paineis: linhas.map((l) => {
         const id = Number(l.id);
         return {
@@ -831,7 +869,7 @@ export const rotas: Record<string, Manipulador> = {
           slug: String(l.slug),
           nome: String(l.nome),
           descricao: (l.descricao as string | null) ?? null,
-          ...dadosDeFluxo(l),
+          ...dadosDeCertificado(l),
           responsaveis: responsaveis.get(id) ?? [],
           montadoresAprovados: aprovados.get(id) ?? 0,
           editado: edicoesPainel.get(String(id)) ?? null,
@@ -850,7 +888,7 @@ export const rotas: Record<string, Manipulador> = {
     const eu = exigirAdmin(ctx);
     const r = painelSchema.safeParse(ctx.corpo);
     if (!r.success) throw new ErroHttp(400, primeiroErro(r.error));
-    const { nome, descricao, responsaveis, fluxo, certificado, signatario } = r.data;
+    const { nome, descricao, responsaveis, certificado, signatario } = r.data;
     exigirResponsaveisAdmin(responsaveis);
 
     const proxima = banco.prepare('SELECT COALESCE(MAX(ordem), -1) + 1 AS n FROM paineis').get() as {
@@ -861,8 +899,8 @@ export const rotas: Record<string, Manipulador> = {
       const slug = gerarSlug(nome);
       const info = banco
         .prepare(
-          `INSERT INTO paineis (slug, nome, descricao, ordem, criadoEm, fluxo, certificado, signatario)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO paineis (slug, nome, descricao, ordem, criadoEm, certificado, signatario)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           slug,
@@ -870,9 +908,8 @@ export const rotas: Record<string, Manipulador> = {
           descricao ?? null,
           Number(proxima.n),
           Date.now(),
-          fluxo,
-          fluxo === 'certificacao' ? (certificado ?? null) : null,
-          fluxo === 'certificacao' && signatario ? JSON.stringify(signatario) : null,
+          certificado ?? null,
+          signatario ? JSON.stringify(signatario) : null,
         );
       const painelId = Number(info.lastInsertRowid);
       const inserir = banco.prepare(
@@ -904,14 +941,22 @@ export const rotas: Record<string, Manipulador> = {
     const eu = exigirAdmin(ctx);
     const r = painelSchema.safeParse(ctx.corpo);
     if (!r.success) throw new ErroHttp(400, primeiroErro(r.error));
-    const { nome, descricao, responsaveis, fluxo, certificado, signatario } = r.data;
+    const { nome, descricao, responsaveis, certificado, signatario } = r.data;
     exigirResponsaveisAdmin(responsaveis);
 
     const id = Number(ctx.params.id);
-    const antes = banco.prepare('SELECT nome, fluxo, certificado FROM paineis WHERE id = ?').get(id) as
-      | { nome: string; fluxo: string; certificado: string | null }
+    const antes = banco.prepare('SELECT nome, certificado FROM paineis WHERE id = ?').get(id) as
+      | { nome: string; certificado: string | null }
       | undefined;
     if (!antes) throw new ErroHttp(404, 'Painel não encontrado.');
+    const comCertificado = checklistsComCertificado(id);
+    if (!certificado && comCertificado > 0) {
+      throw new ErroHttp(
+        400,
+        `${plural(comCertificado, 'checklist deste painel emite', 'checklists deste painel emitem')} certificado: ` +
+          'mantenha o modelo e quem assina, ou desmarque "Emite certificado" nesses checklists antes.',
+      );
+    }
     const responsaveisAntes = mapaResponsaveis().get(id) ?? [];
 
     // O `slug` não muda ao renomear: ele amarra o painel aos formulários do
@@ -919,14 +964,13 @@ export const rotas: Record<string, Manipulador> = {
     emTransacao(() => {
       banco
         .prepare(
-          'UPDATE paineis SET nome = ?, descricao = ?, fluxo = ?, certificado = ?, signatario = ? WHERE id = ?',
+          'UPDATE paineis SET nome = ?, descricao = ?, certificado = ?, signatario = ? WHERE id = ?',
         )
         .run(
           nome,
           descricao ?? null,
-          fluxo,
-          fluxo === 'certificacao' ? (certificado ?? null) : null,
-          fluxo === 'certificacao' && signatario ? JSON.stringify(signatario) : null,
+          certificado ?? null,
+          signatario ? JSON.stringify(signatario) : null,
           id,
         );
       banco.prepare('DELETE FROM painel_responsaveis WHERE painelId = ?').run(id);
@@ -938,8 +982,7 @@ export const rotas: Record<string, Manipulador> = {
       // O que mudou, em palavras: o histórico mostra o antes e o depois.
       const mudancas: string[] = [];
       if (antes.nome !== nome) mudancas.push(`nome: ${antes.nome} → ${nome}`);
-      if (antes.fluxo !== fluxo) mudancas.push(`fluxo: ${antes.fluxo} → ${fluxo}`);
-      if (fluxo === 'certificacao' && antes.certificado !== (certificado ?? null)) {
+      if (antes.certificado !== (certificado ?? null)) {
         mudancas.push(`modelo do certificado: ${antes.certificado ?? '—'} → ${certificado ?? '—'}`);
       }
       const entraram = responsaveis.filter((e) => !responsaveisAntes.includes(e));
@@ -1258,6 +1301,50 @@ export const rotas: Record<string, Manipulador> = {
     return { ok: true };
   },
 
+  // ------------------------------------------- admin › tipos de checklist
+
+  'POST /api/admin/tipos-checklist': (ctx) => {
+    const eu = exigirAdmin(ctx);
+    const r = tipoChecklistSchema.safeParse(ctx.corpo);
+    if (!r.success) throw new ErroHttp(400, primeiroErro(r.error));
+    const tipo = comErroDeTipo(() => criarTipo(r.data.rotulo));
+    registrar({ autor: eu, acao: 'criou o tipo de checklist', alvoTipo: 'tipo-checklist', alvoId: tipo.id, alvo: tipo.rotulo });
+    return { tipo };
+  },
+
+  'PUT /api/admin/tipos-checklist/:id': (ctx) => {
+    const eu = exigirAdmin(ctx);
+    const r = tipoChecklistSchema.safeParse(ctx.corpo);
+    if (!r.success) throw new ErroHttp(400, primeiroErro(r.error));
+    const antes = obterTipo(ctx.params.id);
+    const tipo = comErroDeTipo(() => renomearTipo(ctx.params.id, r.data.rotulo));
+    if (antes && antes.rotulo !== tipo.rotulo) {
+      registrar({
+        autor: eu,
+        acao: 'renomeou o tipo de checklist',
+        alvoTipo: 'tipo-checklist',
+        alvoId: tipo.id,
+        alvo: tipo.rotulo,
+        detalhe: `${antes.rotulo} → ${tipo.rotulo}`,
+      });
+    }
+    return { tipo };
+  },
+
+  'DELETE /api/admin/tipos-checklist/:id': (ctx) => {
+    const eu = exigirAdmin(ctx);
+    const antes = obterTipo(ctx.params.id);
+    comErroDeTipo(() => excluirTipo(ctx.params.id));
+    registrar({
+      autor: eu,
+      acao: 'excluiu o tipo de checklist',
+      alvoTipo: 'tipo-checklist',
+      alvoId: ctx.params.id,
+      alvo: antes?.rotulo ?? ctx.params.id,
+    });
+    return { ok: true };
+  },
+
   // ------------------------------------------------ admin › formulários
 
   /** Um checklist com a definição inteira: é o que o editor abre. */
@@ -1278,6 +1365,7 @@ export const rotas: Record<string, Manipulador> = {
       .prepare('SELECT id, slug, nome FROM paineis WHERE id = ?')
       .get(painelId) as { id: number; slug: string; nome: string } | undefined;
     if (!painel) throw new ErroHttp(404, 'Painel não encontrado.');
+    if (!obterTipo(r.data.tipo)) throw new ErroHttp(400, 'Tipo de checklist não cadastrado.');
 
     const formulario = criarParaPainel({
       painelId: painel.id,
@@ -1304,6 +1392,22 @@ export const rotas: Record<string, Manipulador> = {
 
     const id = ctx.params.id;
     if (!formularioExiste(id)) throw new ErroHttp(404, 'Checklist não encontrado.');
+    const enviada = r.data.definicao as { emiteCertificado?: unknown; tipo?: unknown } | null;
+    const anterior = obterDefinicao(id);
+    if (typeof enviada?.tipo === 'string' && enviada.tipo !== anterior?.tipo && !obterTipo(enviada.tipo)) {
+      throw new ErroHttp(400, 'Tipo de checklist não cadastrado.');
+    }
+    if (enviada?.emiteCertificado === true && !anterior?.emiteCertificado) {
+      const painel = banco
+        .prepare('SELECT certificado FROM paineis WHERE id = ?')
+        .get(painelDoFormulario(id)) as { certificado: string | null } | undefined;
+      if (!painel?.certificado) {
+        throw new ErroHttp(
+          400,
+          'Para emitir certificado, informe antes o modelo do certificado e quem assina, em "Editar painel".',
+        );
+      }
+    }
 
     // O nome enviado à parte vence o que estiver no JSON: é o campo que a tela
     // edita. `salvarDefinicao` reetiqueta o `id` a partir da URL, de modo que

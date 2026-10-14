@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { solicitacaoStore } from '../../core/certificacao';
 import { camposDoPainel, obterPainel } from '../../core/paineis/catalogo';
 import { camposObrigatoriosVazios, rotulosDe } from '../../core/forms/validacaoCampos';
-import type { CampoCabecalho, ValoresCabecalho } from '../../core/forms/tipos';
+import type { CampoCabecalho, EntradaCatalogo, ValoresCabecalho } from '../../core/forms/tipos';
 import type { Painel } from '../../core/paineis/tipos';
 import { Botao } from '../../shared/componentes/Botao';
 import { GradeCampos } from '../../shared/componentes/GradeCampos';
@@ -26,6 +26,9 @@ export function NovaSolicitacao() {
 
   const [painel, setPainel] = useState<Painel | null>(null);
   const [campos, setCampos] = useState<CampoCabecalho[]>([]);
+  /** Checklists do painel que emitem certificado; com mais de um, o montador escolhe. */
+  const [checklists, setChecklists] = useState<EntradaCatalogo[]>([]);
+  const [formId, setFormId] = useState('');
   // O operador é quem está logado: a conta já diz o nome, como no dossiê.
   const [valores, setValores] = useState<ValoresCabecalho>(
     (): ValoresCabecalho => (usuario ? { operador: usuario.nome } : {}),
@@ -35,10 +38,16 @@ export function NovaSolicitacao() {
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
-    Promise.all([obterPainel(tipoPainel), camposDoPainel(tipoPainel)])
-      .then(([p, c]) => {
+    Promise.all([
+      obterPainel(tipoPainel),
+      camposDoPainel(tipoPainel),
+      formulariosDoPainel(tipoPainel, 'certificacao'),
+    ])
+      .then(([p, c, lista]) => {
         setPainel(p);
         setCampos(c);
+        setChecklists(lista);
+        setFormId(lista[0]?.id ?? '');
       })
       .catch((e: unknown) =>
         setErro(e instanceof Error ? e.message : 'Falha ao ler o catálogo de painéis.'),
@@ -60,9 +69,9 @@ export function NovaSolicitacao() {
     setSalvando(true);
     setErro(null);
     try {
-      // O checklist da solicitação é o do painel no servidor, já baixado
-      // para o aparelho na tela de painéis.
-      const [checklist] = await formulariosDoPainel(tipoPainel);
+      // O checklist da solicitação é um dos que emitem certificado no painel,
+      // já baixado para o aparelho na tela de painéis.
+      const checklist = checklists.find((c) => c.id === formId);
       if (!checklist) {
         throw new Error(
           'O checklist deste painel ainda não está neste aparelho. Volte aos ' +
@@ -104,6 +113,26 @@ export function NovaSolicitacao() {
         Uma solicitação por painel/quadro. Todos os campos marcados com{' '}
         <span className="font-bold text-abb-red">*</span> são obrigatórios.
       </Aviso>
+
+      {checklists.length > 1 ? (
+        <div className="space-y-2 rounded-lg border border-abb-line bg-white p-4">
+          <label htmlFor="sol-checklist" className="block text-lg font-bold">
+            Checklist da certificação
+          </label>
+          <select
+            id="sol-checklist"
+            className="min-h-12 w-full rounded-md border border-abb-line bg-white px-3 text-base focus:border-abb-red"
+            value={formId}
+            onChange={(e) => setFormId(e.target.value)}
+          >
+            {checklists.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
 
       <div className="space-y-4 rounded-lg border border-abb-line bg-white p-4">
         <h2 className="text-lg font-bold">Dados da empresa e do projeto</h2>
