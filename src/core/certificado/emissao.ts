@@ -1,3 +1,4 @@
+import { gerarCodigoPdf } from '../../../compartilhado/codigoPdf';
 import { solicitacaoStore } from '../certificacao';
 import { obterPainel } from '../paineis/catalogo';
 import { dataIso, normalizarParaArquivo } from '../../shared/utils/texto';
@@ -8,6 +9,10 @@ export interface ArquivoCertificado {
   nome: string;
   blob: Blob;
   numero: string;
+  /** Número de identificação deste PDF: cada via gerada tem o seu. */
+  codigo: string;
+  /** Instante em que esta via foi gerada. */
+  geradoEm: number;
 }
 
 /**
@@ -38,7 +43,9 @@ export async function gerarPdfCertificado(
 
   const template = await carregarTemplateCertificado(painel.certificado);
   const { gerarCertificado } = await import('./documento');
-  const blob = await gerarCertificado(template, montarContexto(certificado, painel));
+  const geradoEm = new Date();
+  const codigo = gerarCodigoPdf(geradoEm);
+  const blob = await gerarCertificado(template, montarContexto(certificado, painel), codigo);
 
   const nome = [
     'CERTIFICADO',
@@ -47,5 +54,5 @@ export async function gerarPdfCertificado(
     dataIso(new Date(certificado.emitidoEm)),
   ].join('_');
 
-  return { nome: `${nome}.pdf`, blob, numero: certificado.numero };
+  return { nome: `${nome}.pdf`, blob, numero: certificado.numero, codigo, geradoEm: geradoEm.getTime() };
 }

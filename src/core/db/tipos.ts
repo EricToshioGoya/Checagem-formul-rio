@@ -229,6 +229,8 @@ export interface PdfPendente {
   nomeArquivo: string;
   /** Instante de emissão impresso no PDF. */
   emitidoEm: number;
+  /** Número de identificação impresso no PDF; ausente nos da fila de antes dele. */
+  codigo?: string;
   blob: Blob;
   criadoEm: number;
   /** O servidor recusou o arquivo (ex.: grande demais); não se tenta de novo sozinho. */

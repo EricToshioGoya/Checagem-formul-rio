@@ -1,3 +1,4 @@
+import { gerarCodigoPdf } from '../../../compartilhado/codigoPdf';
 import { ehMimeDeVideo, extensaoDoMime } from '../../../compartilhado/midias';
 import { infoDoTipo, type TipoChecklist } from '../../../compartilhado/tiposChecklist';
 import {
@@ -25,6 +26,8 @@ export interface ArquivoGerado {
     titulo: string;
     painelSlug?: string;
     emitidoEm: number;
+    /** Número de identificação impresso no PDF (ver `compartilhado/codigoPdf`). */
+    codigo: string;
   };
 }
 
@@ -96,11 +99,14 @@ async function arquivosDoDossie(
       )
     : undefined;
 
+  // Cada PDF gerado tem o seu número, mesmo dois gerados do mesmo dossiê.
+  const codigo = gerarCodigoPdf(dossie.geradoEm);
   arquivos.push({
     nome: nomeArquivoExportacao(dossie.empresa, dossie.nomeProjeto, opcoes.sufixo, 'pdf', dossie.geradoEm),
     blob: await gerarPdf(dossie, {
       incluirFotos: opcoes.incluirFotos,
       titulo: opcoes.titulo,
+      codigo,
       arquivoFotos: opcoes.incluirFotos ? undefined : nomeZip,
       arquivoVideos: opcoes.incluirFotos ? nomeZip : undefined,
       fontes,
@@ -111,6 +117,7 @@ async function arquivosDoDossie(
       titulo: opcoes.titulo,
       painelSlug: dossie.painelSlug,
       emitidoEm: dossie.geradoEm.getTime(),
+      codigo,
     },
   });
   if (zip && nomeZip) arquivos.push({ nome: nomeZip, blob: zip });

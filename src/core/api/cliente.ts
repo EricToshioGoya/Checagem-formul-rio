@@ -387,6 +387,8 @@ export interface RespostaHistorico extends Paginado {
 /** PDF de checklist guardado no arquivo do servidor (documentação de garantia). */
 export interface PdfArquivado {
   uid: string;
+  /** Número de identificação impresso no PDF; nulo nos arquivados antes dele. */
+  codigo: string | null;
   empresa: string;
   nomeProjeto: string;
   /** Tipo de verificação ou nome do checklist. */

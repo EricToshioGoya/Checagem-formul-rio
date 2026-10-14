@@ -22,6 +22,7 @@ import { IconePdf, IconeSeta, IconeVoltar } from '../../shared/componentes/Icone
 import { dataHoraBr } from '../../shared/utils/texto';
 import { ErroApi } from '../../core/api/cliente';
 import { useSessao } from '../../core/api/SessaoContexto';
+import { registrarPdfs } from '../../core/sync/arquivoPdfs';
 import { AcessoBloqueado } from '../paineis/AcessoBloqueado';
 import { EtiquetaEstado } from './estado';
 import { useAcessoCertificacao } from './acesso';
@@ -127,7 +128,25 @@ export function DetalheSolicitacao() {
       const arquivo = await gerarPdfCertificado(id);
       baixarBlob(arquivo.blob, arquivo.nome);
       await servicoValidacao.registrarEmissao(id, usuario?.nome ?? valores.operador ?? '');
-      setMensagem(`Certificado ${arquivo.numero} gerado: ${arquivo.nome}`);
+      // A via gerada vai para o Arquivo de PDFs como os dossiês: o número de
+      // identificação impresso nela fica registrado no servidor.
+      if (usuario) {
+        await registrarPdfs(usuario.id, [
+          {
+            nome: arquivo.nome,
+            blob: arquivo.blob,
+            registro: {
+              empresa: solicitacao.dados.empresa || solicitacao.dados.montador || '',
+              nomeProjeto: solicitacao.dados.projeto || solicitacao.dados.tagPainel || '',
+              titulo: `Certificado nº ${arquivo.numero}`,
+              painelSlug: solicitacao.tipoPainel,
+              emitidoEm: arquivo.geradoEm,
+              codigo: arquivo.codigo,
+            },
+          },
+        ]);
+      }
+      setMensagem(`Certificado ${arquivo.numero} gerado: ${arquivo.nome} (PDF nº ${arquivo.codigo})`);
       await recarregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao gerar o certificado.');

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { normalizarCodigoPdf, PADRAO_CODIGO_PDF } from '../../compartilhado/codigoPdf';
 import { existsSync } from 'node:fs';
 import { banco } from './banco';
 import { caminhoMidia, gravarMidia, uidValido } from './midias';
@@ -11,7 +12,8 @@ import { ErroHttp, exigirAdmin, exigirSessao, RespostaArquivo, type Contexto } f
  *
  * O aparelho gera o PDF (offline, se preciso), guarda numa fila e envia na
  * primeira conexão; o `uid` escolhido lá torna o envio idempotente. A
- * administração busca por empresa, projeto e período de emissão e baixa o
+ * administração busca por empresa, projeto, número de identificação e período
+ * de emissão e baixa o
  * arquivo original. Não há rota para alterar nem excluir: o SHA-256 gravado
  * no recebimento comprova que o arquivo é o mesmo.
  */
@@ -52,6 +54,7 @@ function instante(ctx: Contexto, campo: string): number | null {
 
 interface LinhaPdf {
   uid: string;
+  codigo: string | null;
   empresa: string;
   nomeProjeto: string;
   titulo: string;
@@ -67,6 +70,7 @@ interface LinhaPdf {
 function publico(l: LinhaPdf) {
   return {
     uid: l.uid,
+    codigo: l.codigo,
     empresa: l.empresa,
     nomeProjeto: l.nomeProjeto,
     titulo: l.titulo,
@@ -124,6 +128,15 @@ export const rotasPdfs: Record<string, Manipulador> = {
     const nomeArquivo = textoObrigatorio(ctx, 'nomeArquivo', 'Nome do arquivo', 255);
     const emitidoEm = instante(ctx, 'emitidoEm');
     if (emitidoEm === null) throw new ErroHttp(400, 'Data de emissão não informada.');
+    // Ausente só nos PDFs que já estavam na fila do aparelho antes do número existir.
+    const codigoBruto = ctx.consulta.get('codigo');
+    const codigo = codigoBruto ? normalizarCodigoPdf(codigoBruto) : null;
+    if (codigo !== null && !PADRAO_CODIGO_PDF.test(codigo)) {
+      throw new ErroHttp(400, 'Número de identificação do PDF inválido.');
+    }
+    if (codigo !== null && banco.prepare('SELECT 1 FROM pdfs_emitidos WHERE codigo = ?').get(codigo)) {
+      throw new ErroHttp(409, `O número de identificação ${codigo} já foi usado por outro PDF.`);
+    }
 
     const slug = ctx.consulta.get('painel')?.trim();
     const painel = slug
@@ -137,8 +150,8 @@ export const rotasPdfs: Record<string, Manipulador> = {
       .prepare(
         `INSERT INTO pdfs_emitidos
            (uid, usuarioId, painelId, painelNome, empresa, nomeProjeto, titulo, nomeArquivo,
-            emitidoEm, recebidoEm, tamanho, sha256, busca)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            emitidoEm, recebidoEm, tamanho, sha256, busca, codigo)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         uid,
@@ -153,14 +166,16 @@ export const rotasPdfs: Record<string, Manipulador> = {
         Date.now(),
         dados.length,
         createHash('sha256').update(dados).digest('hex'),
-        paraBusca(`${empresa} ${nomeProjeto}`),
+        paraBusca(`${empresa} ${nomeProjeto} ${codigo ?? ''}`),
+        codigo,
       );
     return { ok: true };
   },
 
   /**
-   * Busca no arquivo (só administradores): trecho do nome da empresa ou do
-   * projeto e período de emissão (`de` e `ate` em milissegundos, inclusivos).
+   * Busca no arquivo (só administradores): trecho do nome da empresa, do
+   * projeto ou do número de identificação, e período de emissão (`de` e `ate`
+   * em milissegundos, inclusivos).
    */
   'GET /api/admin/pdfs': (ctx) => {
     exigirAdmin(ctx);
@@ -188,7 +203,7 @@ export const rotasPdfs: Record<string, Manipulador> = {
     );
     const linhas = banco
       .prepare(
-        `SELECT d.uid, d.empresa, d.nomeProjeto, d.titulo, d.painelNome, u.nome AS montador,
+        `SELECT d.uid, d.codigo, d.empresa, d.nomeProjeto, d.titulo, d.painelNome, u.nome AS montador,
                 d.nomeArquivo, d.emitidoEm, d.recebidoEm, d.tamanho, d.sha256
            FROM pdfs_emitidos d LEFT JOIN usuarios u ON u.id = d.usuarioId
            ${onde}
