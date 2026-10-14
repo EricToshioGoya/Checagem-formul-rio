@@ -83,8 +83,9 @@ export function ArquivoPdfs({ onSessaoVencida }: { onSessaoVencida: () => void }
       <div>
         <h2 className="text-xl font-bold">Arquivo de PDFs</h2>
         <p className="text-sm text-abb-gray">
-          Todo PDF de checklist emitido pelos montadores, como saiu do aparelho —
-          documentação para validar a garantia em caso de falha ou quebra do material.
+          Todo PDF emitido pelos montadores — dossiês, checklists e certificados —,
+          como saiu do aparelho, com o número de identificação impresso nele.
+          Documentação para validar a garantia em caso de falha ou quebra do material.
         </p>
       </div>
 
@@ -92,11 +93,11 @@ export function ArquivoPdfs({ onSessaoVencida }: { onSessaoVencida: () => void }
 
       <div className="grid gap-3 rounded-xl border border-abb-line bg-white p-3 shadow-sm sm:grid-cols-[1fr_11rem_11rem]">
         <label className="relative self-end">
-          <span className="mb-1 block text-base font-semibold">Empresa ou projeto</span>
+          <span className="mb-1 block text-base font-semibold">Empresa, projeto ou nº do PDF</span>
           <IconeBusca className="pointer-events-none absolute bottom-4 left-3 h-4 w-4 text-abb-gray" />
           <input
             type="search"
-            placeholder="Buscar pelo nome…"
+            placeholder="Nome ou VM-2026-…"
             className="min-h-12 w-full rounded-md border border-abb-line bg-white pr-3 pl-9 text-base focus:border-abb-red"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
@@ -150,6 +151,11 @@ export function ArquivoPdfs({ onSessaoVencida }: { onSessaoVencida: () => void }
                 <li key={pdf.uid} className="flex flex-wrap items-center gap-3 px-3 py-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-base font-bold break-words">{pdf.empresa}</p>
+                    {pdf.codigo ? (
+                      <p className="font-mono text-sm font-semibold tracking-wide text-abb-black">
+                        Nº {pdf.codigo}
+                      </p>
+                    ) : null}
                     <p className="text-sm break-words">
                       {pdf.nomeProjeto}
                       {pdf.painel ? ` · ${pdf.painel}` : ''} · {pdf.titulo}

@@ -715,6 +715,14 @@ O documento:
   que foi emitido.
 - Nome do arquivo: `EMPRESA_PROJETO_TIPO-VERIFICACAO_AAAA-MM-DD.pdf`; o de um
   checklist só leva a TAG: `EMPRESA_PROJETO_TAG-ROTINA_AAAA-MM-DD.pdf`.
+- **Número de identificação único** em todo PDF gerado (dossiê, checklist e
+  certificado), no formato `VM-2026-K7Q4-9XRA-3MZD`: o ano da emissão mais 12
+  caracteres sorteados (sem 0/O nem 1/I). Nasce no aparelho na hora de gerar —
+  funciona offline — e sai na capa ("Nº de identificação do PDF"), no rodapé de
+  todas as páginas e nos metadados; no certificado, abaixo do nº do certificado
+  e no rodapé. Gerar de novo dá outro número. O servidor guarda o número no
+  Arquivo de PDFs (busca por ele) e recusa um número já arquivado
+  (`compartilhado/codigoPdf.ts`).
 - Tipografia Inter (subconjunto Latin, licença OFL) em `src/core/export/pdf/fontes`,
   incorporada via `@pdf-lib/fontkit` e incluída no precache. Se a fonte não
   carregar, o PDF sai em Helvetica com o mesmo leiaute. Cores e medidas ficam em
@@ -728,8 +736,9 @@ O envio por e-mail é feito manualmente pelo montador.
 
 ### Arquivo de PDFs
 
-Todo PDF de checklist gerado — do projeto, de uma TAG ou de uma solicitação —
-é guardado também no servidor, como documentação de garantia:
+Todo PDF gerado — do projeto, de uma TAG, de uma solicitação ou o certificado —
+é guardado também no servidor, com o seu número de identificação, como
+documentação de garantia:
 
 - **Envio automático.** Ao gerar, o PDF entra na fila `pdfsPendentes` do
   aparelho e segue na hora. Sem rede, fica na fila e vai na próxima

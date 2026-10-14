@@ -399,6 +399,12 @@ garantirColuna('sync_projetos', 'empresa', 'TEXT');
 garantirColuna('sync_projetos', 'qtdTags', 'INTEGER NOT NULL DEFAULT 0');
 // Foto ou anexo pertence a um projeto, não mais ao par (conta, painel).
 garantirColuna('sync_midias', 'projetoUid', 'TEXT');
+// Número de identificação impresso em cada PDF emitido. Os arquivados antes
+// dele ficam sem; nenhum número se repete entre os que têm.
+garantirColuna('pdfs_emitidos', 'codigo', 'TEXT');
+banco.exec(
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_pdfs_emitidos_codigo ON pdfs_emitidos (codigo) WHERE codigo IS NOT NULL',
+);
 
 /**
  * Um painel passa a ter vários projetos da mesma conta. A chave deixa de ser

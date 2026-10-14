@@ -44,7 +44,8 @@ export function DialogoPdfChecklist({ aberto, alvo, nome, pendentes, antesDeGera
       const { gerarArquivosChecklist } = await import('../../core/export/PdfExport');
       const arquivos = await gerarArquivosChecklist(alvo, incluirFotos);
       for (const arquivo of arquivos) baixarBlob(arquivo.blob, arquivo.nome);
-      setConcluido(arquivos.map((a) => a.nome));
+      // O número de identificação de cada PDF fica à vista, para o montador citá-lo.
+      setConcluido(arquivos.map((a) => (a.registro ? `${a.nome} — nº ${a.registro.codigo}` : a.nome)));
       // Todo PDF emitido vai para o arquivo do servidor (documentação de
       // garantia). Sem rede, fica na fila do aparelho e segue depois.
       if (usuario) {

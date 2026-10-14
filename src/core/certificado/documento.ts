@@ -37,6 +37,7 @@ class Folha {
     fontes: Fontes,
     private readonly template: TemplateCertificado,
     private readonly contexto: ContextoCertificado,
+    private readonly codigo: string,
   ) {
     this.doc = doc;
     this.fontes = fontes;
@@ -67,6 +68,17 @@ class Folha {
       size: 14,
       font: this.fontes.negrito,
       color: PRETO,
+    });
+    // O número de identificação deste PDF, logo abaixo do nº do certificado:
+    // cada via gerada do mesmo certificado tem o seu.
+    const identificacao = sanitizar(`PDF nº ${this.codigo}`);
+    const larguraIdentificacao = this.fontes.normal.widthOfTextAtSize(identificacao, 7.5);
+    this.pagina.drawText(identificacao, {
+      x: PAGINA.largura - MARGEM - larguraIdentificacao,
+      y: this.y - 29,
+      size: 7.5,
+      font: this.fontes.normal,
+      color: CINZA,
     });
 
     this.y -= 30;
@@ -221,9 +233,23 @@ function desenharBloco(
   }
 }
 
-/** Rodapé do template e, abaixo dele, a data e a hora em que o certificado foi emitido. */
-function desenharRodape(doc: PDFDocument, fonte: PDFFont, rodape: string, emissao: string): void {
-  const linhas = [rodape, emissao ? `Certificado emitido em ${emissao}` : '']
+/**
+ * Rodapé do template e, abaixo dele, a data e a hora em que o certificado foi
+ * emitido e o número de identificação deste PDF — em toda página.
+ */
+function desenharRodape(
+  doc: PDFDocument,
+  fonte: PDFFont,
+  rodape: string,
+  emissao: string,
+  codigo: string,
+): void {
+  const linhas = [
+    rodape,
+    [emissao ? `Certificado emitido em ${emissao}` : '', `Nº de identificação do PDF: ${codigo}`]
+      .filter(Boolean)
+      .join('  ·  '),
+  ]
     .map((l) => sanitizar(l))
     .filter(Boolean);
   if (!linhas.length) return;
@@ -254,6 +280,7 @@ function desenharRodape(doc: PDFDocument, fonte: PDFFont, rodape: string, emissa
 export async function gerarCertificado(
   template: TemplateCertificado,
   contexto: ContextoCertificado,
+  codigo: string,
 ): Promise<Blob> {
   const doc = await PDFDocument.create();
   const fontes: Fontes = {
@@ -264,11 +291,12 @@ export async function gerarCertificado(
   doc.setTitle(`${tituloDe(template, contexto)} — ${contexto.numeroCertificado ?? ''}`.trim());
   doc.setProducer('Sistema de Verificação de Montagem de Painéis');
   doc.setCreationDate(new Date());
+  doc.setKeywords([codigo]);
 
-  const folha = new Folha(doc, fontes, template, contexto);
+  const folha = new Folha(doc, fontes, template, contexto, codigo);
   for (const bloco of template.blocos) desenharBloco(folha, bloco, contexto);
 
-  desenharRodape(doc, fontes.normal, template.rodape, contexto.dataHoraEmissao ?? '');
+  desenharRodape(doc, fontes.normal, template.rodape, contexto.dataHoraEmissao ?? '', codigo);
 
   const bytes = await doc.save();
   return new Blob([bytes as unknown as ArrayBuffer], { type: 'application/pdf' });

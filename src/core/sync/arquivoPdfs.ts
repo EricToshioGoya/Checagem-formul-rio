@@ -34,6 +34,7 @@ async function enviarUmaVez(usuarioId: number): Promise<void> {
           painel: pdf.painelSlug,
           nomeArquivo: pdf.nomeArquivo,
           emitidoEm: pdf.emitidoEm,
+          codigo: pdf.codigo,
         })}`,
         pdf.blob,
       );
