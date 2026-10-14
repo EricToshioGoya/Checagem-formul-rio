@@ -47,6 +47,23 @@ export function IconeCamera({ className = base }: Props) {
   );
 }
 
+export function IconeVideo({ className = base }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3" y="6.5" width="12.5" height="11" rx="2.5" stroke="currentColor" strokeWidth="2" />
+      <path d="m15.5 10.5 5-3v9l-5-3" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function IconePlay({ className = base }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 5.5v13l10.5-6.5z" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function IconeAnexo({ className = base }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">

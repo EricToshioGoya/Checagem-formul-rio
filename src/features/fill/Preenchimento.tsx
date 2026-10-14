@@ -7,7 +7,12 @@ import { propagarCabecalho } from '../../core/forms/dadosTag';
 import { useSessao } from '../../core/api/SessaoContexto';
 import type { Bloqueio } from '../../core/api/acessoLocal';
 import { AcessoBloqueado } from '../paineis/AcessoBloqueado';
-import { calcularProgresso, etapaRespondida, etapaVisivel } from '../../core/forms/progresso';
+import {
+  calcularProgresso,
+  etapaRespondida,
+  etapaVisivel,
+  type MapaMidias,
+} from '../../core/forms/progresso';
 import type {
   Etapa,
   MapaRespostas,
@@ -76,10 +81,10 @@ export function Preenchimento() {
   const preenchimentoId = contexto?.preenchimento.id ?? 0;
 
   const fotos = useLiveQuery(
-    async (): Promise<Record<string, number>> =>
+    async (): Promise<MapaMidias> =>
       preenchimentoId ? MidiaRepository.mapaContagem(preenchimentoId) : {},
     [preenchimentoId],
-    {} as Record<string, number>,
+    {} as MapaMidias,
   );
 
   // O que está gravado no aparelho, como a tela o conhece. Serve para gravar
@@ -182,7 +187,7 @@ export function Preenchimento() {
   );
 
   const estaRespondida = useCallback(
-    (etapa: Etapa) => etapaRespondida(etapa, respostas[etapa.id], fotos?.[etapa.id] ?? 0),
+    (etapa: Etapa) => etapaRespondida(etapa, respostas[etapa.id], fotos?.[etapa.id]),
     [respostas, fotos],
   );
 

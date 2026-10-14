@@ -9,6 +9,7 @@ import { carregarFormulario, formulariosDoPainel } from '../forms/catalogo';
 import {
   calcularProgresso,
   checklistsDaTag,
+  contarMidias,
   etapaVisivel,
   idsPendentes,
   somarProgresso,
@@ -175,9 +176,7 @@ async function formularioDoDossie(
       (midiasPorEtapa[midia.etapaId] ??= []).push(midia);
     }
   }
-  const contagem = Object.fromEntries(
-    Object.entries(midiasPorEtapa).map(([k, v]) => [k, v.length]),
-  );
+  const contagem = contarMidias(Object.values(midiasPorEtapa).flat());
   const respostas = preenchimento?.respostas ?? {};
   return {
     definicao,

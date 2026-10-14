@@ -1,3 +1,4 @@
+import { ehMimeDeVideo, extensaoDoMime } from '../../../compartilhado/midias';
 import { infoDoTipo, type TipoChecklist } from '../../../compartilhado/tiposChecklist';
 import {
   etapasImpressas,
@@ -36,14 +37,16 @@ function sufixoTipo(tipo: TipoChecklist): string {
 }
 
 /**
- * ZIP com as fotos do dossiê, nomeadas `TAG_ETAPA_N.jpg` — as mesmas etapas
- * que o PDF imprime. Nome repetido (duas TAGs que viram o mesmo nome de
- * arquivo, dois checklists com a mesma numeração) ganha sufixo, em vez de uma
- * foto sobrescrever a outra.
+ * ZIP com as fotos e os vídeos do dossiê, nomeados `TAG_ETAPA_N.jpg` (ou
+ * `.mp4`, `.mov`…) — as mesmas etapas que o PDF imprime. Nome repetido (duas
+ * TAGs que viram o mesmo nome de arquivo, dois checklists com a mesma
+ * numeração) ganha sufixo, em vez de um arquivo sobrescrever o outro.
+ * Com `somenteVideos`, leva só os vídeos — numerados entre os vídeos da
+ * etapa, como o PDF os cita.
  * JSZip e pdf-lib entram por importação dinâmica: o primeiro carregamento da
  * aplicação no celular não paga o custo das bibliotecas de exportação.
  */
-async function montarZipFotos(dossie: Dossie): Promise<Blob | null> {
+async function montarZipMidias(dossie: Dossie, somenteVideos = false): Promise<Blob | null> {
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
   const usados = new Set<string>();
@@ -52,8 +55,9 @@ async function montarZipFotos(dossie: Dossie): Promise<Blob | null> {
   for (const tag of dossie.tags) {
     for (const formulario of tag.formularios) {
       for (const etapa of etapasImpressas(formulario)) {
-        (formulario.midiasPorEtapa[etapa.id] ?? []).forEach((midia, i) => {
-          const extensao = midia.mime === 'application/pdf' ? 'pdf' : 'jpg';
+        const lista = formulario.midiasPorEtapa[etapa.id] ?? [];
+        (somenteVideos ? lista.filter((m) => ehMimeDeVideo(m.mime)) : lista).forEach((midia, i) => {
+          const extensao = extensaoDoMime(midia.mime);
           const base = `${normalizarParaArquivo(tag.nome)}_${normalizarParaArquivo(etapa.id)}_${i + 1}`;
           zip.file(nomeSemRepetir(usados, base, extensao), midia.blob);
           quantidade += 1;
@@ -67,7 +71,8 @@ async function montarZipFotos(dossie: Dossie): Promise<Blob | null> {
 }
 
 /**
- * O PDF do dossiê e, quando as fotos não vão embutidas, o ZIP com elas.
+ * O PDF do dossiê e, quando as fotos não vão embutidas, o ZIP com elas. Com
+ * as fotos embutidas, os vídeos (que não cabem num PDF) seguem num ZIP só deles.
  * `sufixo` entra no nome do arquivo depois de empresa e projeto.
  */
 async function arquivosDoDossie(
@@ -80,9 +85,15 @@ async function arquivosDoDossie(
   ]);
   const fontes = await carregarFontesPdf();
   const arquivos: ArquivoGerado[] = [];
-  const zip = opcoes.incluirFotos ? null : await montarZipFotos(dossie);
+  const zip = await montarZipMidias(dossie, opcoes.incluirFotos);
   const nomeZip = zip
-    ? nomeArquivoExportacao(dossie.empresa, dossie.nomeProjeto, `${opcoes.sufixo}-FOTOS`, 'zip', dossie.geradoEm)
+    ? nomeArquivoExportacao(
+        dossie.empresa,
+        dossie.nomeProjeto,
+        `${opcoes.sufixo}-${opcoes.incluirFotos ? 'VIDEOS' : 'FOTOS'}`,
+        'zip',
+        dossie.geradoEm,
+      )
     : undefined;
 
   arquivos.push({
@@ -90,7 +101,8 @@ async function arquivosDoDossie(
     blob: await gerarPdf(dossie, {
       incluirFotos: opcoes.incluirFotos,
       titulo: opcoes.titulo,
-      arquivoFotos: nomeZip,
+      arquivoFotos: opcoes.incluirFotos ? undefined : nomeZip,
+      arquivoVideos: opcoes.incluirFotos ? nomeZip : undefined,
       fontes,
     }),
     registro: {

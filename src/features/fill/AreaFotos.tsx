@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { ehMimeDeVideo, TAMANHO_MAXIMO_VIDEO } from '../../../compartilhado/midias';
 import { MAX_FOTOS_POR_ETAPA, MidiaRepository } from '../../core/db/repositorios';
+import { mimeDoVideo } from '../../core/media/apoio';
 import { ehImagem, ehPdf, normalizarImagem } from '../../core/media/imagem';
 import { Botao } from '../../shared/componentes/Botao';
 import { Modal } from '../../shared/componentes/Modal';
 import { Erro } from '../../shared/componentes/Estado';
-import { IconeAnexo, IconeCamera, IconeLixeira } from '../../shared/componentes/Icones';
+import {
+  IconeAnexo,
+  IconeCamera,
+  IconeLixeira,
+  IconePlay,
+  IconeVideo,
+} from '../../shared/componentes/Icones';
 import { formatarBytes } from '../../shared/utils/texto';
 
 interface Props {
@@ -13,10 +21,14 @@ interface Props {
   etapaId: string;
   /** Em etapas do tipo `anexo_pdf` o arquivo é gravado sem recompressão. */
   aceitaPdf?: boolean;
+  /** Etapas de foto e vídeo: o vídeo é gravado como veio, sem recompressão. */
+  aceitaVideo?: boolean;
   onAlterou?: () => void;
 }
 
-export function AreaFotos({ preenchimentoId, etapaId, aceitaPdf, onAlterou }: Props) {
+const LIMITE_VIDEO_MB = Math.round(TAMANHO_MAXIMO_VIDEO / 1024 / 1024);
+
+export function AreaFotos({ preenchimentoId, etapaId, aceitaPdf, aceitaVideo, onAlterou }: Props) {
   const midias = useLiveQuery(
     () => MidiaRepository.listarPorEtapa(preenchimentoId, etapaId),
     [preenchimentoId, etapaId],
@@ -26,6 +38,7 @@ export function AreaFotos({ preenchimentoId, etapaId, aceitaPdf, onAlterou }: Pr
   const [processando, setProcessando] = useState(false);
   const [ampliada, setAmpliada] = useState<number | null>(null);
   const entradaCamera = useRef<HTMLInputElement>(null);
+  const entradaVideo = useRef<HTMLInputElement>(null);
   const entradaArquivo = useRef<HTMLInputElement>(null);
 
   const urls = useMemo(
@@ -67,8 +80,37 @@ export function AreaFotos({ preenchimentoId, etapaId, aceitaPdf, onAlterou }: Pr
           });
           continue;
         }
+        const mimeVideo = aceitaVideo ? mimeDoVideo(arquivo) : null;
+        if (mimeVideo) {
+          if (arquivo.size > TAMANHO_MAXIMO_VIDEO) {
+            setErro(
+              `O vídeo "${arquivo.name}" tem ${formatarBytes(arquivo.size)} e passa do limite de ` +
+                `${LIMITE_VIDEO_MB} MB. Grave um vídeo mais curto.`,
+            );
+            continue;
+          }
+          // Vai como foi gravado; o tipo fica explícito no arquivo porque é
+          // ele que o servidor confere ao receber.
+          await MidiaRepository.adicionar({
+            preenchimentoId,
+            etapaId,
+            blob: new Blob([arquivo], { type: mimeVideo }),
+            mime: mimeVideo,
+            largura: 0,
+            altura: 0,
+            tamanho: arquivo.size,
+            nomeOriginal: arquivo.name,
+          });
+          continue;
+        }
         if (!ehImagem(arquivo)) {
-          setErro('Somente imagens são aceitas nesta etapa.');
+          setErro(
+            aceitaVideo && arquivo.type.startsWith('video/')
+              ? 'Formato de vídeo não aceito. Use MP4, WebM ou MOV.'
+              : aceitaVideo
+                ? 'Somente fotos e vídeos são aceitos nesta etapa.'
+                : 'Somente imagens são aceitas nesta etapa.',
+          );
           continue;
         }
         const normalizada = await normalizarImagem(arquivo);
@@ -98,6 +140,12 @@ export function AreaFotos({ preenchimentoId, etapaId, aceitaPdf, onAlterou }: Pr
           <IconeCamera className="h-5 w-5" />
           Tirar foto
         </Botao>
+        {aceitaVideo ? (
+          <Botao onClick={() => entradaVideo.current?.click()} disabled={cheio || processando}>
+            <IconeVideo className="h-5 w-5" />
+            Gravar vídeo
+          </Botao>
+        ) : null}
         <Botao onClick={() => entradaArquivo.current?.click()} disabled={cheio || processando}>
           <IconeAnexo className="h-5 w-5" />
           Anexar arquivo
@@ -119,11 +167,30 @@ export function AreaFotos({ preenchimentoId, etapaId, aceitaPdf, onAlterou }: Pr
           e.target.value = '';
         }}
       />
+      {aceitaVideo ? (
+        <input
+          ref={entradaVideo}
+          type="file"
+          accept="video/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => {
+            void adicionar(e.target.files);
+            e.target.value = '';
+          }}
+        />
+      ) : null}
       <input
         ref={entradaArquivo}
         type="file"
         multiple
-        accept={aceitaPdf ? 'image/*,application/pdf' : 'image/*'}
+        accept={[
+          'image/*',
+          aceitaVideo ? 'video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov' : '',
+          aceitaPdf ? 'application/pdf' : '',
+        ]
+          .filter(Boolean)
+          .join(',')}
         className="hidden"
         onChange={(e) => {
           void adicionar(e.target.files);
@@ -149,6 +216,21 @@ export function AreaFotos({ preenchimentoId, etapaId, aceitaPdf, onAlterou }: Pr
                     {midia.nomeOriginal ?? 'documento.pdf'}
                   </span>
                 </a>
+              ) : ehMimeDeVideo(midia.mime) ? (
+                <button
+                  type="button"
+                  onClick={() => setAmpliada(id)}
+                  className="relative block h-24 w-24 overflow-hidden rounded-md border border-abb-line bg-abb-black"
+                  aria-label="Assistir vídeo"
+                >
+                  {/* O primeiro quadro serve de miniatura; o vídeo só toca ampliado. */}
+                  <video src={`${url}#t=0.1`} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+                  <span className="absolute inset-0 flex items-center justify-center">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-abb-black shadow">
+                      <IconePlay className="h-5 w-5" />
+                    </span>
+                  </span>
+                </button>
               ) : (
                 <button
                   type="button"
@@ -177,13 +259,28 @@ export function AreaFotos({ preenchimentoId, etapaId, aceitaPdf, onAlterou }: Pr
 
       <Modal
         aberto={ampliada !== null}
-        titulo="Foto da etapa"
+        titulo={
+          urls.some((u) => u.id === ampliada && ehMimeDeVideo(u.midia.mime))
+            ? 'Vídeo da etapa'
+            : 'Foto da etapa'
+        }
         largura="larga"
         onFechar={() => setAmpliada(null)}
       >
         {(() => {
           const item = urls.find((u) => u.id === ampliada);
           if (!item) return null;
+          if (ehMimeDeVideo(item.midia.mime)) {
+            return (
+              <figure className="space-y-2">
+                <video src={item.url} controls autoPlay playsInline className="max-h-[70vh] w-full rounded-md bg-abb-black" />
+                <figcaption className="text-sm text-abb-gray">
+                  {item.midia.nomeOriginal ? `${item.midia.nomeOriginal} • ` : ''}
+                  {formatarBytes(item.midia.tamanho)}
+                </figcaption>
+              </figure>
+            );
+          }
           return (
             <figure className="space-y-2">
               <img src={item.url} alt="" className="w-full rounded-md" />

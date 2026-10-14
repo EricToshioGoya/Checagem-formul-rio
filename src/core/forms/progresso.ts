@@ -5,6 +5,7 @@
 export {
   calcularProgresso,
   checklistsDaTag,
+  contarMidias,
   etapaRespondida,
   etapasAtivas,
   etapaVisivel,
@@ -12,5 +13,8 @@ export {
   percentualDe,
   progressoDe,
   somarProgresso,
+  SEM_MIDIAS,
+  type ContagemMidias,
+  type MapaMidias,
   type Progresso,
 } from '../../../compartilhado/progresso';

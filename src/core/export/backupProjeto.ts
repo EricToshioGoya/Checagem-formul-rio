@@ -1,3 +1,4 @@
+import { extensaoDoMime } from '../../../compartilhado/midias';
 import { db } from '../db/db';
 import { ProjetoRepository } from '../db/repositorios';
 import { baixarBlob } from '../../shared/utils/download';
@@ -21,7 +22,7 @@ interface Pacote {
 }
 
 /**
- * Cópia de arquivo do projeto: um `.zip` com o JSON dos dados e as fotos, para
+ * Cópia de arquivo do projeto: um `.zip` com o JSON dos dados, as fotos e os vídeos, para
  * guardar ou enviar. Não é uma forma de levar o projeto a outro aparelho — isso
  * é a sincronização com a conta, que mantém o painel, o acesso e o andamento.
  */
@@ -69,8 +70,7 @@ export async function exportarProjeto(projetoId: number): Promise<void> {
       atualizadoEm: p.atualizadoEm,
     })),
     midias: midias.map((m, i) => {
-      const extensao = m.mime === 'application/pdf' ? 'pdf' : 'jpg';
-      const nome = `${i + 1}_${normalizarParaArquivo(m.etapaId)}.${extensao}`;
+      const nome = `${i + 1}_${normalizarParaArquivo(m.etapaId)}.${extensaoDoMime(m.mime)}`;
       pasta.file(nome, m.blob);
       return {
         preenchimentoChave: m.preenchimentoId,

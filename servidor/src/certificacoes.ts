@@ -1,4 +1,4 @@
-import { calcularProgresso, idsPendentes, type MapaRespostas } from '../../compartilhado/progresso';
+import { calcularProgresso, contarMidias, idsPendentes, type MapaRespostas } from '../../compartilhado/progresso';
 import { registrar } from './auditoria';
 import { avisar } from './avisos';
 import { banco, emTransacao, type Usuario } from './banco';
@@ -351,8 +351,7 @@ export const rotasCertificacoes: Record<string, Manipulador> = {
         const definicao = obterDefinicao(l.formId);
         const preenchimento = JSON.parse(l.preenchimento) as { respostas: MapaRespostas };
         const midias = JSON.parse(l.midias) as MidiaCitada[];
-        const fotos: Record<string, number> = {};
-        for (const m of midias) fotos[m.etapaId] = (fotos[m.etapaId] ?? 0) + 1;
+        const fotos = contarMidias(midias);
         const progresso = definicao
           ? calcularProgresso(definicao, preenchimento.respostas, fotos)
           : { total: 0, respondidas: 0, pendentes: 0, percentual: 0 };

@@ -33,11 +33,15 @@ import {
   type EstiloTexto,
 } from './desenho';
 import {
+  contarMidias,
   etapaRespondida,
   etapaVisivel,
   progressoDe as progressoCompartilhado,
+  SEM_MIDIAS,
+  type ContagemMidias,
   type Progresso,
 } from '../../forms/progresso';
+import { ehMimeDeVideo, extensaoDoMime } from '../../../../compartilhado/midias';
 import {
   etapasForaDoChecklist,
   etapasImpressas,
@@ -93,7 +97,7 @@ type Situacao = 'verificado' | 'faltaFoto' | 'naoVerificado';
 
 const SITUACOES: Record<Situacao, Selo> = {
   verificado: { rotulo: 'Verificado', icone: 'check', ...VERDE },
-  faltaFoto: { rotulo: 'Falta foto', icone: 'alerta', ...AMBAR },
+  faltaFoto: { rotulo: 'Falta foto/vídeo', icone: 'alerta', ...AMBAR },
   naoVerificado: { rotulo: 'Não verificado', icone: 'x', ...VERMELHO },
 };
 
@@ -500,15 +504,19 @@ function etapasVisiveis(secao: Secao, formulario: FormularioDoDossie): Etapa[] {
   return secao.etapas.filter((e) => etapaVisivel(e, formulario.respostas));
 }
 
-function fotosDa(formulario: FormularioDoDossie, etapaId: string): number {
-  return formulario.midiasPorEtapa[etapaId]?.length ?? 0;
+/** Arquivos anexados à etapa: o total e quantos são vídeo. */
+function midiasDa(formulario: FormularioDoDossie, etapaId: string): ContagemMidias {
+  const lista = formulario.midiasPorEtapa[etapaId];
+  return lista ? (contarMidias(lista)[etapaId] ?? SEM_MIDIAS) : SEM_MIDIAS;
 }
 
 function situacaoDaEtapa(etapa: Etapa, formulario: FormularioDoDossie): Situacao {
   const resposta = formulario.respostas[etapa.id];
-  if (etapaRespondida(etapa, resposta, fotosDa(formulario, etapa.id))) return 'verificado';
-  // Marcada, mas sem a foto que a etapa exige.
+  const midias = midiasDa(formulario, etapa.id);
+  if (etapaRespondida(etapa, resposta, midias)) return 'verificado';
+  // Marcada (ou com arquivo), mas sem a foto ou o vídeo que a etapa exige.
   if (etapa.tipoResposta === 'check_com_foto' && resposta?.valor === true) return 'faltaFoto';
+  if (etapa.tipoResposta === 'foto' && midias.arquivos > 0) return 'faltaFoto';
   return 'naoVerificado';
 }
 
@@ -815,12 +823,15 @@ function pendencias(folha: Folha, blocos: readonly Bloco[], reservar: number): v
 }
 
 /** Notas do pé da capa: onde estão as fotos, registros à parte e o julgamento. */
-function notasDaCapa(blocos: readonly Bloco[], arquivoFotos?: string): string[] {
+function notasDaCapa(blocos: readonly Bloco[], opcoes: OpcoesPdf): string[] {
   const fora = blocos.reduce((s, b) => s + etapasForaDoChecklist(b.formulario).length, 0);
   return [
-    arquivoFotos
-      ? `As fotos não estão neste PDF: seguem no arquivo ${arquivoFotos}, nomeadas TAG_ETAPA_N.`
+    opcoes.arquivoFotos
+      ? `As fotos e os vídeos não estão neste PDF: seguem no arquivo ${opcoes.arquivoFotos}, nomeados TAG_ETAPA_N.`
       : 'As fotos de cada checklist estão no registro fotográfico, ao final dele.',
+    ...(opcoes.arquivoVideos
+      ? [`Os vídeos não cabem num PDF: seguem no arquivo ${opcoes.arquivoVideos}, nomeados TAG_ETAPA_N.`]
+      : []),
     ...(fora
       ? [
           `${plural(fora, 'registro feito em etapa que saiu', 'registros feitos em etapas que saíram')} do checklist depois do preenchimento: ${
@@ -853,7 +864,7 @@ function legenda(folha: Folha, notas: readonly string[]): void {
   const { seminegrito, regular } = folha.fontes;
   const itens: Array<[Selo, string]> = [
     [SITUACOES.verificado, 'respondida'],
-    [SITUACOES.faltaFoto, 'marcada sem a foto obrigatória'],
+    [SITUACOES.faltaFoto, 'sem a foto ou o vídeo obrigatório'],
     [SITUACOES.naoVerificado, 'sem resposta'],
   ];
   const altura = alturaLegenda(folha, notas);
@@ -939,7 +950,7 @@ function desenharCapa(folha: Folha, dossie: Dossie, blocos: readonly Bloco[], op
     return;
   }
   resumo(folha, blocos);
-  const notas = notasDaCapa(blocos, opcoes.arquivoFotos);
+  const notas = notasDaCapa(blocos, opcoes);
   pendencias(folha, blocos, alturaLegenda(folha, notas));
   legenda(folha, notas);
 }
@@ -958,19 +969,27 @@ function formatarNumero(valor: number): string {
   return valor.toLocaleString('pt-BR', { maximumFractionDigits: 4 });
 }
 
+/** "2 fotos · 1 vídeo": o que foi anexado numa etapa de foto e vídeo. */
+function descreverMidias({ arquivos, videos }: ContagemMidias): string {
+  const fotos = arquivos - videos;
+  return [fotos ? plural(fotos, 'foto', 'fotos') : '', videos ? plural(videos, 'vídeo', 'vídeos') : '']
+    .filter(Boolean)
+    .join(' · ');
+}
+
 /** O que foi registrado na etapa, como sai na coluna "Aferido". */
-function valorAferido(etapa: Etapa, resposta: Resposta | undefined, fotos: number): string {
-  const nFotos = plural(fotos, 'foto', 'fotos');
+function valorAferido(etapa: Etapa, resposta: Resposta | undefined, midias: ContagemMidias): string {
+  const anexados = descreverMidias(midias);
   switch (etapa.tipoResposta) {
     case 'check':
       return resposta?.valor === true ? 'Sim' : '';
     case 'check_com_foto':
-      if (resposta?.valor !== true) return fotos ? nFotos : '';
-      return fotos ? `Sim · ${nFotos}` : 'Sim · sem foto';
+      if (resposta?.valor !== true) return anexados;
+      return anexados ? `Sim · ${anexados}` : 'Sim · sem foto ou vídeo';
     case 'foto':
-      return fotos ? nFotos : '';
+      return anexados;
     case 'anexo_pdf':
-      return fotos ? plural(fotos, 'anexo', 'anexos') : '';
+      return midias.arquivos ? plural(midias.arquivos, 'anexo', 'anexos') : '';
     case 'numero':
       return typeof resposta?.valor === 'number' && Number.isFinite(resposta.valor)
         ? `${formatarNumero(resposta.valor)}${etapa.unidade ? ` ${etapa.unidade}` : ''}`
@@ -1076,7 +1095,7 @@ const ALTURA_MAXIMA_SEM_DIVIDIR = 140;
 function desenharEtapa(folha: Folha, etapa: Etapa, formulario: FormularioDoDossie): void {
   const { regular, medio, seminegrito, italico } = folha.fontes;
   const resposta = formulario.respostas[etapa.id];
-  const fotos = fotosDa(formulario, etapa.id);
+  const midias = midiasDa(formulario, etapa.id);
   const situacao = situacaoDaEtapa(etapa, formulario);
   const respondida = situacao === 'verificado';
   const larguraDescricao = COLUNAS[1].largura - PAD_X * 2;
@@ -1084,7 +1103,7 @@ function desenharEtapa(folha: Folha, etapa: Etapa, formulario: FormularioDoDossi
 
   // Resposta curta fica na coluna "Aferido"; a longa vai, inteira, para baixo
   // da descrição — nada é cortado.
-  const aferido = valorAferido(etapa, resposta, fotos);
+  const aferido = valorAferido(etapa, resposta, midias);
   let linhasAferido = aferido ? quebrarLinhas(aferido, medio, 8, larguraAferido) : [];
   let respostaLonga: string | null = null;
   if (linhasAferido.length > 3) {
@@ -1504,6 +1523,15 @@ interface LinhaAnexo {
   numero: number;
 }
 
+/** Um vídeo gravado pelo montador: não cabe no PDF, segue no ZIP indicado. */
+interface LinhaVideo {
+  tipo: 'video';
+  id: string;
+  descricao: string;
+  midia: Midia;
+  numero: number;
+}
+
 const FOTOS_POR_LINHA = 3;
 const FOTO_VAO = 12;
 const FOTO_LARGURA_CARTAO = (LARGURA_UTIL - FOTO_VAO * (FOTOS_POR_LINHA - 1)) / FOTOS_POR_LINHA;
@@ -1516,21 +1544,30 @@ const ALTURA_ANEXO = 44;
 /**
  * Registro fotográfico do checklist: as fotos numa galeria de três colunas, na
  * ordem das etapas — cada cartão diz de que etapa é a foto. Os PDFs anexados
- * vão dentro do documento, no painel de anexos do leitor.
+ * vão dentro do documento, no painel de anexos do leitor. Os vídeos não cabem
+ * num PDF: cada um aparece numa linha que diz em que arquivo ele segue.
  */
-async function desenharFotos(folha: Folha, tag: TagDoDossie, formulario: FormularioDoDossie): Promise<void> {
+async function desenharFotos(
+  folha: Folha,
+  tag: TagDoDossie,
+  formulario: FormularioDoDossie,
+  arquivoVideos?: string,
+): Promise<void> {
   // As mesmas etapas que o documento imprime, na mesma ordem: a condicional
   // que não se aplica fica de fora com as fotos dela.
-  const etapas = etapasImpressas(formulario).filter((e) => fotosDa(formulario, e.id) > 0);
+  const etapas = etapasImpressas(formulario).filter((e) => midiasDa(formulario, e.id).arquivos > 0);
   if (!etapas.length) return;
 
-  const itens: Array<CartaoFoto | LinhaAnexo> = [];
+  const itens: Array<CartaoFoto | LinhaAnexo | LinhaVideo> = [];
   for (const { id, descricao } of etapas) {
     const lista = formulario.midiasPorEtapa[id] ?? [];
-    const imagens = lista.filter((m) => m.mime !== 'application/pdf');
+    const imagens = lista.filter((m) => m.mime !== 'application/pdf' && !ehMimeDeVideo(m.mime));
     lista
       .filter((m) => m.mime === 'application/pdf')
       .forEach((midia, i) => itens.push({ tipo: 'anexo', id, descricao, midia, numero: i + 1 }));
+    lista
+      .filter((m) => ehMimeDeVideo(m.mime))
+      .forEach((midia, i) => itens.push({ tipo: 'video', id, descricao, midia, numero: i + 1 }));
     for (const [i, midia] of imagens.entries()) {
       let imagem: PDFImage | null = null;
       try {
@@ -1559,9 +1596,11 @@ async function desenharFotos(folha: Folha, tag: TagDoDossie, formulario: Formula
   });
   base -= 26;
   const fotos = itens.filter((i) => i.tipo === 'foto').length;
-  const anexos = itens.length - fotos;
+  const videos = itens.filter((i) => i.tipo === 'video').length;
+  const anexos = itens.length - fotos - videos;
   const resumoFotos = [
     fotos ? plural(fotos, 'foto', 'fotos') : '',
+    videos ? plural(videos, 'vídeo', 'vídeos') : '',
     anexos ? plural(anexos, 'anexo em PDF', 'anexos em PDF') : '',
   ]
     .filter(Boolean)
@@ -1577,6 +1616,11 @@ async function desenharFotos(folha: Folha, tag: TagDoDossie, formulario: Formula
     const item = itens[i];
     if (item.tipo === 'anexo') {
       await desenharAnexo(folha, tag, item);
+      i += 1;
+      continue;
+    }
+    if (item.tipo === 'video') {
+      desenharVideo(folha, item, arquivoVideos);
       i += 1;
       continue;
     }
@@ -1712,6 +1756,51 @@ async function desenharAnexo(folha: Folha, tag: TagDoDossie, item: LinhaAnexo): 
   folha.y -= ALTURA_ANEXO + FOTO_VAO;
 }
 
+function desenharVideo(folha: Folha, item: LinhaVideo, arquivoVideos?: string): void {
+  const { seminegrito, regular, negrito } = folha.fontes;
+  const { midia } = item;
+  folha.garantir(ALTURA_ANEXO + FOTO_VAO);
+  const topo = folha.y;
+  retangulo(folha.pagina, { x: X, topo, largura: LARGURA_UTIL, altura: ALTURA_ANEXO }, {
+    raio: 8,
+    cor: COR.branco,
+    borda: COR.linha,
+  });
+  const larguraIcone = 18;
+  const topoIcone = topo - (ALTURA_ANEXO - larguraIcone * 1.3) / 2;
+  iconeDocumento(folha.pagina, X + 12, topoIcone, larguraIcone, COR.apagado, COR.superficie);
+  const extensao = extensaoDoMime(midia.mime).toUpperCase();
+  const rotulo = larguraTexto(extensao, { fonte: negrito, tamanho: 5 });
+  folha.escrever(extensao, X + 12 + (larguraIcone - rotulo) / 2, topoIcone - 17, 5, negrito, COR.marca);
+
+  const xTexto = X + 12 + larguraIcone + 12;
+  const larguraId = seloEtapa(folha, item.id, xTexto, topo - 8);
+  folha.escrever(
+    truncar(item.descricao, regular, 8, DIREITA - 12 - xTexto - larguraId - 8),
+    xTexto + larguraId + 8,
+    baseCentrada(topo - 15, 8),
+    8,
+    regular,
+    COR.texto,
+  );
+  folha.escrever(
+    truncar(
+      `Vídeo ${item.numero}  ·  ${midia.nomeOriginal ?? `video.${extensao.toLowerCase()}`}  ·  ${formatarBytes(midia.tamanho)}  ·  ${
+        arquivoVideos ? `segue no arquivo ${arquivoVideos}` : 'não incluído neste PDF'
+      }`,
+      regular,
+      7.5,
+      DIREITA - 12 - xTexto,
+    ),
+    xTexto,
+    baseCentrada(topo - 32, 7.5),
+    7.5,
+    seminegrito,
+    COR.suave,
+  );
+  folha.y -= ALTURA_ANEXO + FOTO_VAO;
+}
+
 /* ----------------------------------------------------------------------- */
 /* Documento                                                                */
 /* ----------------------------------------------------------------------- */
@@ -1743,8 +1832,10 @@ export interface OpcoesPdf {
   incluirFotos: boolean;
   /** Título do documento: o tipo de verificação ou o nome do checklist. */
   titulo: string;
-  /** ZIP que leva as fotos quando elas não vão embutidas. */
+  /** ZIP que leva as fotos (e os vídeos) quando elas não vão embutidas. */
   arquivoFotos?: string;
+  /** ZIP que leva só os vídeos, quando as fotos vão embutidas e há vídeo. */
+  arquivoVideos?: string;
   /** Família tipográfica do documento. Sem ela, o PDF sai em Helvetica. */
   fontes?: BytesFontes;
 }
@@ -1779,7 +1870,7 @@ export async function gerarPdf(dossie: Dossie, opcoes: OpcoesPdf): Promise<Blob>
   for (const { tag, formulario } of blocos) {
     folha.contexto = `${contexto} · ${tag.nome}`;
     desenharChecklist(folha, tag, formulario);
-    if (opcoes.incluirFotos) await desenharFotos(folha, tag, formulario);
+    if (opcoes.incluirFotos) await desenharFotos(folha, tag, formulario, opcoes.arquivoVideos);
   }
 
   rodape(

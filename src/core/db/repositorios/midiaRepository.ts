@@ -1,3 +1,5 @@
+import { ehMimeDeVideo } from '../../../../compartilhado/midias';
+import type { MapaMidias } from '../../../../compartilhado/progresso';
 import { db } from '../db';
 import type { Midia } from '../tipos';
 
@@ -28,18 +30,20 @@ export const MidiaRepository = {
   },
 
   /**
-   * Contagem de mídias por etapa. Percorre apenas as chaves do índice
-   * composto: os blobs não são carregados, o que mantém o cálculo de
-   * progresso rápido mesmo com centenas de fotos gravadas.
+   * Contagem de arquivos e vídeos por etapa. Percorre apenas as chaves do
+   * índice composto: os arquivos não são carregados, o que mantém o cálculo de
+   * progresso rápido mesmo com centenas de fotos e vídeos gravados.
    */
-  async mapaContagem(preenchimentoId: number): Promise<Record<string, number>> {
-    const mapa: Record<string, number> = {};
+  async mapaContagem(preenchimentoId: number): Promise<MapaMidias> {
+    const mapa: MapaMidias = {};
     await db.midias
-      .where('[preenchimentoId+etapaId]')
-      .between([preenchimentoId, ''], [preenchimentoId, '\uffff'])
+      .where('[preenchimentoId+etapaId+mime]')
+      .between([preenchimentoId, '', ''], [preenchimentoId, '\uffff', '\uffff'])
       .eachKey((chave) => {
-        const etapaId = (chave as unknown as [number, string])[1];
-        mapa[etapaId] = (mapa[etapaId] ?? 0) + 1;
+        const [, etapaId, mime] = chave as unknown as [number, string, string];
+        const atual = (mapa[etapaId] ??= { arquivos: 0, videos: 0 });
+        atual.arquivos += 1;
+        if (ehMimeDeVideo(mime)) atual.videos += 1;
       });
     return mapa;
   },
