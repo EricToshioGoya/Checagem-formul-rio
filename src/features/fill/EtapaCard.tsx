@@ -111,10 +111,15 @@ export function EtapaCard({
           </ul>
         ) : null}
 
-        {etapa.fotoObrigatoria ? (
+        {etapa.fotoObrigatoria || etapa.videoObrigatorio ? (
           <p className="text-sm font-semibold text-abb-red">
-            Evidência obrigatória: anexe pelo menos um arquivo para concluir esta
-            etapa.
+            Evidência obrigatória: anexe pelo menos{' '}
+            {etapa.fotoObrigatoria && etapa.videoObrigatorio
+              ? 'uma foto e um vídeo'
+              : etapa.videoObrigatorio
+                ? 'um vídeo'
+                : 'uma foto'}{' '}
+            para concluir esta etapa.
           </p>
         ) : null}
 

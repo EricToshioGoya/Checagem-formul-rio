@@ -1,4 +1,5 @@
 import { UID } from './midias';
+import { ehMimeDeVideo, MIMES_VIDEO, TAMANHO_MAXIMO_VIDEO } from '../../compartilhado/midias';
 import { PADRAO_ID_TIPO } from '../../compartilhado/tiposChecklist';
 import { z } from 'zod';
 
@@ -176,11 +177,26 @@ export const prazoAcessoSchema = z.object({
 
 const uidSchema = z.string().regex(UID, 'Identificador inválido.');
 
-/** Tipos de arquivo que o aparelho grava: foto comprimida em JPEG e anexo em PDF. */
-export const MIMES_MIDIA = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'] as const;
+/** Tipos de arquivo que o aparelho grava: foto comprimida em JPEG, anexo em PDF e vídeo. */
+export const MIMES_MIDIA = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+  ...MIMES_VIDEO,
+] as const;
 
 /** 25 MB: um anexo PDF de laudo cabe; uma foto comprimida fica bem abaixo. */
 export const TAMANHO_MAXIMO_MIDIA = 25 * 1024 * 1024;
+
+/** Limite do arquivo pelo tipo: o vídeo tem o seu, maior. */
+export function tamanhoMaximoDe(mime: string): number {
+  return ehMimeDeVideo(mime) ? TAMANHO_MAXIMO_VIDEO : TAMANHO_MAXIMO_MIDIA;
+}
+
+/** O tamanho declarado de uma mídia cabe no limite do tipo dela. */
+const dentroDoLimite = (m: { mime: string; tamanho: number }) => m.tamanho <= tamanhoMaximoDe(m.mime);
+const MENSAGEM_LIMITE = { message: 'Arquivo grande demais para o tipo.', path: ['tamanho'] };
 
 const textoCurto = z.string().max(300);
 
@@ -235,11 +251,11 @@ export const documentoProjetoSchema = z.object({
         mime: z.enum(MIMES_MIDIA),
         largura: z.number(),
         altura: z.number(),
-        tamanho: z.number().int().min(0).max(TAMANHO_MAXIMO_MIDIA),
+        tamanho: z.number().int().min(0).max(TAMANHO_MAXIMO_VIDEO),
         nomeOriginal: textoCurto.optional(),
         criadoEm: z.number(),
         ordem: z.number().int(),
-      }),
+      }).refine(dentroDoLimite, MENSAGEM_LIMITE),
     )
     .max(50_000),
 });
@@ -288,11 +304,11 @@ export const envioCertificacaoSchema = z.object({
         mime: z.enum(MIMES_MIDIA),
         largura: z.number(),
         altura: z.number(),
-        tamanho: z.number().int().min(0).max(TAMANHO_MAXIMO_MIDIA),
+        tamanho: z.number().int().min(0).max(TAMANHO_MAXIMO_VIDEO),
         nomeOriginal: textoCurto.optional(),
         criadoEm: z.number(),
         ordem: z.number().int(),
-      }),
+      }).refine(dentroDoLimite, MENSAGEM_LIMITE),
     )
     .max(2000),
 });

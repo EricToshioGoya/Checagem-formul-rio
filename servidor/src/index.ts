@@ -23,6 +23,7 @@ import { faxinarMidias } from './midias';
 import { ErroHttp, RespostaArquivo, rotas as rotasBase, type Contexto } from './rotas';
 import { rotasGestao } from './rotasGestao';
 import { rotasSync } from './rotasSync';
+import { TAMANHO_MAXIMO_VIDEO } from '../../compartilhado/midias';
 import { rotasApoio, TAMANHO_MAXIMO_APOIO } from './rotasApoio';
 import { rotasCertificacoes } from './certificacoes';
 import { rotasPdfs, TAMANHO_MAXIMO_PDF_EMITIDO } from './rotasPdfs';
@@ -51,10 +52,10 @@ const rotas = {
  * umas cem etapas, gravar falhava — e a tela dizia "sem conexão".
  */
 const LIMITE_JSON = 1024 * 1024;
-/** Rotas com limite próprio: o projeto sincronizado e o arquivo de uma foto ou de um PDF. */
+/** Rotas com limite próprio: o projeto sincronizado e o arquivo de uma foto, PDF ou vídeo. */
 const LIMITES: Record<string, number> = {
   'PUT /api/sync/projetos/:uid': 8 * 1024 * 1024,
-  'PUT /api/sync/midias/:uid': 26 * 1024 * 1024,
+  'PUT /api/sync/midias/:uid': TAMANHO_MAXIMO_VIDEO + 1024,
   'PUT /api/admin/apoio/:uid': TAMANHO_MAXIMO_APOIO + 1024,
   'PUT /api/pdfs/:uid': TAMANHO_MAXIMO_PDF_EMITIDO + 1024,
 };

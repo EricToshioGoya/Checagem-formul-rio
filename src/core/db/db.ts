@@ -155,6 +155,13 @@ class BancoVerificacao extends Dexie {
       pdfsPendentes: '++id, &uid, usuarioId, criadoEm',
     });
 
+    // v11: o vídeo entra nas etapas de foto. A contagem por etapa precisa saber
+    // quantos arquivos são vídeo ("Vídeo obrigatório") sem abrir os arquivos:
+    // o tipo passa a fazer parte de um índice.
+    this.version(11).stores({
+      midias: '++id, preenchimentoId, etapaId, [preenchimentoId+etapaId], uid, [preenchimentoId+etapaId+mime]',
+    });
+
     // Todo projeto, TAG e mídia novo nasce com `uid`, venha de onde vier:
     // tela, importação de .zip ou a própria sincronização.
     this.solicitacoes.hook('creating', (_chave, solicitacao) => {

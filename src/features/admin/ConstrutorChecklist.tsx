@@ -3,6 +3,7 @@ import {
   DESCRICOES_TIPO_RESPOSTA,
   codigoDe,
   ROTULOS_TIPO_RESPOSTA,
+  TIPOS_COM_FOTO,
   novaEtapa,
   novaSecao,
   tiposResposta,
@@ -71,7 +72,7 @@ const campoSelect =
  *
  * É aqui que o checklist ganha forma: as seções (S1, S2…), as verificações de
  * cada uma (S1.1, S1.2…) e, para cada verificação, o que o montador terá de
- * fazer — só conferir, conferir e fotografar, medir um valor, escolher entre
+ * fazer — só conferir, conferir e anexar foto ou vídeo, medir um valor, escolher entre
  * opções. O que se grava vai para o servidor e vale para todos os montadores
  * aprovados naquele painel.
  *
@@ -539,11 +540,12 @@ export function ConstrutorChecklist({
                         value={etapa.tipoResposta}
                         onChange={(e) => {
                           const tipoResposta = e.target.value as TipoResposta;
+                          // A exigência de foto e de vídeo só existe nas etapas de foto e vídeo.
+                          const comMidia = TIPOS_COM_FOTO.includes(tipoResposta);
                           alterarEtapa(secao.id, etapa.id, {
                             tipoResposta,
-                            // A exigência de foto só existe em "marcar e fotografar".
-                            fotoObrigatoria:
-                              tipoResposta === 'check_com_foto' ? etapa.fotoObrigatoria : false,
+                            fotoObrigatoria: comMidia ? etapa.fotoObrigatoria : false,
+                            videoObrigatorio: comMidia ? etapa.videoObrigatorio : false,
                           });
                         }}
                       >
@@ -560,26 +562,49 @@ export function ConstrutorChecklist({
                       </p>
                     </div>
 
-                    {etapa.tipoResposta === 'check_com_foto' ? (
-                      <label className="flex items-start gap-2 text-base">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5 size-5 shrink-0 accent-abb-red"
-                          checked={etapa.fotoObrigatoria === true}
-                          onChange={(e) =>
-                            alterarEtapa(secao.id, etapa.id, {
-                              fotoObrigatoria: e.target.checked,
-                            })
-                          }
-                        />
-                        <span>
-                          Foto obrigatória
-                          <span className="block text-sm text-abb-gray">
-                            Marcada, a etapa só conta como respondida com pelo menos
-                            uma foto. Desmarcada, basta marcar &ldquo;verificado&rdquo;.
+                    {TIPOS_COM_FOTO.includes(etapa.tipoResposta) ? (
+                      <>
+                        <label className="flex items-start gap-2 text-base">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 size-5 shrink-0 accent-abb-red"
+                            checked={etapa.fotoObrigatoria === true}
+                            onChange={(e) =>
+                              alterarEtapa(secao.id, etapa.id, {
+                                fotoObrigatoria: e.target.checked,
+                              })
+                            }
+                          />
+                          <span>
+                            Foto obrigatória
+                            <span className="block text-sm text-abb-gray">
+                              {etapa.tipoResposta === 'check_com_foto'
+                                ? 'Marcada, a etapa só conta como respondida com pelo menos uma foto. Desmarcada, basta marcar “verificado”.'
+                                : 'Marcada, a etapa só conta como respondida com pelo menos uma foto. Desmarcada, basta uma foto ou um vídeo.'}
+                            </span>
                           </span>
-                        </span>
-                      </label>
+                        </label>
+                        <label className="flex items-start gap-2 text-base">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 size-5 shrink-0 accent-abb-red"
+                            checked={etapa.videoObrigatorio === true}
+                            onChange={(e) =>
+                              alterarEtapa(secao.id, etapa.id, {
+                                videoObrigatorio: e.target.checked,
+                              })
+                            }
+                          />
+                          <span>
+                            Vídeo obrigatório
+                            <span className="block text-sm text-abb-gray">
+                              {etapa.tipoResposta === 'check_com_foto'
+                                ? 'Marcada, a etapa só conta como respondida com pelo menos um vídeo. Desmarcada, basta marcar “verificado”.'
+                                : 'Marcada, a etapa só conta como respondida com pelo menos um vídeo. Desmarcada, basta uma foto ou um vídeo.'}
+                            </span>
+                          </span>
+                        </label>
+                      </>
                     ) : null}
 
                     {etapa.tipoResposta === 'selecao' ? (

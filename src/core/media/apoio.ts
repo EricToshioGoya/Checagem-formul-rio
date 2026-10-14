@@ -31,7 +31,7 @@ const TIPOS_VIDEO: Record<string, string> = {
 const TIPOS_VIDEO_ACEITOS = new Set(Object.values(TIPOS_VIDEO));
 
 /** Tipo MIME do vídeo; alguns navegadores deixam o `type` vazio para .mov/.mp4. */
-function mimeDoVideo(arquivo: File): string | null {
+export function mimeDoVideo(arquivo: File): string | null {
   if (TIPOS_VIDEO_ACEITOS.has(arquivo.type)) return arquivo.type;
   const extensao = arquivo.name.split('.').pop()?.toLowerCase() ?? '';
   return TIPOS_VIDEO[extensao] ?? null;

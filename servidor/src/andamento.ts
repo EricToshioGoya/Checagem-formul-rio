@@ -1,4 +1,5 @@
 import {
+  contarMidias,
   etapaRespondida,
   etapaVisivel,
   checklistsDaTag,
@@ -77,12 +78,9 @@ export function detalheDoDocumento(
       const respostas = (documento.preenchimentos.find(
         (p) => p.tagUid === tag.uid && p.formId === definicao.id,
       )?.respostas ?? {}) as MapaRespostas;
-      const fotos: Record<string, number> = {};
-      for (const m of documento.midias) {
-        if (m.tagUid === tag.uid && m.formId === definicao.id) {
-          fotos[m.etapaId] = (fotos[m.etapaId] ?? 0) + 1;
-        }
-      }
+      const midias = contarMidias(
+        documento.midias.filter((m) => m.tagUid === tag.uid && m.formId === definicao.id),
+      );
 
       const secoes = definicao.secoes
         .map((secao): SecaoDoAndamento => {
@@ -92,8 +90,8 @@ export function detalheDoDocumento(
               id: e.id,
               codigo: codigoDe(e),
               descricao: e.descricao,
-              respondida: etapaRespondida(e, respostas[e.id], fotos[e.id] ?? 0),
-              fotos: fotos[e.id] ?? 0,
+              respondida: etapaRespondida(e, respostas[e.id], midias[e.id]),
+              fotos: midias[e.id]?.arquivos ?? 0,
             }));
           return {
             id: secao.id,

@@ -64,7 +64,7 @@ chega para quem clicou, e a lista de avisos mostra o erro, se houver.
 |---|---|
 | Fabricante e cliente final no cadastro do projeto | **Painéis → SEN Plus → Abrir checagens → Novo projeto**. Marque um checklist numa TAG: os dois campos aparecem no card do projeto, e não mais na TAG. |
 | Barra de progresso | Abra um checklist e responda etapas: a barra do topo conta. |
-| Foto obrigatória por etapa | **Administração → Painéis e checklists → Editar checklist** → abra uma seção → numa etapa "Conferir e fotografar", marque **Foto obrigatória**. Volte à lista de painéis (o aparelho baixa o checklist novo) e abra o preenchimento: marcada sem foto, a etapa não conta; com a foto, conta. |
+| Foto obrigatória por etapa | **Administração → Painéis e checklists → Editar checklist** → abra uma seção → numa etapa "Conferir e foto ou vídeo", marque **Foto obrigatória** (ou **Vídeo obrigatório**). Volte à lista de painéis (o aparelho baixa o checklist novo) e abra o preenchimento: marcada sem foto, a etapa não conta; com a foto, conta. |
 | PDF de um checklist | Botão **Gerar PDF** no topo da tela de preenchimento. |
 | PDF do projeto inteiro | **Gerar PDF** na tela do projeto: um PDF por tipo, com todas as TAGs. |
 | Certificação (System Pro E Energy, Power, SAFR) | **Abrir solicitações → Nova solicitação → Preencher checklist**, e **Gerar PDF do checklist** na solicitação. |

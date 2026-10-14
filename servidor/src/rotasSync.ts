@@ -1,10 +1,11 @@
 import { existsSync } from 'node:fs';
+import { TAMANHO_MAXIMO_VIDEO } from '../../compartilhado/midias';
 import { uidProjetoLegado } from '../../compartilhado/projeto';
 import { banco, emTransacao } from './banco';
 import {
   envioProjetoSchema,
   primeiroErro,
-  TAMANHO_MAXIMO_MIDIA,
+  tamanhoMaximoDe,
   type DocumentoProjeto,
 } from './esquemas';
 import { andamentoDoDocumento } from './andamento';
@@ -202,7 +203,7 @@ export const rotasSync: Record<string, Manipulador> = {
     if (!uidValido(uid)) throw new ErroHttp(400, 'Identificador de mídia inválido.');
     const dados = ctx.corpoBruto;
     if (!dados?.length) throw new ErroHttp(400, 'Arquivo vazio.');
-    if (dados.length > TAMANHO_MAXIMO_MIDIA) throw new ErroHttp(413, 'Arquivo grande demais.');
+    if (dados.length > TAMANHO_MAXIMO_VIDEO) throw new ErroHttp(413, 'Arquivo grande demais.');
 
     // Só entra arquivo que algum projeto da conta cita: o servidor não vira
     // depósito de qualquer coisa que alguém resolva mandar. O aparelho diz de
@@ -250,6 +251,8 @@ export const rotasSync: Record<string, Manipulador> = {
 
     const tipo = (ctx.tipoConteudo ?? '').split(';')[0].trim().toLowerCase();
     if (tipo !== dono.mime) throw new ErroHttp(400, 'O tipo do arquivo não é o registrado no projeto.');
+    // Foto e PDF têm o limite de sempre; só o vídeo usa o maior.
+    if (dados.length > tamanhoMaximoDe(dono.mime)) throw new ErroHttp(413, 'Arquivo grande demais.');
     const registrada = banco.prepare('SELECT usuarioId FROM sync_midias WHERE uid = ?').get(uid) as
       | { usuarioId: number }
       | undefined;

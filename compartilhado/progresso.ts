@@ -1,4 +1,5 @@
 import type { DefinicaoFormulario, Etapa } from './formulario';
+import { ehMimeDeVideo } from './midias';
 
 /**
  * Respostas e andamento de um checklist. Fica aqui, e não só no aplicativo,
@@ -18,6 +19,37 @@ export interface Resposta {
 
 /** `etapaId` → resposta. Etapas não respondidas simplesmente não existem no mapa. */
 export type MapaRespostas = Record<string, Resposta>;
+
+/** Arquivos anexados a uma etapa: o total e, dentre eles, quantos são vídeo. */
+export interface ContagemMidias {
+  arquivos: number;
+  videos: number;
+}
+
+/** `etapaId` → arquivos anexados. Etapa sem arquivo não precisa constar. */
+export type MapaMidias = Record<string, ContagemMidias>;
+
+export const SEM_MIDIAS: ContagemMidias = Object.freeze({ arquivos: 0, videos: 0 });
+
+/** Conta, por etapa, os arquivos e os vídeos de uma lista de mídias. */
+export function contarMidias(midias: Iterable<{ etapaId: string; mime: string }>): MapaMidias {
+  const mapa: MapaMidias = {};
+  for (const m of midias) {
+    const atual = (mapa[m.etapaId] ??= { arquivos: 0, videos: 0 });
+    atual.arquivos += 1;
+    if (ehMimeDeVideo(m.mime)) atual.videos += 1;
+  }
+  return mapa;
+}
+
+/**
+ * A etapa tem a foto e o vídeo que exige. Nas etapas de foto e vídeo não há
+ * PDF, então o que não é vídeo é foto.
+ */
+function temMidiasExigidas(etapa: Etapa, midias: ContagemMidias): boolean {
+  const fotos = midias.arquivos - midias.videos;
+  return (!etapa.fotoObrigatoria || fotos > 0) && (!etapa.videoObrigatorio || midias.videos > 0);
+}
 
 export interface Progresso {
   total: number;
@@ -60,18 +92,17 @@ function gradePreenchida(valor: ValorGrade): boolean {
 export function etapaRespondida(
   etapa: Etapa,
   resposta: Resposta | undefined,
-  quantidadeFotos: number,
+  midias: ContagemMidias = SEM_MIDIAS,
 ): boolean {
   switch (etapa.tipoResposta) {
     case 'foto':
+      return midias.arquivos > 0 && temMidiasExigidas(etapa, midias);
     case 'anexo_pdf':
-      return quantidadeFotos > 0;
+      return midias.arquivos > 0;
     case 'check':
       return resposta?.valor === true;
     case 'check_com_foto':
-      return (
-        resposta?.valor === true && (!etapa.fotoObrigatoria || quantidadeFotos > 0)
-      );
+      return resposta?.valor === true && temMidiasExigidas(etapa, midias);
     case 'numero':
       return typeof resposta?.valor === 'number' && Number.isFinite(resposta.valor);
     case 'texto':
@@ -110,11 +141,11 @@ export function somarProgresso(partes: readonly Progresso[]): Progresso {
 export function calcularProgresso(
   definicao: DefinicaoFormulario,
   respostas: MapaRespostas,
-  fotosPorEtapa: Record<string, number> = {},
+  midiasPorEtapa: MapaMidias = {},
 ): Progresso {
   const etapas = etapasAtivas(definicao, respostas);
   const respondidas = etapas.filter((e) =>
-    etapaRespondida(e, respostas[e.id], fotosPorEtapa[e.id] ?? 0),
+    etapaRespondida(e, respostas[e.id], midiasPorEtapa[e.id]),
   ).length;
   return progressoDe(respondidas, etapas.length);
 }
@@ -122,10 +153,10 @@ export function calcularProgresso(
 export function idsPendentes(
   definicao: DefinicaoFormulario,
   respostas: MapaRespostas,
-  fotosPorEtapa: Record<string, number> = {},
+  midiasPorEtapa: MapaMidias = {},
 ): string[] {
   return etapasAtivas(definicao, respostas)
-    .filter((e) => !etapaRespondida(e, respostas[e.id], fotosPorEtapa[e.id] ?? 0))
+    .filter((e) => !etapaRespondida(e, respostas[e.id], midiasPorEtapa[e.id]))
     .map((e) => e.id);
 }
 

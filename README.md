@@ -512,11 +512,18 @@ declaradas no JSON e não mudam nada em quem não as usa:
   surgirem apenas quando o montador indica substituição (11.5.1 → 11.5.2 e
   11.5.3). O validador confere que a etapa apontada existe e oferece os valores
   esperados.
-- `fotoObrigatoria: true` — a etapa só conta como respondida com pelo menos um
-  arquivo anexado. É o que torna as evidências fotográficas exigidas pelo Anexo 2
-  bloqueantes para o envio. Cada checklist decide, etapa a etapa: no construtor
-  da administração, as etapas "Conferir e fotografar" têm a opção **Foto
-  obrigatória**. Desmarcada, basta marcar "verificado".
+- `fotoObrigatoria: true` / `videoObrigatorio: true` — a etapa só conta como
+  respondida com pelo menos uma foto / um vídeo anexado (as duas marcadas exigem
+  os dois). É o que torna as evidências exigidas pelo Anexo 2 bloqueantes para o
+  envio. Cada checklist decide, etapa a etapa: no construtor da administração,
+  as etapas "Conferir e foto ou vídeo" e "Somente foto ou vídeo" têm as opções
+  **Foto obrigatória** e **Vídeo obrigatório**. Desmarcadas, basta marcar
+  "verificado" (ou, em "Somente foto ou vídeo", anexar qualquer foto ou vídeo).
+- **Vídeo.** Nas etapas de foto e vídeo o montador grava ou anexa vídeos (MP4,
+  WebM ou MOV, até 50 MB cada, sem recompressão). Eles sincronizam com o
+  servidor como as fotos. Vídeo não cabe num PDF: com as fotos embutidas, o PDF
+  lista cada vídeo e eles seguem num ZIP `…-VIDEOS.zip`; com as fotos à parte,
+  vão no mesmo ZIP das fotos.
 
 ---
 
@@ -614,7 +621,7 @@ administrador. As seções principais:
   conteúdo das etapas. Os checklists são gravados no servidor, e todo montador
   aprovado naquele painel recebe a mesma versão. Em cada etapa a
   administração escolhe a **resposta exigida do montador** (só conferir,
-  conferir e fotografar, só foto, valor, texto, opções, PDF, grade) — a tela
+  conferir e foto ou vídeo, somente foto ou vídeo, valor, texto, opções, PDF, grade) — a tela
   diz o que cada opção exige — e pode enviar uma **imagem de apoio**
   (opcional). A imagem é comprimida no aparelho, gravada no servidor
   (`apoio_midias`, mesma pasta e mesmo backup das fotos) e referenciada no

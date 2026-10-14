@@ -47,6 +47,7 @@ function ConfirmacaoComFoto(props: PropsCampo) {
       <AreaFotos
         preenchimentoId={props.preenchimentoId}
         etapaId={props.etapa.id}
+        aceitaVideo
         onAlterou={props.onFotosAlteradas}
       />
     </div>
@@ -58,6 +59,7 @@ function SomenteFotos(props: PropsCampo) {
     <AreaFotos
       preenchimentoId={props.preenchimentoId}
       etapaId={props.etapa.id}
+      aceitaVideo
       onAlterou={props.onFotosAlteradas}
     />
   );

@@ -25,7 +25,12 @@ export function EscolhaFotos({
             checked={incluirFotos}
             onChange={() => onChange(true)}
           />
-          <span className="text-base">Fotos incorporadas ao PDF</span>
+          <span className="text-base">
+            Fotos incorporadas ao PDF
+            <span className="block text-sm text-abb-gray">
+              Vídeos não cabem no PDF: se houver, seguem num ZIP à parte.
+            </span>
+          </span>
         </label>
         <label className={opcao}>
           <input
@@ -35,7 +40,7 @@ export function EscolhaFotos({
             checked={!incluirFotos}
             onChange={() => onChange(false)}
           />
-          <span className="text-base">PDF sem fotos + arquivo ZIP separado com as imagens</span>
+          <span className="text-base">PDF sem fotos + arquivo ZIP separado com as fotos e os vídeos</span>
         </label>
       </div>
     </fieldset>

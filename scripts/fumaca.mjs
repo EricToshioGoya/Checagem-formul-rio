@@ -128,8 +128,8 @@ try {
   console.log('\n== Certificação (System Pro E Energy) ==');
   await p.goto(`${BASE}/#/paineis`, { waitUntil: 'networkidle' });
   const energy = p.locator('li', { hasText: 'System Pro E Energy' });
-  await energy.getByRole('button', { name: 'Abrir solicitações' }).waitFor();
-  await energy.getByRole('button', { name: 'Abrir solicitações' }).click();
+  await energy.getByRole('button', { name: 'Solicitações de certificado' }).waitFor();
+  await energy.getByRole('button', { name: 'Solicitações de certificado' }).click();
   await p.getByRole('button', { name: 'Nova solicitação' }).click();
   checa(
     'o operador vem da conta',

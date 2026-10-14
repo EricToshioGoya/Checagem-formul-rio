@@ -26,8 +26,8 @@ export type TipoResposta = (typeof tiposResposta)[number];
 /** Como cada tipo é oferecido a quem monta o checklist. */
 export const ROTULOS_TIPO_RESPOSTA: Record<TipoResposta, string> = {
   check: 'Apenas conferir',
-  check_com_foto: 'Conferir e fotografar',
-  foto: 'Somente foto',
+  check_com_foto: 'Conferir e foto ou vídeo',
+  foto: 'Somente foto ou vídeo',
   numero: 'Valor numérico',
   texto: 'Texto livre',
   selecao: 'Escolha entre opções',
@@ -39,8 +39,8 @@ export const ROTULOS_TIPO_RESPOSTA: Record<TipoResposta, string> = {
 export const DESCRICOES_TIPO_RESPOSTA: Record<TipoResposta, string> = {
   check: 'O montador só marca "verificado". Sem foto.',
   check_com_foto:
-    'O montador marca "verificado" e pode anexar fotos. Com "Foto obrigatória", a etapa só conta com pelo menos uma foto.',
-  foto: 'O montador só envia fotos — pelo menos uma. Sem a foto, a etapa fica pendente.',
+    'O montador marca "verificado" e pode anexar fotos e vídeos. Com "Foto obrigatória" ou "Vídeo obrigatório", a etapa só conta com pelo menos um arquivo de cada exigido.',
+  foto: 'O montador só envia fotos ou vídeos — pelo menos um arquivo. Sem ele, a etapa fica pendente.',
   numero: 'O montador digita o valor medido, na unidade abaixo.',
   texto: 'O montador escreve a resposta.',
   selecao: 'O montador escolhe uma das opções abaixo.',
@@ -48,7 +48,7 @@ export const DESCRICOES_TIPO_RESPOSTA: Record<TipoResposta, string> = {
   grade_numerica: 'O montador preenche uma tabela de medições.',
 };
 
-/** Tipos em que o montador anexa fotos na etapa. */
+/** Tipos em que o montador anexa fotos e vídeos na etapa. */
 export const TIPOS_COM_FOTO: readonly TipoResposta[] = ['check_com_foto', 'foto'];
 
 /**
@@ -150,10 +150,12 @@ export const etapaSchema = z.object({
   grade: gradeSchema.optional(),
   exibirSe: condicaoSchema.optional(),
   /**
-   * Exige pelo menos um arquivo anexado para a etapa contar como respondida.
+   * Exige pelo menos uma foto anexada para a etapa contar como respondida.
    * Ausente, vale o comportamento original: a marcação basta.
    */
   fotoObrigatoria: z.boolean().optional().default(false),
+  /** Exige pelo menos um vídeo anexado, do mesmo jeito que `fotoObrigatoria`. */
+  videoObrigatorio: z.boolean().optional().default(false),
   midiaApoio: z.array(midiaApoioSchema).optional().default([]),
   tabelaReferencia: tabelaReferenciaSchema.optional(),
   referencia: z.string().optional(),
@@ -275,6 +277,7 @@ export function novaEtapa(secao: Secao): Etapa {
     observacao: true,
     ativa: true,
     fotoObrigatoria: false,
+    videoObrigatorio: false,
     midiaApoio: [],
   };
 }
