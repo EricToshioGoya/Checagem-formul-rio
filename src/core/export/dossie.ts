@@ -42,6 +42,8 @@ export interface FormularioDoDossie {
 }
 
 export interface TagDoDossie {
+  /** `uid` da TAG do projeto; ausente na solicitação de certificação. */
+  uid?: string;
   /** A TAG do projeto, ou o painel/quadro da solicitação de certificação. */
   nome: string;
   formularios: FormularioDoDossie[];
@@ -241,7 +243,7 @@ export async function montarDossie(
       const preenchimento = await PreenchimentoRepository.obter(tag.id!, entrada.id);
       formularios.push(await formularioDoDossie(definicao, preenchimento, projeto.operador));
     }
-    resultado.push({ nome: tag.nome, formularios });
+    resultado.push({ uid: tag.uid, nome: tag.nome, formularios });
   }
 
   // Fabricante e cliente final valem para o projeto inteiro: vão para a capa.

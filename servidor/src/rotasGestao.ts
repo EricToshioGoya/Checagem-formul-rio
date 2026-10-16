@@ -2,7 +2,13 @@ import { percentualDe } from '../../compartilhado/progresso';
 import { banco, statusEfetivo, type StatusSolicitacao, type Usuario } from './banco';
 import { registrar, type TipoAlvo } from './auditoria';
 import { avisar, processarFila, situacaoAvisos } from './avisos';
-import { configuracaoBackup, fazerBackup, listarBackups } from './backup';
+import {
+  configuracaoBackup,
+  fazerBackup,
+  listarBackups,
+  situacaoArmazenamento,
+  verificarIntegridade,
+} from './backup';
 import { desativarConta, excluirConta, paineisComoResponsavel, reativarConta } from './contas';
 import { detalheDoDocumento } from './andamento';
 import type { DocumentoProjeto } from './esquemas';
@@ -31,6 +37,7 @@ const FILTROS_HISTORICO: Record<string, TipoAlvo[]> = {
   acessos: ['acesso'],
   contas: ['conta', 'administrador'],
   certificados: ['certificado'],
+  verificacoes: ['verificacao'],
   sistema: ['sistema'],
 };
 
@@ -208,8 +215,23 @@ export const rotasGestao: Record<string, Manipulador> = {
     return {
       avisos: situacaoAvisos(),
       backup: { ...configuracaoBackup(), recentes: listarBackups().slice(0, 8) },
+      armazenamento: situacaoArmazenamento(),
       publicacao: verificarPublicacao(),
     };
+  },
+
+  /** Confere agora todos os documentos guardados e repara o que puder. */
+  'POST /api/admin/sistema/verificacao': async (ctx) => {
+    const eu = exigirAdmin(ctx);
+    const resultado = await verificarIntegridade();
+    registrar({
+      autor: eu,
+      acao: 'verificou a integridade dos documentos',
+      alvoTipo: 'sistema',
+      alvo: 'Documentos',
+      detalhe: `${resultado.conferidos} de ${resultado.documentos} íntegro(s); ${resultado.reparados} reparo(s); ${resultado.semReparo} sem reparo`,
+    });
+    return { verificacao: resultado, armazenamento: situacaoArmazenamento() };
   },
 
   'POST /api/admin/sistema/backup': (ctx) => {

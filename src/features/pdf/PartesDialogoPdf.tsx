@@ -52,11 +52,19 @@ export type EstadoRegistro = SituacaoRegistro | null | undefined;
 
 function textoRegistro(registro: SituacaoRegistro | null): string {
   if (registro === null) return 'Guardando no arquivo da ABB…';
-  if (registro.recusas.length) return `O arquivo da ABB recusou o PDF: ${registro.recusas[0]}`;
-  if (registro.pendentes) {
-    return `Sem conexão com o servidor: ${plural(registro.pendentes, 'PDF será guardado', 'PDFs serão guardados')} no arquivo da ABB na próxima sincronização.`;
+  if (registro.recusas.length) {
+    return registro.recusas[0].startsWith('O PDF foi guardado')
+      ? registro.recusas[0]
+      : `O arquivo da ABB recusou o PDF: ${registro.recusas[0]}`;
   }
-  return 'Guardado no arquivo da ABB.';
+  if (registro.pendentes) {
+    return registro.paraAprovacao
+      ? `Sem conexão com o servidor: ${plural(registro.pendentes, 'PDF será guardado', 'PDFs serão guardados')} no arquivo da ABB e ${registro.pendentes === 1 ? 'enviado' : 'enviados'} para aprovação na próxima sincronização.`
+      : `Sem conexão com o servidor: ${plural(registro.pendentes, 'PDF será guardado', 'PDFs serão guardados')} no arquivo da ABB na próxima sincronização.`;
+  }
+  return registro.paraAprovacao
+    ? 'Guardado no arquivo da ABB e enviado à administração para aprovação. Você será avisado da decisão na tela inicial.'
+    : 'Guardado no arquivo da ABB.';
 }
 
 export function ArquivosGerados({ nomes, registro }: { nomes: string[]; registro?: EstadoRegistro }) {
@@ -70,7 +78,9 @@ export function ArquivosGerados({ nomes, registro }: { nomes: string[]; registro
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-sm text-abb-gray">Envie o PDF por e-mail ao inspetor da ABB.</p>
+      {registro?.paraAprovacao ? null : (
+        <p className="mt-2 text-sm text-abb-gray">Envie o PDF por e-mail ao inspetor da ABB.</p>
+      )}
       {registro !== undefined ? (
         <p className="mt-1 text-sm text-abb-gray" role="status">
           {textoRegistro(registro)}

@@ -10,6 +10,7 @@ import { carregarFormulario } from '../../core/forms/catalogo';
 import { obterPainel } from '../../core/paineis/catalogo';
 import type { DefinicaoFormulario, ValoresCabecalho } from '../../core/forms/tipos';
 import type { Preenchimento } from '../../core/db/tipos';
+import { correcoesDoChecklist } from '../../core/aprovacao/decisoes';
 
 /**
  * Tudo que a tela de preenchimento precisa, resolvido antes de montar.
@@ -29,6 +30,11 @@ export interface ContextoPreenchimento {
   somenteLeitura: boolean;
   /** Motivo do bloqueio, exibido no topo quando `somenteLeitura`. */
   avisoBloqueio?: string;
+  /**
+   * Etapas que a administração marcou como não conformes (id da etapa, ou
+   * `__cabecalho__` para os dados do painel) → motivo.
+   */
+  correcoes: Record<string, string>;
   marcarAlteracao: () => Promise<void>;
 }
 
@@ -74,6 +80,7 @@ export async function contextoDoProjeto(
       voltarPara: `/projetos/${projetoId}`,
       rotuloVoltar: 'Voltar ao projeto',
       somenteLeitura: false,
+      correcoes: correcoesDoChecklist(usuarioId, projeto.uid, tag.uid, definicao.id),
       marcarAlteracao: () => ProjetoRepository.marcarAlteracao(projeto.id!),
     },
   };
@@ -115,6 +122,10 @@ export async function contextoDaSolicitacao(
       avisoBloqueio: editavel
         ? undefined
         : `Solicitação em “${ROTULO_ESTADO[solicitacao.estado]}”. O checklist está travado para conferência.`,
+      correcoes:
+        solicitacao.estado === 'devolvida'
+          ? Object.fromEntries((solicitacao.itens ?? []).map((i) => [i.etapaId, i.motivo]))
+          : {},
       marcarAlteracao: async () => {
         // Relê antes de gravar: a tela pode estar aberta há tempo, e os dados
         // da solicitação mudaram em outra tela.

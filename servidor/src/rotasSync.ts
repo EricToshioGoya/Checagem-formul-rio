@@ -261,7 +261,8 @@ export const rotasSync: Record<string, Manipulador> = {
     // sobrescreveria o arquivo.
     if (
       banco.prepare('SELECT 1 FROM apoio_midias WHERE uid = ?').get(uid) ??
-      banco.prepare('SELECT 1 FROM pdfs_emitidos WHERE uid = ?').get(uid)
+      banco.prepare('SELECT 1 FROM pdfs_emitidos WHERE uid = ?').get(uid) ??
+      banco.prepare('SELECT 1 FROM certificados_anexos WHERE uid = ?').get(uid)
     ) {
       throw new ErroHttp(409, 'Identificador de mídia já usado.');
     }

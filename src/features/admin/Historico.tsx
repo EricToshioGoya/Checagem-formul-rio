@@ -6,13 +6,14 @@ import { Paginacao } from '../../shared/componentes/Paginacao';
 import { dataHoraBr } from '../../shared/utils/texto';
 import { sessaoAdminAcabou } from './sessaoAdmin';
 
-type Tipo = 'todos' | 'acessos' | 'paineis' | 'contas' | 'certificados' | 'sistema';
+type Tipo = 'todos' | 'acessos' | 'paineis' | 'contas' | 'verificacoes' | 'certificados' | 'sistema';
 
 const TIPOS: Array<{ id: Tipo; rotulo: string }> = [
   { id: 'todos', rotulo: 'Tudo' },
   { id: 'acessos', rotulo: 'Acessos' },
   { id: 'paineis', rotulo: 'Painéis e checklists' },
   { id: 'contas', rotulo: 'Contas e administradores' },
+  { id: 'verificacoes', rotulo: 'Verificações' },
   { id: 'certificados', rotulo: 'Certificados' },
   { id: 'sistema', rotulo: 'Sistema' },
 ];

@@ -9,6 +9,7 @@ import type { TipoChecklistApi } from '../../../compartilhado/tiposChecklist';
 import { Botao } from '../../shared/componentes/Botao';
 import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
 import { dataHoraBr, duracaoCurta } from '../../shared/utils/texto';
+import { AlertasOperador } from '../aprovacao/AlertasOperador';
 
 const rotulos: Record<AcessoPainel, { texto: string; classe: string }> = {
   dono: { texto: 'Você é o responsável', classe: 'bg-abb-red text-white' },
@@ -140,6 +141,8 @@ export function Paineis() {
       ) : null}
 
       {erro ? <Erro detalhe={erro} /> : null}
+
+      <AlertasOperador />
 
       <ul className="space-y-3">
         {paineis?.map((p) => {

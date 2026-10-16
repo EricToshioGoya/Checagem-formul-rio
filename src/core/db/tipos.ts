@@ -1,4 +1,5 @@
 import type { TipoChecklist } from '../../../compartilhado/tiposChecklist';
+import type { DocumentoProjeto } from '../sync/sincronizacao';
 import type {
   DefinicaoFormulario,
   MapaRespostas,
@@ -163,6 +164,10 @@ export interface Solicitacao {
   dados: DadosSolicitacao;
   /** Apontamentos da última devolução, exibidos ao montador. */
   apontamentos?: string;
+  /** Etapas marcadas como não conformes na última devolução. */
+  itens?: ItemNaoConforme[];
+  /** Certificados anexados pela administração na aprovação. */
+  anexos?: AnexoCertificado[];
   historico: EventoSolicitacao[];
   /** Atribuído na aprovação e imutável a partir dali. */
   numeroCertificado?: string;
@@ -233,4 +238,46 @@ export interface PdfPendente {
   criadoEm: number;
   /** O servidor recusou o arquivo (ex.: grande demais); não se tenta de novo sozinho. */
   recusa?: string;
+  /**
+   * PDF do projeto (um tipo de verificação): depois de guardado, segue para a
+   * aprovação da administração com o retrato das respostas daquele tipo.
+   */
+  aprovacao?: AprovacaoPendente;
+  /** O PDF já está no arquivo do servidor; falta concluir a aprovação. */
+  pdfEnviado?: boolean;
+}
+
+/** Envio para aprovação à espera de conexão: o retrato tirado na geração do PDF. */
+export interface AprovacaoPendente {
+  /** Identidade do envio no servidor: reenviar depois de uma queda não duplica. */
+  uid: string;
+  painelId: number;
+  projetoUid: string;
+  /** Tipo de verificação do PDF. */
+  tipo: string;
+  /** Respostas, TAGs e lista das fotos deste tipo no momento da geração. */
+  documento: DocumentoProjeto;
+}
+
+/** Etapa marcada como não conforme pela administração. */
+export interface ItemNaoConforme {
+  tagUid: string | null;
+  tagNome: string;
+  formId: string;
+  formNome: string;
+  /** Id da etapa, ou `__cabecalho__` para os dados do painel. */
+  etapaId: string;
+  etapaCodigo: string;
+  etapaDescricao: string;
+  motivo: string;
+}
+
+/** Certificado anexado pela administração na aprovação de uma certificação. */
+export interface AnexoCertificado {
+  uid: string;
+  nomeArquivo: string;
+  mime: string;
+  tamanho: number;
+  anexadoEm: number;
+  anexadoPor: string;
 }

@@ -315,9 +315,77 @@ export const envioCertificacaoSchema = z.object({
 
 export type EnvioCertificacao = z.output<typeof envioCertificacaoSchema>;
 
-export const devolucaoSchema = z.object({
-  apontamentos: z.string().trim().min(1, 'Informe os apontamentos da devolução.').max(2000),
+// ------------------------------------------------- aprovação e devolução
+
+/**
+ * Etapa marcada como não conforme pela administração. `etapaId` é o id da
+ * etapa no checklist, ou `__cabecalho__` para os dados do painel. O nome da
+ * TAG e o texto da etapa são completados pelo servidor, a partir do envio.
+ */
+export const ID_CABECALHO = '__cabecalho__';
+
+export const itemNaoConformeSchema = z.object({
+  tagUid: uidSchema.optional(),
+  formId: textoCurto,
+  etapaId: z.string().min(1).max(200),
+  motivo: z
+    .string()
+    .trim()
+    .min(1, 'Descreva o problema de cada etapa marcada.')
+    .max(2000, 'Descrição longa demais.'),
 });
+
+export type ItemNaoConforme = z.output<typeof itemNaoConformeSchema>;
+
+const listaDeItens = z
+  .array(itemNaoConformeSchema)
+  .max(2000, 'Itens demais numa só decisão.')
+  .optional()
+  .default([]);
+
+const comentarioSchema = z.string().trim().max(4000, 'Comentário longo demais.').optional().default('');
+
+/** Devolução de uma certificação: etapas marcadas e/ou comentário geral. */
+export const devolucaoSchema = z
+  .object({
+    apontamentos: comentarioSchema,
+    itens: listaDeItens,
+    /** Versão que a administração analisou; outra versão no servidor recusa a decisão. */
+    versao: z.number().int().min(0).optional(),
+  })
+  .refine((d) => d.apontamentos.length > 0 || d.itens.length > 0, {
+    message: 'Marque ao menos uma etapa não conforme ou escreva um comentário.',
+  });
+
+/** Envio do PDF de um projeto (um tipo de verificação) para aprovação. */
+export const envioVerificacaoSchema = z.object({
+  uid: uidSchema,
+  pdfUid: uidSchema,
+  painelId: z.number().int().positive(),
+  projetoUid: uidSchema,
+  tipo: z.string().regex(PADRAO_ID_TIPO, 'Tipo de verificação inválido.'),
+  geradoEm: z.number().int().positive(),
+  documento: documentoProjetoSchema,
+});
+
+/** Fim do envio: as fotos que não existem mais no aparelho vão como ausentes. */
+export const conclusaoVerificacaoSchema = z.object({
+  ausentes: z.array(uidSchema).max(50_000).optional().default([]),
+});
+
+/** Decisão da administração sobre um envio de verificação. */
+export const decisaoVerificacaoSchema = z
+  .object({
+    decisao: z.enum(['aprovada', 'reprovada']),
+    comentario: comentarioSchema,
+    itens: listaDeItens,
+  })
+  .refine((d) => d.decisao === 'reprovada' || d.itens.length === 0, {
+    message: 'Um envio aprovado não pode ter etapas marcadas como não conformes.',
+  })
+  .refine((d) => d.decisao === 'aprovada' || d.comentario.length > 0 || d.itens.length > 0, {
+    message: 'Para reprovar, marque ao menos uma etapa não conforme ou escreva um comentário.',
+  });
 
 /** Primeira mensagem de erro, em texto que cabe na tela do montador. */
 export function primeiroErro(erro: z.ZodError): string {

@@ -16,6 +16,7 @@ import { NovoProjeto } from '../features/projects/NovoProjeto';
 import { ListaSolicitacoes } from '../features/solicitacoes/ListaSolicitacoes';
 import { NovaSolicitacao } from '../features/solicitacoes/NovaSolicitacao';
 import { DetalheSolicitacao } from '../features/solicitacoes/DetalheSolicitacao';
+import { CorrecaoVerificacao } from '../features/aprovacao/CorrecaoVerificacao';
 import { Preenchimento } from '../features/fill/Preenchimento';
 import { Admin } from '../features/admin/Admin';
 
@@ -57,6 +58,7 @@ export function App() {
                   element={<NovaSolicitacao />}
                 />
                 <Route path="/solicitacoes/:solicitacaoId" element={<DetalheSolicitacao />} />
+                <Route path="/correcoes/:uid" element={<CorrecaoVerificacao />} />
                 <Route element={<ExigirAdmin />}>
                   <Route path="/admin" element={<Admin />} />
                 </Route>

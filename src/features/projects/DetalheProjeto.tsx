@@ -23,6 +23,8 @@ import type {
 } from '../../core/forms/tipos';
 import type { Projeto } from '../../core/db/tipos';
 import { DialogoGerarPdf } from '../pdf/DialogoGerarPdf';
+import { useDecisoes } from '../../core/aprovacao/decisoes';
+import { SituacaoAprovacaoProjeto } from '../aprovacao/SituacaoAprovacao';
 import { Botao } from '../../shared/componentes/Botao';
 import { BarraProgresso } from '../../shared/componentes/BarraProgresso';
 import { CampoTexto } from '../../shared/componentes/Campos';
@@ -51,6 +53,7 @@ export function DetalheProjeto() {
   const id = Number(projetoId);
   const navegar = useNavigate();
   const { usuario } = useSessao();
+  const { decisoes } = useDecisoes(usuario?.id);
 
   const [projeto, setProjeto] = useState<Projeto | null>(null);
   const [dados, setDados] = useState<ProgressoDeProjeto | null>(null);
@@ -222,6 +225,10 @@ export function DetalheProjeto() {
           autoFoco
         />
       </Modal>
+
+      <SituacaoAprovacaoProjeto
+        decisoes={decisoes.filter((d) => projeto.uid && d.projeto.uid.toLowerCase() === projeto.uid.toLowerCase())}
+      />
 
       <div className="rounded-lg border border-abb-line bg-white p-4">
         <BarraProgresso

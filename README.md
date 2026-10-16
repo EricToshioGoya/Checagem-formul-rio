@@ -61,6 +61,7 @@ dessa versão.
 | `npm run admin -- listar` | Lista os administradores (socorro, na máquina do servidor) |
 | `npm run admin -- promover <e-mail>` | Dá o papel de administrador a uma conta existente |
 | `npm run icones` | Regera os ícones PNG do aplicativo a partir do vetor do logotipo |
+| `npm run testes-servidor` | Testes de integração do servidor (aprovação, documentos, backup), num banco temporário |
 | `npm run fumaca` | Teste de fumaça do fluxo completo em navegador real |
 | `npm run testes` | Bateria de verificação de contorno (ver `scripts/testes/README.md`) |
 | `scripts/build-portatil.sh` | Gera o binário portátil (modalidade B) |
@@ -69,15 +70,19 @@ O teste de fumaça exige Playwright, que **não** é dependência do projeto:
 
 ```bash
 npm run build
+export ADMIN_INICIAL=fumaca@teste.local RESPONSAVEL_PADRAO=fumaca@teste.local
 BANCO=/tmp/fumaca.db npm run servidor &      # banco vazio; serve também o dist/
 npm i -D playwright && npx playwright install chromium
 BASE_URL=http://localhost:3001 npm run fumaca
 ```
 
-Ele cria a conta do administrador inicial e percorre os dois fluxos: no SEN
-Plus, abertura do painel, marcação de etapa e persistência após recarregar; na
-certificação, solicitação com campos obrigatórios, envio bloqueado, etapa
-condicional, validação ABB com numeração e geração do certificado.
+Ele cria a conta do administrador inicial e percorre os dois fluxos de ponta a
+ponta: no SEN Plus, projeto, marcação de etapa, PDF do projeto enviado sozinho
+para aprovação, reprovação com a etapa marcada, pop-up e alerta amarelo para o
+montador, tela de correções e etapa destacada, busca na aba Documentos; na
+certificação, solicitação com campos obrigatórios, devolução por etapa,
+aprovação com o arquivo do certificado anexado e download desse mesmo arquivo
+na tela inicial.
 
 ---
 
@@ -310,6 +315,11 @@ não por pessoa.
 | `AVISO_WEBHOOK_URL`, `AVISO_WEBHOOK_FORMATO` | servidor | — (canal do Teams/Slack, opcional) |
 | `APP_URL` | servidor | no Codespaces, o endereço da porta encaminhada |
 | `CONFIAR_PROXY` | servidor | `1` no Codespaces, `0` fora dele |
+| `BACKUP_DESTINOS` | servidor | — (**configure em produção**: pastas em outro disco ou na rede, separadas por `;`) |
+| `BACKUP_PASTA` | servidor | `backups/`, ao lado do banco |
+| `BACKUP_DIAS` | servidor | `30` (cópias diárias do banco mantidas) |
+| `BACKUP_DESLIGADO` | servidor | — (`1` desliga o backup automático; a tela Sistema alerta) |
+| `BACKUP_ATRASO_MS` | servidor | `20000` (espera depois de um documento novo, para juntar vários numa cópia só) |
 
 O servidor lê também `servidor/.env` (fora do Git; modelo em
 `servidor/.env.exemplo`). Uma variável já definida no ambiente vale mais que o
@@ -393,6 +403,8 @@ diálogo de geração.
 | Checklist com certificado | Em **Editar painel**, marcar *Certificado ABB* e informar o modelo do certificado (um JSON de `public/certificados`) e quem assina; depois, no checklist, marcar **Emite certificado ABB**. Nenhuma alteração de código. |
 | Novos campos da solicitação | Editar `camposPadrao` em `public/paineis/index.json`, ou dar ao painel a sua própria lista `campos`. |
 | Validação ABB | Servidor: `servidor/src/certificacoes.ts`; cliente: `src/core/certificacao/` (sincronização, serviço do montador e `validacaoServidor.ts` da administração). |
+| Aprovação das verificações | Servidor: `servidor/src/verificacoes.ts`; cliente: `src/core/sync/arquivoPdfs.ts` (envio), `src/core/aprovacao/` (decisões e chamadas da administração), telas em `src/features/aprovacao/` e `src/features/admin/aprovacoes/`. |
+| Guarda dos documentos | `servidor/src/backup.ts` (espelhos, destinos externos, integridade e reparo), `servidor/src/documentos.ts` (SHA-256 e reparo na leitura) e os gatilhos do banco em `servidor/src/banco.ts`. |
 
 ### Modelo de dados
 
@@ -530,9 +542,9 @@ declaradas no JSON e não mudam nada em quem não as usa:
 ## Fluxo de certificação
 
 ```
-rascunho ──enviar──> enviada ──aprovar──> aprovada ──gerar──> emitida
+rascunho ──enviar──> enviada ──aprovar + anexar certificado──> aprovada ──baixar──> emitida
                         │
-                        └──devolver──> devolvida ──corrigir e reenviar──┘
+                        └──devolver (etapas marcadas)──> devolvida ──corrigir e reenviar──┘
 ```
 
 - **Uma solicitação por painel/quadro.** Cada TAG gera uma solicitação dedicada e
@@ -541,17 +553,26 @@ rascunho ──enviar──> enviada ──aprovar──> aprovada ──gerar�
   checklist sem resposta. A tela lista exatamente o que falta.
 - **Enviada, aprovada ou emitida**, a solicitação fica em somente leitura para o
   montador; o checklist abre travado, para conferência.
-- **Devolvida**, volta a ser editável com os apontamentos no topo, preservando
-  todo o preenchimento já feito.
-- **O certificado só é gerado após a aprovação explícita** do responsável ABB,
-  na aba **Validação ABB** da administração.
+- **Devolvida**, volta a ser editável, preservando todo o preenchimento já
+  feito. A administração marca **cada etapa não conforme com o motivo** (ex.:
+  "a foto não está nítida") e, se quiser, um comentário geral. O montador vê o
+  alerta amarelo na tela inicial (e um pop-up, uma vez), a lista das etapas na
+  solicitação com o atalho **Corrigir**, e as etapas destacadas no checklist
+  (filtro **Correções**).
+- **Aprovar exige anexar o arquivo do certificado** (PDF, JPEG ou PNG, até
+  25 MB), na aba **Aprovações** da administração. O servidor atribui o número,
+  grava o arquivo com o SHA-256 conferido e avisa o montador, que **baixa o
+  certificado na tela inicial** (seção *Certificados aprovados*) ou na
+  solicitação. Baixar registra a emissão. A administração pode anexar outra via
+  depois; as anteriores continuam guardadas.
 - **Quem decide é o servidor.** O rascunho é preparado no aparelho, offline.
   **Enviar** sobe a solicitação (dados, respostas e fotos) e exige conexão; aprovar,
   devolver e o **número do certificado** — de um contador único, gravado na mesma
   transação do certificado — são do servidor, e a validação ABB enxerga as
   solicitações enviadas por qualquer aparelho. O aparelho do montador atualiza a
-  cópia ao abrir a lista ou a solicitação (e a cada minuto, enquanto aguarda).
-  Aprovar, devolver e emitir ficam no **Histórico** (filtro *Certificados*).
+  cópia ao abrir a tela inicial, a lista ou a solicitação (e a cada minuto,
+  enquanto aguarda). Aprovar, devolver e emitir ficam no **Histórico** (filtro
+  *Certificados*).
 
 ### Responsáveis e numeração
 
@@ -586,21 +607,13 @@ VITE_PREFIXO_CERTIFICADO='ABB-' npm run build
 
 ### Certificado
 
-Um template por tipo de painel, em `public/certificados`. O corpo é idêntico nos
-três; variam o título do produto e o bloco de assinatura. O corpo traz a
-conformidade com a NBR IEC 61439-1/2, as verificações do item 10.1 (10.2 a
-10.13), os ensaios de rotina do montador (11.2 a 11.10) e a nota de que as
-medidas devem ser registradas no protocolo do montador e anexadas ao documento.
+O certificado é o **arquivo anexado pela administração** na aprovação — o
+aparelho não gera mais o certificado. O número sequencial continua sendo
+atribuído pelo servidor e fica como número de registro (aparece no aviso, na
+tela do montador, no registro de emissões e na busca de documentos).
 
-Os campos vêm da solicitação aprovada por marcadores `{{campo}}`: número do
-certificado, data de emissão, projeto, cliente final, TAG, corrente nominal,
-corrente de curto-circuito e nome do montador. O bloco de assinatura usa
-`{{responsavel.*}}`, resolvido a partir do catálogo de painéis — o responsável
-fica declarado em um só lugar, e é o mesmo que aprova a solicitação.
-
-Nenhum texto do certificado está no código: o gerador em
-`src/core/certificado/documento.ts` só sabe desenhar os tipos de bloco
-(`campos`, `paragrafo`, `lista`, `nota`, `campoLargo`, `assinatura`).
+Os modelos em `public/certificados` e o campo *modelo do certificado* do painel
+continuam validados no build, mas não são mais usados para gerar o documento.
 
 ---
 
@@ -613,10 +626,13 @@ administrador. As seções principais:
 
 - **Acessos** — quem pode preencher cada painel, e até quando (ver
   [Controle de acesso](#controle-de-acesso)).
-- **Validação ABB** — as solicitações de certificação enviadas, com os dados
-  informados e a situação do checklist: aprovar atribui o número do
-  certificado; devolver reabre para o montador com os apontamentos. Abaixo, o
-  registro de todas as emissões.
+- **Aprovações** — o que os montadores enviaram para aprovar, em três filas:
+  **Verificações** (o PDF do projeto, um por tipo de verificação — ver
+  [Aprovação das verificações](#aprovação-das-verificações)), **Certificações**
+  (as solicitações enviadas) e **Certificados emitidos** (o registro, com o
+  arquivo de cada um e *Anexar nova via*). A análise mostra os dados, cada
+  etapa com resposta, observação, fotos e vídeos, e as versões anteriores com
+  o que foi apontado nelas. A aba mostra quantos envios aguardam decisão.
 - **Painéis e checklists** — cadastro dos painéis, de quem aprova e do
   conteúdo das etapas. Os checklists são gravados no servidor, e todo montador
   aprovado naquele painel recebe a mesma versão. Em cada etapa a
@@ -627,11 +643,17 @@ administrador. As seções principais:
   (`apoio_midias`, mesma pasta e mesmo backup das fotos) e referenciada no
   checklist como `/api/apoio/<uid>`; o aparelho do montador a baixa junto com o
   checklist e a mostra dentro da etapa, também sem rede.
-- **Arquivo de PDFs** — todo PDF de checklist emitido pelos montadores, como
-  saiu do aparelho: a documentação que valida a garantia ABB em caso de falha
-  ou quebra do material. Busca por empresa ou projeto (sem diferenciar
-  maiúsculas e acentos) e por período de emissão; **Baixar** entrega o arquivo
-  original. Ver [Arquivo de PDFs](#arquivo-de-pdfs).
+- **Documentos** — todo PDF emitido pelos montadores e todo certificado
+  anexado, como foram recebidos: a documentação que valida a garantia ABB em
+  caso de falha ou quebra do material. Busca por empresa, projeto, TAG,
+  montador, painel ou número do certificado (sem diferenciar maiúsculas e
+  acentos), por tipo (PDF de verificação, PDF de checklist, certificado),
+  situação da aprovação e período; mostra a última conferência de integridade
+  de cada arquivo; **Baixar** entrega o arquivo original. Ver
+  [Documentos guardados](#documentos-guardados).
+- **Sistema** — publicação, avisos e a **guarda dos documentos**: destinos de
+  backup, última cópia de cada um, espaço livre, alertas e **Verificar agora**
+  (conferência de integridade).
 - **Administradores** — quem administra, e quem pediu para administrar.
 
 ### Quem é administrador
@@ -724,28 +746,88 @@ Nada no gerador conhece um checklist ou painel específico: seções, etapas,
 tipos de resposta e campos vêm da definição. Um checklist montado depois na
 administração sai no mesmo padrão.
 
-O envio por e-mail é feito manualmente pelo montador.
+O PDF de um checklist só (de uma TAG ou de uma solicitação) não passa por
+aprovação: vai para o arquivo. O **PDF do projeto** (um por tipo de
+verificação) segue sozinho para a aprovação da administração.
 
-### Arquivo de PDFs
+### Aprovação das verificações
 
-Todo PDF de checklist gerado — do projeto, de uma TAG ou de uma solicitação —
-é guardado também no servidor, como documentação de garantia:
+```
+gerar o PDF do projeto ──> aguardando ──aprovar──> aprovada
+                               │
+                               └──reprovar (etapas marcadas)──> reprovada
+                                                                    │
+     corrigir e gerar o PDF de novo (versão 2, 3…) <────────────────┘
+```
 
-- **Envio automático.** Ao gerar, o PDF entra na fila `pdfsPendentes` do
-  aparelho e segue na hora. Sem rede, fica na fila e vai na próxima
-  sincronização (ao voltar a rede, a cada 3 minutos, ao reabrir o aplicativo).
-  O diálogo diz se o PDF já foi guardado. O ZIP de fotos não é enviado.
-- **Idempotente.** Cada PDF tem `uid` próprio: um reenvio depois de queda de
-  conexão não duplica o registro.
-- **Imutável.** Não há rota para alterar nem excluir um PDF arquivado; o
-  servidor grava o SHA-256 de cada um no recebimento. O arquivo fica na pasta
-  das mídias, com o `uid` como nome, e entra no mesmo espelho do backup diário.
-- **Sobrevive à conta e ao painel.** Excluir a conta de quem emitiu ou o painel
-  não apaga o PDF: o vínculo vira nulo e a lista mostra "conta excluída".
-- **Só administradores consultam** (`GET /api/admin/pdfs`, aba **Arquivo de
-  PDFs**). Qualquer conta logada envia (`PUT /api/pdfs/:uid`), sem exigir o
-  acesso ao painel valendo: o PDF pode ter sido gerado offline antes de o prazo
-  vencer. O servidor recusa o que não for PDF ou passar de 100 MB.
+- **Envio automático.** Ao gerar o PDF do projeto, cada tipo de verificação
+  vira um envio: o PDF e o **retrato** das respostas, dos dados do painel e da
+  lista de fotos daquele tipo no momento da geração. Sem rede, o envio espera
+  na fila do aparelho com o PDF e segue na próxima sincronização.
+- **Três passos idempotentes.** `POST /api/verificacoes` grava o retrato e
+  responde quais fotos faltam; cada foto vai em
+  `PUT /api/verificacoes/:uid/midias/:foto` (com SHA-256); `POST
+  /api/verificacoes/:uid/concluir` põe na fila. Uma queda no meio não duplica
+  nem perde nada. Foto apagada do aparelho antes do envio fica registrada como
+  ausente — o PDF continua sendo o documento.
+- **Versões.** Gerar de novo o PDF do mesmo projeto e tipo cria a versão
+  seguinte; a que ainda aguardava fica como *substituída*. A decisão é
+  definitiva e só vale para a versão aguardando.
+- **Reprovar** exige o motivo de cada etapa marcada (ou um comentário). O
+  montador recebe o aviso (e-mail/Teams), vê o **pop-up** uma vez e o **alerta
+  amarelo** na tela inicial até reenviar; o cartão do projeto ganha o selo
+  *Correção pedida*; a tela **Correções** lista cada etapa com o motivo, diz se
+  já foi alterada e leva direto a ela, destacada no checklist. **Gerar PDF e
+  reenviar** fecha o ciclo.
+- A última leitura das decisões fica no aparelho: o alerta e as etapas
+  destacadas continuam à vista sem rede.
+
+### Documentos guardados
+
+Os PDFs (de projeto, de TAG e de solicitação), os certificados anexados e as
+fotos citadas num envio para aprovação são **documentos**: a prioridade do
+sistema é não perdê-los.
+
+- **Envio automático e idempotente.** Ao gerar, o PDF entra na fila
+  `pdfsPendentes` do aparelho e segue na hora (sem rede, na próxima
+  sincronização). Cada PDF tem `uid` próprio: um reenvio não duplica. O
+  aparelho manda o SHA-256 e o servidor recusa o arquivo que chegar diferente.
+  O ZIP de fotos não é enviado.
+- **Imutáveis no banco.** Gatilhos do SQLite recusam apagar ou alterar um PDF
+  emitido, um certificado, um anexo de certificado, uma foto protegida ou uma
+  decisão já tomada. Excluir a conta de quem emitiu, a solicitação ou o painel
+  não leva nenhum documento: o vínculo vira nulo e a lista mostra "conta
+  excluída".
+- **Gravação segura.** Cada arquivo é gravado em arquivo temporário, com
+  `fsync`, e só então renomeado. A faxina de mídias nunca toca num documento.
+- **Cópias em mais de um disco.** Logo depois de cada documento novo (com
+  `BACKUP_ATRASO_MS` de espera, e também ao desligar o servidor), o arquivo é
+  copiado para a pasta de backup e para cada destino de `BACKUP_DESTINOS`, e
+  cada cópia é conferida pelo SHA-256. O banco vai junto: uma cópia a cada
+  15 minutos de atividade (`continuo/`, as 48 mais recentes) e uma por dia
+  (`BACKUP_DIAS`). Nenhum documento sai de um espelho.
+- **Integridade.** Uma vez por dia (e em **Sistema → Verificar agora**) o
+  servidor confere o banco (`PRAGMA quick_check`) e recalcula o SHA-256 de
+  cada documento no disco principal e em cada cópia: o que estiver ausente ou
+  corrompido é refeito a partir de uma cópia íntegra. Ao baixar, o documento
+  também é conferido e, se preciso, restaurado do backup na hora.
+- **Alertas.** A tela Sistema avisa quando não há destino fora do disco dos
+  dados, quando uma cópia falhou, quando falta espaço ou quando algum
+  documento não tem cópia íntegra.
+- **Só administradores consultam** (aba **Documentos**). Qualquer conta logada
+  envia (`PUT /api/pdfs/:uid`), sem exigir o acesso ao painel valendo: o PDF
+  pode ter sido gerado offline antes de o prazo vencer. O servidor recusa o
+  que não for PDF ou passar de 100 MB.
+
+**Restaurar** depois da perda do disco dos dados:
+
+1. Pare o servidor.
+2. Copie a cópia mais recente do banco (`acesso-…db` da pasta de backup, de
+   `continuo/` ou de `banco/` num destino) para o lugar de `BANCO`, e apague
+   `acesso.db-wal` e `acesso.db-shm` ao lado dele, se existirem.
+3. Copie o conteúdo de `midias/` do backup (ou de um destino) para a pasta das
+   mídias, sem apagar o que já estiver lá.
+4. Suba o servidor e rode **Sistema → Verificar agora**.
 
 ---
 
@@ -792,6 +874,16 @@ Revistas ao acrescentar o controle de acesso: **passou a haver autenticação**
 (e-mail e senha) e **passou a haver um servidor**, que guarda contas, painéis e
 decisões de acesso — e nada das checagens. O operador do PDF deixou de ser texto
 digitado e passa a vir do nome da conta.
+
+Da aprovação pela administração: a aprovação vale para o **PDF do projeto**
+(um por tipo de verificação), não para o PDF de um checklist só; a
+administração marca **etapas não conformes com o motivo** nos dois fluxos —
+com isso o sistema passou a registrar um julgamento por etapa, mas só da
+administração, e só como "não conforme" (o montador continua respondendo ou
+deixando em branco); o certificado é o **arquivo anexado pela
+administração**, e o aparelho deixou de gerá-lo — o número sequencial
+continua como número de registro; os documentos (PDFs, certificados e fotos
+de envios) nunca são apagados pelo sistema e ficam em mais de um disco.
 
 Da extensão de certificação: o comportamento do SEN Plus não mudou — os campos
 obrigatórios e o ciclo de validação valem apenas para os painéis de

@@ -1,7 +1,11 @@
-import { api, consulta, ErroApi } from '../api/cliente';
-import { novoUid } from '../db/db';
-import { PdfPendenteRepository } from '../db/repositorios';
+import { api, consulta, ErroApi, lerToken, lerUsuarioGuardado } from '../api/cliente';
+import { atualizarDecisoes } from '../aprovacao/decisoes';
+import { db, novoUid } from '../db/db';
+import { PdfPendenteRepository, ProjetoRepository } from '../db/repositorios';
+import type { AprovacaoPendente, PdfPendente } from '../db/tipos';
 import type { ArquivoGerado } from '../export/PdfExport';
+import { sha256Hex } from '../../shared/utils/hash';
+import { montarDocumento } from './sincronizacao';
 
 /**
  * Arquivo dos PDFs emitidos no servidor — a documentação que valida a
@@ -10,6 +14,10 @@ import type { ArquivoGerado } from '../export/PdfExport';
  * Todo PDF de checklist gerado entra numa fila no aparelho e segue para o
  * servidor na hora, se houver rede, ou na próxima sincronização. O `uid` de
  * cada um torna o envio idempotente: uma queda no meio não duplica nada.
+ *
+ * O PDF do projeto (um por tipo de verificação) vai além: depois de guardado,
+ * segue para a aprovação da administração com o retrato das respostas e das
+ * fotos daquele tipo, em três passos que também podem ser repetidos.
  */
 
 /** Erro que tentar de novo não resolve: o servidor recusou este arquivo. */
@@ -18,35 +26,130 @@ function ehRecusa(erro: unknown): erro is ErroApi {
     erro instanceof ErroApi &&
     erro.status >= 400 &&
     erro.status < 500 &&
-    ![401, 408, 429].includes(erro.status)
+    ![401, 408, 429].includes(erro.status) &&
+    // Arquivo que chegou diferente do original (transferência truncada): o
+    // servidor pede o reenvio, e a próxima passada manda de novo.
+    erro.codigo !== 'hash-divergente'
   );
 }
 
-async function enviarUmaVez(usuarioId: number): Promise<void> {
-  for (const pdf of await PdfPendenteRepository.listar(usuarioId)) {
-    if (pdf.recusa) continue;
+async function enviarPdf(pdf: PdfPendente): Promise<void> {
+  await api.enviarArquivo(
+    `/api/pdfs/${pdf.uid}${consulta({
+      empresa: pdf.empresa,
+      projeto: pdf.nomeProjeto,
+      titulo: pdf.titulo,
+      painel: pdf.painelSlug,
+      nomeArquivo: pdf.nomeArquivo,
+      emitidoEm: pdf.emitidoEm,
+      sha256: await sha256Hex(pdf.blob),
+    })}`,
+    pdf.blob,
+  );
+}
+
+/**
+ * Envio para aprovação: retrato, fotos que faltam e conclusão. Foto que não
+ * existe mais no aparelho, ou que o servidor recusa, vai como ausente — o PDF
+ * segue sendo o documento, e o envio não fica preso por ela.
+ */
+/**
+ * A sessão aberta ainda é da conta dona da fila. No aparelho compartilhado,
+ * outra pessoa pode entrar no meio de um envio: o que é de uma conta nunca
+ * sai com o token da outra.
+ */
+function sessaoDa(usuarioId: number): boolean {
+  return Boolean(lerToken()) && lerUsuarioGuardado()?.usuario.id === usuarioId;
+}
+
+/** A sessão trocou de conta no meio da passada: para, sem marcar nada. */
+class SessaoTrocada extends Error {}
+
+/** O envio para aprovação foi recusado pelo servidor (o PDF já está guardado). */
+class RecusaAprovacao extends Error {
+  constructor(readonly erro: ErroApi) {
+    super(erro.message);
+  }
+}
+
+async function enviarAprovacao(
+  pdf: PdfPendente,
+  aprovacao: AprovacaoPendente,
+  usuarioId: number,
+): Promise<void> {
+  const { faltando } = await api.post<{ faltando: string[] }>('/api/verificacoes', {
+    uid: aprovacao.uid,
+    pdfUid: pdf.uid,
+    painelId: aprovacao.painelId,
+    projetoUid: aprovacao.projetoUid,
+    tipo: aprovacao.tipo,
+    geradoEm: pdf.emitidoEm,
+    documento: aprovacao.documento,
+  });
+  const ausentes: string[] = [];
+  for (const midiaUid of faltando) {
+    if (!sessaoDa(usuarioId)) throw new SessaoTrocada();
+    const midia = await db.midias.where('uid').equals(midiaUid).first();
+    if (!midia) {
+      ausentes.push(midiaUid);
+      continue;
+    }
     try {
       await api.enviarArquivo(
-        `/api/pdfs/${pdf.uid}${consulta({
-          empresa: pdf.empresa,
-          projeto: pdf.nomeProjeto,
-          titulo: pdf.titulo,
-          painel: pdf.painelSlug,
-          nomeArquivo: pdf.nomeArquivo,
-          emitidoEm: pdf.emitidoEm,
-        })}`,
-        pdf.blob,
+        `/api/verificacoes/${aprovacao.uid}/midias/${midiaUid}${consulta({ sha256: await sha256Hex(midia.blob) })}`,
+        midia.blob.type === midia.mime ? midia.blob : new Blob([midia.blob], { type: midia.mime }),
       );
+    } catch (erro) {
+      if (!ehRecusa(erro)) throw erro;
+      ausentes.push(midiaUid);
+    }
+  }
+  if (!sessaoDa(usuarioId)) throw new SessaoTrocada();
+  await api.post(`/api/verificacoes/${aprovacao.uid}/concluir`, { ausentes });
+}
+
+async function enviarUmaVez(usuarioId: number): Promise<void> {
+  let aprovacoesConcluidas = 0;
+  for (const pdf of await PdfPendenteRepository.listar(usuarioId)) {
+    if (pdf.recusa) continue;
+    if (!sessaoDa(usuarioId)) break;
+    try {
+      if (!pdf.pdfEnviado) {
+        await enviarPdf(pdf);
+        if (pdf.aprovacao) await PdfPendenteRepository.marcarPdfEnviado(pdf.id!);
+      }
+      if (pdf.aprovacao) {
+        try {
+          await enviarAprovacao(pdf, pdf.aprovacao, usuarioId);
+        } catch (erro) {
+          if (erro instanceof ErroApi && erro.codigo === 'pdf-ausente') {
+            // O servidor não tem o PDF (ex.: banco restaurado): manda de novo.
+            await PdfPendenteRepository.desmarcarPdfEnviado(pdf.id!);
+            continue;
+          }
+          throw ehRecusa(erro) ? new RecusaAprovacao(erro) : erro;
+        }
+        aprovacoesConcluidas += 1;
+      }
       await PdfPendenteRepository.remover(pdf.id!);
     } catch (erro) {
+      if (erro instanceof RecusaAprovacao) {
+        await PdfPendenteRepository.recusar(
+          pdf.id!,
+          `O PDF foi guardado, mas o envio para aprovação foi recusado: ${erro.message}`,
+        );
+        continue;
+      }
       if (ehRecusa(erro)) {
         await PdfPendenteRepository.recusar(pdf.id!, erro.message);
         continue;
       }
-      // Sem rede, servidor fora do ar ou sessão vencida: fica para a próxima.
-      return;
+      // Sem rede, servidor fora do ar, sessão vencida ou trocada: fica para a próxima.
+      break;
     }
   }
+  // Um reenvio que chegou à fila de aprovação tira o alerta de correção.
+  if (aprovacoesConcluidas && sessaoDa(usuarioId)) await atualizarDecisoes(usuarioId);
 }
 
 let fila: Promise<void> = Promise.resolve();
@@ -66,25 +169,64 @@ export interface SituacaoRegistro {
   pendentes: number;
   /** Motivos de recusa do servidor, se houver. */
   recusas: string[];
+  /** PDFs que seguem para a aprovação da administração (enviados ou na fila). */
+  paraAprovacao: number;
 }
 
-/** Coloca os PDFs gerados na fila e tenta enviá-los já. */
+/**
+ * O retrato do projeto restrito ao que o PDF leva: as TAGs e, de cada uma, os
+ * checklists do tipo de verificação — respostas e fotos só desses.
+ */
+async function retratoDoTipo(
+  projetoId: number,
+  verificacao: NonNullable<NonNullable<ArquivoGerado['registro']>['verificacao']>,
+): Promise<AprovacaoPendente | null> {
+  const projeto = await ProjetoRepository.obter(projetoId);
+  if (!projeto?.uid || projeto.painelId === undefined) return null;
+  const { documento } = await montarDocumento(projeto);
+  const doTipo = verificacao.formIdsPorTag;
+  const leva = (tagUid: string, formId: string) => doTipo[tagUid]?.includes(formId) ?? false;
+  return {
+    uid: novoUid(),
+    painelId: projeto.painelId,
+    projetoUid: projeto.uid,
+    tipo: verificacao.tipo,
+    documento: {
+      projeto: documento.projeto,
+      tags: documento.tags.filter((t) => doTipo[t.uid]).map((t) => ({ ...t, formIds: doTipo[t.uid] })),
+      preenchimentos: documento.preenchimentos.filter((p) => leva(p.tagUid, p.formId)),
+      midias: documento.midias.filter((m) => leva(m.tagUid, m.formId)),
+    },
+  };
+}
+
+/**
+ * Coloca os PDFs gerados na fila e tenta enviá-los já. Com `projetoId`, o PDF
+ * de cada tipo de verificação leva junto o envio para aprovação.
+ */
 export async function registrarPdfs(
   usuarioId: number,
   arquivos: ArquivoGerado[],
+  projetoId?: number,
 ): Promise<SituacaoRegistro> {
   const uids: string[] = [];
+  let paraAprovacao = 0;
   for (const arquivo of arquivos) {
     if (!arquivo.registro) continue;
+    const { verificacao, ...registro } = arquivo.registro;
+    const aprovacao =
+      verificacao && projetoId !== undefined ? await retratoDoTipo(projetoId, verificacao) : null;
+    if (aprovacao) paraAprovacao += 1;
     const uid = novoUid();
     uids.push(uid);
     await PdfPendenteRepository.adicionar({
       uid,
       usuarioId,
-      ...arquivo.registro,
+      ...registro,
       nomeArquivo: arquivo.nome,
       blob: arquivo.blob,
       criadoEm: Date.now(),
+      ...(aprovacao ? { aprovacao } : {}),
     });
   }
   await enviarPdfsPendentes(usuarioId);
@@ -92,5 +234,6 @@ export async function registrarPdfs(
   return {
     pendentes: restantes.filter((p) => !p.recusa).length,
     recusas: restantes.flatMap((p) => (p.recusa ? [p.recusa] : [])),
+    paraAprovacao,
   };
 }
