@@ -1,4 +1,4 @@
-import { banco } from './banco';
+import { banco, emTransacao } from './banco';
 import { agendarBackupContinuo } from './backup';
 import { caminhoDocumento, conferirHashRecebido, paraBusca } from './documentos';
 import { gravarMidia, uidValido } from './midias';
@@ -75,6 +75,29 @@ function publico(l: LinhaPdf) {
   };
 }
 
+/**
+ * Recalcula o texto de busca dos PDFs: os arquivados antes de a busca incluir
+ * título, arquivo, painel e montador só tinham empresa e projeto. Roda na
+ * subida; só muda o que estiver diferente.
+ */
+export function atualizarBuscaDosPdfs(): void {
+  const linhas = banco
+    .prepare(
+      `SELECT d.uid, d.empresa, d.nomeProjeto, d.titulo, d.nomeArquivo, d.painelNome, d.busca, u.nome AS montador
+         FROM pdfs_emitidos d LEFT JOIN usuarios u ON u.id = d.usuarioId`,
+    )
+    .all() as Array<Record<string, string | null>>;
+  const gravar = banco.prepare('UPDATE pdfs_emitidos SET busca = ? WHERE uid = ?');
+  emTransacao(() => {
+    for (const l of linhas) {
+      const busca = paraBusca(
+        `${l.empresa ?? ''} ${l.nomeProjeto ?? ''} ${l.titulo ?? ''} ${l.nomeArquivo ?? ''} ${l.painelNome ?? ''} ${l.montador ?? ''}`,
+      );
+      if (busca !== l.busca) gravar.run(busca, l.uid);
+    }
+  });
+}
+
 export const rotasPdfs: Record<string, Manipulador> = {
   /**
    * Recebe um PDF emitido no aparelho. Os dados vêm na consulta, o arquivo no
@@ -99,7 +122,9 @@ export const rotasPdfs: Record<string, Manipulador> = {
     // outro arquivo sobrescreveria aquele arquivo.
     const usado =
       banco.prepare('SELECT 1 FROM sync_midias WHERE uid = ?').get(uid) ??
-      banco.prepare('SELECT 1 FROM apoio_midias WHERE uid = ?').get(uid);
+      banco.prepare('SELECT 1 FROM apoio_midias WHERE uid = ?').get(uid) ??
+      banco.prepare('SELECT 1 FROM certificados_anexos WHERE uid = ?').get(uid) ??
+      banco.prepare('SELECT 1 FROM midias_protegidas WHERE uid = ?').get(uid);
     if (usado) throw new ErroHttp(409, 'Identificador do PDF já usado.');
 
     const dados = ctx.corpoBruto;

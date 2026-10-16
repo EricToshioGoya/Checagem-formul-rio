@@ -15,6 +15,7 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { ARQUIVO_BANCO, banco } from './banco';
+import { ErroHttp } from './erroHttp';
 
 /**
  * Fotos e anexos sincronizados ficam em disco, um arquivo por mídia, com o
@@ -95,9 +96,18 @@ export function gravarArquivoSeguro(destino: string, dados: Buffer): void {
   sincronizarPasta(dirname(destino));
 }
 
-/** Grava a mídia com `fsync`: nunca fica uma foto pela metade. */
+/**
+ * Grava a mídia com `fsync`: nunca fica uma foto pela metade. Um documento já
+ * guardado (PDF, certificado, foto de um envio) nunca é sobrescrito: com o
+ * mesmo conteúdo, a gravação é dispensada; com outro, é recusada.
+ */
 export function gravarMidia(uid: string, dados: Buffer): void {
-  gravarArquivoSeguro(caminhoMidia(uid), dados);
+  const caminho = caminhoMidia(uid);
+  if (existsSync(caminho) && documentosEntre([uid]).size) {
+    if (hashDoArquivo(caminho) === hashDe(dados)) return;
+    throw new ErroHttp(409, 'Identificador já usado por um documento guardado.', 'documento-guardado');
+  }
+  gravarArquivoSeguro(caminho, dados);
 }
 
 /**

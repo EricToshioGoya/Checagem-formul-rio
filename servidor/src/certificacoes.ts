@@ -350,6 +350,33 @@ function protegerFotos(l: Linha): void {
   }
 }
 
+/**
+ * Certificações aprovadas antes da guarda permanente: protege as fotos e grava
+ * o retrato do que foi aprovado, para que excluir a conta ou o painel não leve
+ * nada. Idempotente; roda na subida do servidor.
+ */
+export function protegerCertificacoesAprovadas(): void {
+  const linhas = banco.prepare('SELECT * FROM certificacoes WHERE numero IS NOT NULL').all() as unknown as Linha[];
+  const protegida = banco.prepare(
+    "SELECT 1 FROM midias_protegidas WHERE origem = 'certificacao' AND origemId = ? LIMIT 1",
+  );
+  const gravarRetrato = banco.prepare('UPDATE certificados SET retrato = ? WHERE numero = ? AND retrato IS NULL');
+  emTransacao(() => {
+    for (const l of linhas) {
+      if (!protegida.get(l.id)) protegerFotos(l);
+      gravarRetrato.run(
+        JSON.stringify({
+          formId: l.formId,
+          dados: JSON.parse(l.dados) as unknown,
+          preenchimento: JSON.parse(l.preenchimento) as unknown,
+          midias: JSON.parse(l.midias) as unknown,
+        }),
+        l.numero,
+      );
+    }
+  });
+}
+
 export const rotasCertificacoes: Record<string, Manipulador> = {
   // ------------------------------------------------------------ montador
 
@@ -509,7 +536,7 @@ export const rotasCertificacoes: Record<string, Manipulador> = {
     banco
       .prepare("UPDATE certificacoes SET estado = 'emitida', historico = ?, atualizadoEm = ? WHERE id = ?")
       .run(
-        acrescentar(l, { estado: 'emitida', em: agora, por: eu.nome, observacao: `Certificado ${l.numero} gerado.` }),
+        acrescentar(l, { estado: 'emitida', em: agora, por: eu.nome, observacao: `Certificado ${l.numero} baixado.` }),
         agora,
         l.id,
       );

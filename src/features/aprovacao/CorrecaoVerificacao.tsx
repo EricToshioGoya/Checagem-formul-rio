@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSessao } from '../../core/api/SessaoContexto';
 import { etapaAlterada, useDecisoes } from '../../core/aprovacao/decisoes';
@@ -26,7 +26,18 @@ export function CorrecaoVerificacao() {
   const navegar = useNavigate();
   const { usuario } = useSessao();
   const { decisoes, recarregar } = useDecisoes(usuario?.id);
-  const decisao = decisoes.find((d) => d.uid === uid);
+  // Depois do reenvio, a versão nova (outro `uid`) toma o lugar da reprovada
+  // na lista: a tela segue no mesmo projeto e tipo, e o diálogo fica aberto.
+  const alvo = useRef<{ projeto: string; tipo: string } | null>(null);
+  const pelaUid = decisoes.find((d) => d.uid === uid);
+  if (pelaUid) alvo.current = { projeto: pelaUid.projeto.uid.toLowerCase(), tipo: pelaUid.tipo.id };
+  const decisao =
+    pelaUid ??
+    (alvo.current
+      ? decisoes.find(
+          (d) => d.projeto.uid.toLowerCase() === alvo.current!.projeto && d.tipo.id === alvo.current!.tipo,
+        )
+      : undefined);
 
   const [projeto, setProjeto] = useState<(Projeto & { id: number }) | null | undefined>(undefined);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -135,7 +146,11 @@ export function CorrecaoVerificacao() {
           />
         </section>
       ) : (
-        <Aviso>Esta verificação já foi reenviada ou decidida. Nada a corrigir aqui.</Aviso>
+        <Aviso>
+          {decisao.estado === 'aguardando'
+            ? `Reenviada: a versão ${decisao.versao ?? ''} aguarda a aprovação da administração.`
+            : 'Esta verificação já foi decidida. Nada a corrigir aqui.'}
+        </Aviso>
       )}
 
       {projeto === null ? (

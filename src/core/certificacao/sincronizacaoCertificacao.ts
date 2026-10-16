@@ -155,8 +155,9 @@ export async function atualizarSolicitacoesDoServidor(usuarioId: number): Promis
     // só vale se a cópia local ainda estiver `enviada`.
     const devolucaoValida = remota.estado === 'devolvida' ? local.estado === 'enviada' : avancou;
     if (!devolucaoValida) {
-      // Mesmo estado, mas a administração anexou outra via do certificado.
-      if (remota.estado === local.estado && !mesmosAnexos(local.anexos, remota.anexos ?? [])) {
+      // A administração anexou outra via do certificado. Vale também com o
+      // aparelho em "emitida" e o servidor ainda em "aprovada".
+      if (remota.numero && !mesmosAnexos(local.anexos, remota.anexos ?? [])) {
         await db.solicitacoes.update(local.id!, { anexos: remota.anexos ?? [], historico: remota.historico });
         mudou += 1;
       }

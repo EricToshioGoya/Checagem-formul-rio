@@ -221,9 +221,9 @@ export const rotasGestao: Record<string, Manipulador> = {
   },
 
   /** Confere agora todos os documentos guardados e repara o que puder. */
-  'POST /api/admin/sistema/verificacao': (ctx) => {
+  'POST /api/admin/sistema/verificacao': async (ctx) => {
     const eu = exigirAdmin(ctx);
-    const resultado = verificarIntegridade();
+    const resultado = await verificarIntegridade();
     registrar({
       autor: eu,
       acao: 'verificou a integridade dos documentos',

@@ -619,9 +619,16 @@ banco.exec(`
 
   CREATE TRIGGER IF NOT EXISTS certificados_sem_exclusao BEFORE DELETE ON certificados
   BEGIN SELECT RAISE(ABORT, 'O registro de um certificado não pode ser apagado.'); END;
-  CREATE TRIGGER IF NOT EXISTS certificados_imutavel
-  BEFORE UPDATE OF numero, painelSlug, nomePainel, projeto, tagPainel, clienteFinal, montador, emitidoEm, retrato
+  -- O retrato pode ser preenchido uma vez (certificados aprovados antes de ele
+  -- existir); depois disso, nada muda. A versão antiga do gatilho o travava.
+  DROP TRIGGER IF EXISTS certificados_imutavel;
+  CREATE TRIGGER certificados_imutavel
+  BEFORE UPDATE OF numero, painelSlug, nomePainel, projeto, tagPainel, clienteFinal, montador, emitidoEm
   ON certificados
+  BEGIN SELECT RAISE(ABORT, 'O registro de um certificado não pode ser alterado.'); END;
+  CREATE TRIGGER IF NOT EXISTS certificados_retrato_definitivo
+  BEFORE UPDATE OF retrato ON certificados
+  WHEN OLD.retrato IS NOT NULL
   BEGIN SELECT RAISE(ABORT, 'O registro de um certificado não pode ser alterado.'); END;
 
   CREATE TRIGGER IF NOT EXISTS certificados_anexos_sem_exclusao BEFORE DELETE ON certificados_anexos

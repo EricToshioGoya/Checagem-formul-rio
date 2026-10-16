@@ -424,7 +424,23 @@ function situacaoDoArquivo(caminho: string, sha256: string): 'ok' | 'ausente' | 
  * corrompido é reparado a partir de uma cópia íntegra; uma cópia ruim é
  * refeita a partir do principal.
  */
-export function verificarIntegridade(): ResultadoVerificacao {
+let verificacaoEmCurso: Promise<ResultadoVerificacao> | null = null;
+
+/**
+ * A leitura de cada documento cede a vez às requisições: com milhares de
+ * arquivos, a conferência não deixa o servidor sem responder. Duas chamadas
+ * ao mesmo tempo compartilham a mesma rodada.
+ */
+export function verificarIntegridade(): Promise<ResultadoVerificacao> {
+  verificacaoEmCurso ??= conferirTudo().finally(() => {
+    verificacaoEmCurso = null;
+  });
+  return verificacaoEmCurso;
+}
+
+const cederAVez = () => new Promise<void>((pronto) => setImmediate(pronto));
+
+async function conferirTudo(): Promise<ResultadoVerificacao> {
   const r: ResultadoVerificacao = {
     ok: true,
     iniciadoEm: Date.now(),
@@ -456,6 +472,7 @@ export function verificarIntegridade(): ResultadoVerificacao {
   const lugaresDeCopia = lugares();
   for (const [uid, sha256] of docs) {
     if (!sha256) continue;
+    await cederAVez();
     r.documentos += 1;
     let situacao: 'ok' | 'reparado' | 'ausente' | 'corrompido' = situacaoDoArquivo(caminhoMidia(uid), sha256);
     let detalhe: string | null = null;
@@ -514,13 +531,13 @@ export function verificarIntegridade(): ResultadoVerificacao {
 }
 
 /** Chamado uma vez por dia: a verificação lê todos os documentos do disco. */
-export function verificacaoDoDia(): void {
+export async function verificacaoDoDia(): Promise<void> {
   const ultima = banco
     .prepare("SELECT MAX(concluidoEm) AS em FROM registros_armazenamento WHERE tipo = 'verificacao'")
     .get() as { em: number | null };
   if (ultima.em && Date.now() - Number(ultima.em) < 20 * 3_600_000) return;
   try {
-    const r = verificarIntegridade();
+    const r = await verificarIntegridade();
     console.log(
       `Verificação de integridade: ${r.conferidos}/${r.documentos} documento(s) íntegro(s), ` +
         `${r.reparados} reparo(s), ${r.semReparo} sem reparo.`,
@@ -632,6 +649,19 @@ export function situacaoArmazenamento() {
     });
   }
   const contar = (sql: string) => Number((banco.prepare(sql).get() as { n: number }).n);
+  // Aprovados antes de a aprovação exigir o arquivo: o montador não tem o que baixar.
+  const semArquivo = contar(
+    `SELECT COUNT(*) AS n FROM certificados c
+      WHERE NOT EXISTS (SELECT 1 FROM certificados_anexos a WHERE a.numero = c.numero)`,
+  );
+  if (semArquivo) {
+    alertas.push({
+      nivel: 'aviso',
+      mensagem:
+        `${semArquivo} certificado(s) sem arquivo anexado. Anexe em Aprovações → Certificados emitidos ` +
+        'para o montador poder baixar.',
+    });
+  }
   return {
     destinos: lista,
     verificacao,

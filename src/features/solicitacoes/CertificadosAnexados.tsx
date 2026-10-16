@@ -51,7 +51,8 @@ export function CertificadosAnexados({
   if (!anexos.length) {
     return (
       <p className="text-base text-abb-gray">
-        O arquivo do certificado ainda não está disponível. Atualize em instantes.
+        O arquivo deste certificado ainda não foi anexado pela administração. Assim que
+        for, ele aparece aqui para baixar.
       </p>
     );
   }

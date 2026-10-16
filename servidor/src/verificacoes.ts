@@ -314,7 +314,10 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
           painel.id,
           painel.nome,
           projetoUid,
-          `${eu.id}:${projetoUid}`,
+          // O id da conta pode ser reaproveitado depois de uma exclusão (e o
+          // projeto legado tem o mesmo uid em toda conta): a criação da conta
+          // separa as versões de quem saiu das de quem chegou.
+          `${eu.id}.${eu.criadoEm}:${projetoUid}`,
           e.documento.projeto.empresa || '—',
           e.documento.projeto.nomeProjeto || '—',
           e.tipo,

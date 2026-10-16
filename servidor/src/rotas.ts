@@ -26,6 +26,7 @@ import { registrar, ultimasAlteracoes } from './auditoria';
 import { avisar } from './avisos';
 import { PASTA_APP } from './configuracao';
 import { chaveTentativa, esperaRestante, limparFalhas, registrarFalha } from './limite';
+import { ErroHttp } from './erroHttp';
 import { moverParaLixeira, removerRegistrosDeMidias } from './midias';
 import { lerPagina, padraoBusca } from './paginacao';
 import {
@@ -64,17 +65,7 @@ import {
   renomearTipo,
 } from './tiposChecklist';
 
-/** Erro com código HTTP; o servidor traduz em resposta JSON. */
-export class ErroHttp extends Error {
-  constructor(
-    readonly status: number,
-    mensagem: string,
-    /** Motivo legível por máquina, para a tela reagir sem ler o texto. */
-    readonly codigo?: string,
-  ) {
-    super(mensagem);
-  }
-}
+export { ErroHttp };
 
 export interface Contexto {
   usuario: Usuario | null;

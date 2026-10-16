@@ -25,6 +25,10 @@ export const PdfPendenteRepository = {
     await db.pdfsPendentes.update(id, { pdfEnviado: true });
   },
 
+  async desmarcarPdfEnviado(id: number): Promise<void> {
+    await db.pdfsPendentes.update(id, { pdfEnviado: false });
+  },
+
   async recusar(id: number, motivo: string): Promise<void> {
     await db.pdfsPendentes.update(id, { recusa: motivo });
   },

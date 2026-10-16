@@ -132,6 +132,13 @@ export function DialogoGerarPdf({ aberto, projetoId, painelSlug, tipo, onFechar 
           </div>
         </fieldset>
 
+        {selecionados.length < entradas.length ? (
+          <p className="text-sm text-abb-gray">
+            Só o PDF com todos os checklists de um tipo segue para a aprovação da
+            administração; com parte deles, o PDF é só guardado no arquivo.
+          </p>
+        ) : null}
+
         <EscolhaFotos incluirFotos={incluirFotos} onChange={setIncluirFotos} />
 
         {erro ? <Erro detalhe={erro} /> : null}

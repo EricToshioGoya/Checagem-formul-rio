@@ -137,6 +137,12 @@ export async function gerarArquivos(
     ),
   );
   const arquivos: ArquivoGerado[] = [];
+  const doPainel = await formulariosDoPainel(dossieCompleto.painelSlug);
+  // Só o PDF com todos os checklists do tipo vai para aprovação: um PDF
+  // parcial substituiria, na fila, a versão completa que aguardava.
+  const completo = (tipo: string) =>
+    !opcoes.formIds?.length ||
+    doPainel.filter((e) => e.tipo === tipo).every((e) => opcoes.formIds!.includes(e.id));
 
   for (const tipo of tiposPresentes) {
     // TAG sem checklist deste tipo não entra no PDF dele.
@@ -154,7 +160,7 @@ export async function gerarArquivos(
       sufixo: sufixoTipo(tipo),
     });
     const pdf = gerados.find((a) => a.registro);
-    if (pdf?.registro && tags.every((t) => t.uid)) {
+    if (pdf?.registro && completo(tipo) && tags.every((t) => t.uid)) {
       pdf.registro.verificacao = {
         tipo,
         formIdsPorTag: Object.fromEntries(tags.map((t) => [t.uid!, t.formularios.map((f) => f.definicao.id)])),

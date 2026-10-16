@@ -25,8 +25,8 @@ import { rotasGestao } from './rotasGestao';
 import { rotasSync } from './rotasSync';
 import { TAMANHO_MAXIMO_VIDEO } from '../../compartilhado/midias';
 import { rotasApoio, TAMANHO_MAXIMO_APOIO } from './rotasApoio';
-import { rotasCertificacoes, TAMANHO_MAXIMO_CERTIFICADO } from './certificacoes';
-import { rotasPdfs, TAMANHO_MAXIMO_PDF_EMITIDO } from './rotasPdfs';
+import { protegerCertificacoesAprovadas, rotasCertificacoes, TAMANHO_MAXIMO_CERTIFICADO } from './certificacoes';
+import { atualizarBuscaDosPdfs, rotasPdfs, TAMANHO_MAXIMO_PDF_EMITIDO } from './rotasPdfs';
 import { rotasDocumentos } from './rotasDocumentos';
 import { rotasVerificacoes } from './verificacoes';
 
@@ -278,6 +278,8 @@ migrarFluxoParaChecklists();
 semearTipos();
 garantirAdminInicial();
 limparSessoesVencidas();
+protegerCertificacoesAprovadas();
+atualizarBuscaDosPdfs();
 
 // Tarefas periódicas. `unref` deixa o processo encerrar sem esperar por elas.
 setInterval(() => void processarFila(), 30_000).unref();
@@ -287,7 +289,7 @@ setInterval(() => {
   limparAvisosAntigos();
   faxinarMidias();
   backupDoDia();
-  verificacaoDoDia();
+  void verificacaoDoDia();
 }, 60 * 60 * 1000).unref();
 // O backup do dia e a faxina rodam logo depois da subida, sem atrasá-la.
 setTimeout(() => {
@@ -297,7 +299,7 @@ setTimeout(() => {
 }, 5_000).unref();
 // A verificação de integridade lê todos os documentos do disco: começa um
 // pouco depois, para não pesar na subida.
-setTimeout(() => verificacaoDoDia(), 10 * 60 * 1000).unref();
+setTimeout(() => void verificacaoDoDia(), 10 * 60 * 1000).unref();
 
 // Encerramento pedido (serviço parado, Ctrl+C): o backup que esperava roda antes de sair.
 for (const sinal of ['SIGTERM', 'SIGINT'] as const) {

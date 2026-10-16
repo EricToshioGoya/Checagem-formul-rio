@@ -531,6 +531,20 @@ describe('certificação devolvida por itens e aprovada com o certificado anexad
     assert.equal(depois.solicitacoes[0].anexos.length, 2);
   });
 
+  it('o uid de um certificado não serve para sobrescrevê-lo como PDF emitido', async () => {
+    const { solicitacoes } = await montador.ok('GET', '/api/certificacoes');
+    const anexo = solicitacoes[0].anexos.find((a: { nomeArquivo: string }) => a.nomeArquivo === 'Certificado QD-07.pdf');
+    const forjado = pdfFalso('certificado forjado');
+    const r = await montador.enviarArquivo(
+      `/api/pdfs/${anexo.uid}?titulo=x&nomeArquivo=x.pdf&emitidoEm=${Date.now()}`,
+      forjado,
+      'application/pdf',
+    );
+    assert.equal(r.status, 409);
+    const baixado = await montador.baixar(`/api/certificacoes/${certUid}/certificados/${anexo.uid}`);
+    assert.ok(baixado.bytes.equals(certificado));
+  });
+
   it('a busca encontra o certificado pelo número, e nada se perde ao excluir a conta', async () => {
     const { solicitacoes } = await montador.ok('GET', '/api/certificacoes');
     const numero = solicitacoes[0].numero as string;

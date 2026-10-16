@@ -1,4 +1,5 @@
-import { api, consulta, ErroApi } from '../api/cliente';
+import { api, consulta, ErroApi, lerToken, lerUsuarioGuardado } from '../api/cliente';
+import { atualizarDecisoes } from '../aprovacao/decisoes';
 import { db, novoUid } from '../db/db';
 import { PdfPendenteRepository, ProjetoRepository } from '../db/repositorios';
 import type { AprovacaoPendente, PdfPendente } from '../db/tipos';
@@ -25,7 +26,10 @@ function ehRecusa(erro: unknown): erro is ErroApi {
     erro instanceof ErroApi &&
     erro.status >= 400 &&
     erro.status < 500 &&
-    ![401, 408, 429].includes(erro.status)
+    ![401, 408, 429].includes(erro.status) &&
+    // Arquivo que chegou diferente do original (transferência truncada): o
+    // servidor pede o reenvio, e a próxima passada manda de novo.
+    erro.codigo !== 'hash-divergente'
   );
 }
 
@@ -49,7 +53,30 @@ async function enviarPdf(pdf: PdfPendente): Promise<void> {
  * existe mais no aparelho, ou que o servidor recusa, vai como ausente — o PDF
  * segue sendo o documento, e o envio não fica preso por ela.
  */
-async function enviarAprovacao(pdf: PdfPendente, aprovacao: AprovacaoPendente): Promise<void> {
+/**
+ * A sessão aberta ainda é da conta dona da fila. No aparelho compartilhado,
+ * outra pessoa pode entrar no meio de um envio: o que é de uma conta nunca
+ * sai com o token da outra.
+ */
+function sessaoDa(usuarioId: number): boolean {
+  return Boolean(lerToken()) && lerUsuarioGuardado()?.usuario.id === usuarioId;
+}
+
+/** A sessão trocou de conta no meio da passada: para, sem marcar nada. */
+class SessaoTrocada extends Error {}
+
+/** O envio para aprovação foi recusado pelo servidor (o PDF já está guardado). */
+class RecusaAprovacao extends Error {
+  constructor(readonly erro: ErroApi) {
+    super(erro.message);
+  }
+}
+
+async function enviarAprovacao(
+  pdf: PdfPendente,
+  aprovacao: AprovacaoPendente,
+  usuarioId: number,
+): Promise<void> {
   const { faltando } = await api.post<{ faltando: string[] }>('/api/verificacoes', {
     uid: aprovacao.uid,
     pdfUid: pdf.uid,
@@ -61,6 +88,7 @@ async function enviarAprovacao(pdf: PdfPendente, aprovacao: AprovacaoPendente): 
   });
   const ausentes: string[] = [];
   for (const midiaUid of faltando) {
+    if (!sessaoDa(usuarioId)) throw new SessaoTrocada();
     const midia = await db.midias.where('uid').equals(midiaUid).first();
     if (!midia) {
       ausentes.push(midiaUid);
@@ -76,28 +104,52 @@ async function enviarAprovacao(pdf: PdfPendente, aprovacao: AprovacaoPendente): 
       ausentes.push(midiaUid);
     }
   }
+  if (!sessaoDa(usuarioId)) throw new SessaoTrocada();
   await api.post(`/api/verificacoes/${aprovacao.uid}/concluir`, { ausentes });
 }
 
 async function enviarUmaVez(usuarioId: number): Promise<void> {
+  let aprovacoesConcluidas = 0;
   for (const pdf of await PdfPendenteRepository.listar(usuarioId)) {
     if (pdf.recusa) continue;
+    if (!sessaoDa(usuarioId)) break;
     try {
       if (!pdf.pdfEnviado) {
         await enviarPdf(pdf);
         if (pdf.aprovacao) await PdfPendenteRepository.marcarPdfEnviado(pdf.id!);
       }
-      if (pdf.aprovacao) await enviarAprovacao(pdf, pdf.aprovacao);
+      if (pdf.aprovacao) {
+        try {
+          await enviarAprovacao(pdf, pdf.aprovacao, usuarioId);
+        } catch (erro) {
+          if (erro instanceof ErroApi && erro.codigo === 'pdf-ausente') {
+            // O servidor não tem o PDF (ex.: banco restaurado): manda de novo.
+            await PdfPendenteRepository.desmarcarPdfEnviado(pdf.id!);
+            continue;
+          }
+          throw ehRecusa(erro) ? new RecusaAprovacao(erro) : erro;
+        }
+        aprovacoesConcluidas += 1;
+      }
       await PdfPendenteRepository.remover(pdf.id!);
     } catch (erro) {
+      if (erro instanceof RecusaAprovacao) {
+        await PdfPendenteRepository.recusar(
+          pdf.id!,
+          `O PDF foi guardado, mas o envio para aprovação foi recusado: ${erro.message}`,
+        );
+        continue;
+      }
       if (ehRecusa(erro)) {
         await PdfPendenteRepository.recusar(pdf.id!, erro.message);
         continue;
       }
-      // Sem rede, servidor fora do ar ou sessão vencida: fica para a próxima.
-      return;
+      // Sem rede, servidor fora do ar, sessão vencida ou trocada: fica para a próxima.
+      break;
     }
   }
+  // Um reenvio que chegou à fila de aprovação tira o alerta de correção.
+  if (aprovacoesConcluidas && sessaoDa(usuarioId)) await atualizarDecisoes(usuarioId);
 }
 
 let fila: Promise<void> = Promise.resolve();

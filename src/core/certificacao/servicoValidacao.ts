@@ -29,14 +29,16 @@ export const servicoValidacao: ServicoValidacao = {
     if (!solicitacao.numeroCertificado) {
       throw new Error('A solicitação ainda não foi aprovada.');
     }
-    if (solicitacao.estado === 'emitida') return;
-    await localSolicitacaoStore.registrarEstado(
-      solicitacaoId,
-      'emitida',
-      por,
-      `Certificado ${solicitacao.numeroCertificado} baixado.`,
-    );
+    if (solicitacao.estado !== 'emitida') {
+      await localSolicitacaoStore.registrarEstado(
+        solicitacaoId,
+        'emitida',
+        por,
+        `Certificado ${solicitacao.numeroCertificado} baixado.`,
+      );
+    }
     try {
+      // Repetido a cada download: o servidor ignora o que já está registrado.
       await registrarEmissaoNoServidor(solicitacao);
     } catch {
       // O arquivo já foi baixado; se o registro não chegar ao servidor, ele
