@@ -70,6 +70,8 @@ export const localSolicitacaoStore: SolicitacaoStore = {
         estado,
         // O apontamento fica visível enquanto a solicitação estiver devolvida.
         apontamentos: estado === 'devolvida' ? observacao : undefined,
+        // Reenviada: as etapas apontadas na devolução já foram tratadas.
+        ...(estado === 'enviada' ? { itens: [] } : {}),
         historico: [...atual.historico, { estado, em: agora, por, observacao }],
         atualizadoEm: agora,
       });

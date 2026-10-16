@@ -20,6 +20,11 @@ export const PdfPendenteRepository = {
     await db.pdfsPendentes.delete(id);
   },
 
+  /** O PDF chegou ao arquivo; a entrada fica até a aprovação ser concluída. */
+  async marcarPdfEnviado(id: number): Promise<void> {
+    await db.pdfsPendentes.update(id, { pdfEnviado: true });
+  },
+
   async recusar(id: number, motivo: string): Promise<void> {
     await db.pdfsPendentes.update(id, { recusa: motivo });
   },

@@ -8,6 +8,7 @@ import { Modal } from '../../shared/componentes/Modal';
 import { Aviso, Erro } from '../../shared/componentes/Estado';
 import { useSessao } from '../../core/api/SessaoContexto';
 import { registrarPdfs } from '../../core/sync/arquivoPdfs';
+import { atualizarDecisoes } from '../../core/aprovacao/decisoes';
 import { ArquivosGerados, EscolhaFotos, type EstadoRegistro } from './PartesDialogoPdf';
 
 interface Props {
@@ -15,10 +16,12 @@ interface Props {
   projetoId: number;
   /** Painel do projeto: limita o PDF aos checklists daquela linha. */
   painelSlug?: string;
+  /** Tipo de verificação a pré-selecionar (reenvio de uma reprovada); ausente, todos. */
+  tipo?: string;
   onFechar: () => void;
 }
 
-export function DialogoGerarPdf({ aberto, projetoId, painelSlug, onFechar }: Props) {
+export function DialogoGerarPdf({ aberto, projetoId, painelSlug, tipo, onFechar }: Props) {
   const [entradas, setEntradas] = useState<EntradaCatalogo[]>([]);
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [incluirFotos, setIncluirFotos] = useState(true);
@@ -38,7 +41,8 @@ export function DialogoGerarPdf({ aberto, projetoId, painelSlug, onFechar }: Pro
       try {
         const lista = await formulariosDoPainel(painelSlug);
         setEntradas(lista);
-        setSelecionados(lista.map((e) => e.id));
+        const doTipo = lista.filter((e) => e.tipo === tipo);
+        setSelecionados((doTipo.length ? doTipo : lista).map((e) => e.id));
         setPendentes(
           (await progressoDoProjeto(projetoId, painelSlug)).progresso.pendentes,
         );
@@ -46,7 +50,7 @@ export function DialogoGerarPdf({ aberto, projetoId, painelSlug, onFechar }: Pro
         setErro(e instanceof Error ? e.message : 'Falha ao preparar a geração.');
       }
     })();
-  }, [aberto, projetoId, painelSlug]);
+  }, [aberto, projetoId, painelSlug, tipo]);
 
   const gerar = async () => {
     setGerando(true);
@@ -64,10 +68,13 @@ export function DialogoGerarPdf({ aberto, projetoId, painelSlug, onFechar }: Pro
       for (const arquivo of arquivos) baixarBlob(arquivo.blob, arquivo.nome);
       setConcluido(arquivos.map((a) => a.nome));
       // Todo PDF emitido vai para o arquivo do servidor (documentação de
-      // garantia). Sem rede, fica na fila do aparelho e segue depois.
+      // garantia) e, o do projeto, para a aprovação da administração. Sem
+      // rede, fica na fila do aparelho e segue depois.
       if (usuario) {
         setRegistro(null);
-        setRegistro(await registrarPdfs(usuario.id, arquivos));
+        setRegistro(await registrarPdfs(usuario.id, arquivos, projetoId));
+        // A versão reenviada passa a "aguardando": o alerta de correção some.
+        void atualizarDecisoes(usuario.id);
       }
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao gerar o PDF.');

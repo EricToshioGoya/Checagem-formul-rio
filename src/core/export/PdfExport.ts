@@ -25,6 +25,11 @@ export interface ArquivoGerado {
     titulo: string;
     painelSlug?: string;
     emitidoEm: number;
+    /**
+     * Só no PDF do projeto: o tipo de verificação e, por TAG (`uid`), os
+     * checklists que o PDF leva. É o que segue para a aprovação.
+     */
+    verificacao?: { tipo: string; formIdsPorTag: Record<string, string[]> };
   };
 }
 
@@ -143,13 +148,19 @@ export async function gerarArquivos(
       tags,
       progressoGeral: somarProgresso(tags.flatMap((t) => t.formularios.map((f) => f.progresso))),
     };
-    arquivos.push(
-      ...(await arquivosDoDossie(dossie, {
-        incluirFotos: opcoes.incluirFotos,
-        titulo: rotuloTipo(tipo),
-        sufixo: sufixoTipo(tipo),
-      })),
-    );
+    const gerados = await arquivosDoDossie(dossie, {
+      incluirFotos: opcoes.incluirFotos,
+      titulo: rotuloTipo(tipo),
+      sufixo: sufixoTipo(tipo),
+    });
+    const pdf = gerados.find((a) => a.registro);
+    if (pdf?.registro && tags.every((t) => t.uid)) {
+      pdf.registro.verificacao = {
+        tipo,
+        formIdsPorTag: Object.fromEntries(tags.map((t) => [t.uid!, t.formularios.map((f) => f.definicao.id)])),
+      };
+    }
+    arquivos.push(...gerados);
   }
 
   return arquivos;

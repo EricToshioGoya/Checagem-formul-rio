@@ -10,6 +10,7 @@ import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { IconeLixeira, IconeSeta } from '../../shared/componentes/Icones';
 import { dataHoraBr } from '../../shared/utils/texto';
 import { SituacaoSincronizacao } from './SituacaoSincronizacao';
+import { lerDecisoesGuardadas } from '../../core/aprovacao/decisoes';
 
 /**
  * Percentual de preenchimento de cada projeto. Calculado com o painel do
@@ -51,6 +52,13 @@ interface Props {
 /** Cartão de um projeto nas listas "Meus projetos" e "Projetos do painel". */
 export function CartaoProjeto({ projeto: p, percentual, onExcluir }: Props) {
   const navegar = useNavigate();
+  // Última leitura guardada das decisões: o selo aparece também sem rede.
+  const correcoes =
+    p.usuarioId !== undefined && p.uid
+      ? lerDecisoesGuardadas(p.usuarioId).filter(
+          (d) => d.estado === 'reprovada' && d.projeto.uid.toLowerCase() === p.uid!.toLowerCase(),
+        )
+      : [];
   return (
     <li className="rounded-lg border border-abb-line bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -59,6 +67,11 @@ export function CartaoProjeto({ projeto: p, percentual, onExcluir }: Props) {
             {p.empresa.trim() || 'Empresa não informada'}
           </p>
           <h2 className="text-xl font-bold break-words">{p.nomeProjeto}</h2>
+          {correcoes.length ? (
+            <p className="mt-1 inline-block rounded bg-amber-400 px-2 py-0.5 text-sm font-bold text-abb-black">
+              Correção pedida: {correcoes.map((d) => d.tipo.rotulo).join(', ')}
+            </p>
+          ) : null}
           <p className="mt-1 text-base text-abb-gray">
             {plural(p.quantidadeTags, 'TAG', 'TAGs')} • Operador: {p.operador || '—'}
           </p>

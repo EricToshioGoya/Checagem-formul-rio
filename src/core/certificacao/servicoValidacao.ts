@@ -34,13 +34,13 @@ export const servicoValidacao: ServicoValidacao = {
       solicitacaoId,
       'emitida',
       por,
-      `Certificado ${solicitacao.numeroCertificado} gerado.`,
+      `Certificado ${solicitacao.numeroCertificado} baixado.`,
     );
     try {
       await registrarEmissaoNoServidor(solicitacao);
     } catch {
-      // Sem conexão: o PDF já saiu. O servidor continua em "aprovada" até a
-      // próxima emissão registrada; o número do certificado não muda.
+      // O arquivo já foi baixado; se o registro não chegar ao servidor, ele
+      // continua em "aprovada" até o próximo download. O número não muda.
     }
   },
 };
