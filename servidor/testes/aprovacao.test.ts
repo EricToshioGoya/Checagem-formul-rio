@@ -480,6 +480,21 @@ describe('certificação devolvida por itens e aprovada com o certificado anexad
     ({ solicitacoes } = await montador.ok('GET', '/api/certificacoes'));
     assert.equal(solicitacoes[0].estado, 'enviada');
     assert.deepEqual(solicitacoes[0].itens, []);
+
+    // Decisão tomada sobre uma versão que já mudou é recusada.
+    const versaoAtual = solicitacoes[0].versao as number;
+    const desatualizada = await admin.pedir('POST', url, {
+      versao: versaoAtual - 1,
+      apontamentos: 'Analisei a versão antiga.',
+    });
+    assert.equal(desatualizada.status, 409);
+    assert.equal(desatualizada.dados.codigo, 'versao-mudou');
+    const aprovacaoVelha = await admin.enviarArquivo(
+      `/api/admin/certificacoes/${idSolicitacao}/aprovacao?versao=${versaoAtual - 1}`,
+      certificado,
+      'application/pdf',
+    );
+    assert.equal(aprovacaoVelha.status, 409);
   });
 
   it('aprovar exige o arquivo do certificado, conferido', async () => {
@@ -629,6 +644,43 @@ describe('backup externo e integridade dos documentos', () => {
     assert.ok(armazenamento.alertas.some((a: { nivel: string }) => a.nivel === 'erro'));
     const busca = await admin.ok('GET', '/api/admin/documentos');
     assert.equal(busca.documentos[0].integridade.situacao, 'corrompido');
+  });
+});
+
+describe('espelho do backup', () => {
+  it('sem a pasta das mídias, nada sai do espelho; foto registrada que sumiu continua lá', async () => {
+    const amb = await subirServidor();
+    try {
+      const { renameSync, rmSync, writeFileSync, mkdirSync } = await import('node:fs');
+      const admin = await entrarComoAdmin(amb.url);
+      const montador = await novoMontador(amb.url, admin, 'fabi@parceiro.local');
+      const uid = await enviarPdf(montador, 'sen-plus', pdfFalso('guardado'));
+      // Arquivo sem registro nenhum, copiado para o espelho.
+      const avulso = novoUid();
+      writeFileSync(join(amb.dados, 'midias', avulso), 'sem registro');
+      await admin.ok('POST', '/api/admin/sistema/backup', {});
+      const espelho = join(amb.destino, 'midias');
+      assert.ok(existsSync(join(espelho, uid)) && existsSync(join(espelho, avulso)));
+
+      // Disco das mídias fora do ar: o backup não poda nada.
+      renameSync(join(amb.dados, 'midias'), join(amb.dados, 'midias-fora'));
+      rmSync(join(amb.dados, 'midias-excluidas'), { recursive: true, force: true });
+      // O backup manual leva a hora no nome: um por segundo.
+      await new Promise((r) => setTimeout(r, 1100));
+      await admin.ok('POST', '/api/admin/sistema/backup', {});
+      assert.ok(existsSync(join(espelho, avulso)), 'o espelho não perde nada com a pasta fora do ar');
+      const { armazenamento } = await admin.ok('GET', '/api/admin/sistema');
+      assert.ok(armazenamento.alertas.some((a: { nivel: string }) => a.nivel === 'erro'));
+
+      // De volta, vazia: o que tem registro fica; o avulso, que saiu de vez, sai.
+      mkdirSync(join(amb.dados, 'midias'));
+      await new Promise((r) => setTimeout(r, 1100));
+      await admin.ok('POST', '/api/admin/sistema/backup', {});
+      assert.ok(existsSync(join(espelho, uid)), 'documento continua no espelho');
+      assert.ok(!existsSync(join(espelho, avulso)));
+    } finally {
+      await amb.encerrar();
+    }
   });
 });
 

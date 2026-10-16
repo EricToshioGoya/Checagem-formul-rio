@@ -203,6 +203,21 @@ function descrever(l: Linha) {
   };
 }
 
+/**
+ * A administração decide sobre o que viu: se o montador reenviou outra versão
+ * enquanto a análise estava aberta, a decisão é recusada.
+ */
+function conferirVersaoAnalisada(l: Linha, vista: number | undefined | null): void {
+  if (vista === undefined || vista === null) return;
+  if (Number(l.versao) !== vista) {
+    throw new ErroHttp(
+      409,
+      'O montador enviou uma versão nova enquanto a análise estava aberta. Abra a solicitação de novo.',
+      'versao-mudou',
+    );
+  }
+}
+
 /** Fotos que o documento cita e o servidor ainda não recebeu. */
 function fotosFaltando(eu: Usuario, citadas: MidiaCitada[]): string[] {
   const recebidas = new Set(
@@ -653,6 +668,8 @@ export const rotasCertificacoes: Record<string, Manipulador> = {
     if (l.estado !== 'enviada') {
       throw new ErroHttp(409, 'Só uma solicitação enviada para validação pode ser aprovada.');
     }
+    const versaoVista = ctx.consulta.get('versao');
+    conferirVersaoAnalisada(l, versaoVista ? Number(versaoVista) : undefined);
     const arquivo = lerCertificado(ctx);
 
     const painel = banco.prepare('SELECT slug, nome, signatario FROM paineis WHERE id = ?').get(Number(l.painelId)) as {
@@ -818,6 +835,7 @@ export const rotasCertificacoes: Record<string, Manipulador> = {
     const l = banco.prepare('SELECT * FROM certificacoes WHERE id = ?').get(id) as Linha | undefined;
     if (!l) throw new ErroHttp(404, 'Solicitação não encontrada.');
     if (l.estado !== 'enviada') throw new ErroHttp(409, 'Só uma solicitação enviada pode ser devolvida.');
+    conferirVersaoAnalisada(l, r.data.versao);
 
     const itens = completarItens(l, r.data.itens);
     const comentario = r.data.apontamentos;

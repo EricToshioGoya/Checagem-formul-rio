@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, consulta, type DocumentoArquivado, type RespostaDocumentos } from '../../core/api/cliente';
 import { Botao } from '../../shared/componentes/Botao';
 import { CampoData } from '../../shared/componentes/Campos';
@@ -76,22 +76,27 @@ export function Documentos({
   const [pagina, setPagina] = useState(1);
   const [baixando, setBaixando] = useState<string | null>(null);
 
+  // Só a resposta do pedido mais recente vale: uma resposta atrasada de outro
+  // filtro ou página não pode tomar o lugar da lista atual.
+  const pedido = useRef(0);
   const carregar = useCallback(async () => {
+    const meu = ++pedido.current;
     try {
-      setDados(
-        await api.get<RespostaDocumentos>(
-          `/api/admin/documentos${consulta({
-            pagina,
-            busca: buscaAplicada,
-            categoria,
-            situacao,
-            de: limiteDoDia(de, false),
-            ate: limiteDoDia(ate, true),
-          })}`,
-        ),
+      const resposta = await api.get<RespostaDocumentos>(
+        `/api/admin/documentos${consulta({
+          pagina,
+          busca: buscaAplicada,
+          categoria,
+          situacao,
+          de: limiteDoDia(de, false),
+          ate: limiteDoDia(ate, true),
+        })}`,
       );
+      if (meu !== pedido.current) return;
+      setDados(resposta);
       setErro(null);
     } catch (e) {
+      if (meu !== pedido.current) return;
       if (sessaoAdminAcabou(e)) onSessaoVencida();
       else setErro(e instanceof Error ? e.message : 'Não foi possível ler os documentos.');
     }

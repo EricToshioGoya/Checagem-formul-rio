@@ -112,7 +112,7 @@ export function AnaliseCertificacao({
     try {
       if (decisao === 'aprovada') {
         if (!arquivo) throw new Error('Anexe o arquivo do certificado.');
-        await enviarCertificado(id, arquivo, 'aprovacao');
+        await enviarCertificado(id, arquivo, 'aprovacao', s.versao);
         onDecidido(`Solicitação aprovada e certificado anexado. ${s.montador.nome} foi avisado para baixá-lo.`);
       } else {
         const itens = Object.entries(marcas).map(([etapaId, motivo]) => ({
@@ -120,7 +120,7 @@ export function AnaliseCertificacao({
           etapaId,
           motivo: motivo.trim(),
         }));
-        await devolverCertificacao(id, comentario, itens);
+        await devolverCertificacao(id, s.versao, comentario, itens);
         onDecidido(`Solicitação devolvida: ${s.montador.nome} foi avisado para corrigir.`);
       }
     } catch (e) {

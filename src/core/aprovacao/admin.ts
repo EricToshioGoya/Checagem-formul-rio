@@ -80,6 +80,8 @@ export interface DetalheCertificacaoAdmin {
     id: number;
     uid: string;
     estado: string;
+    /** Versão analisada: vai junto da decisão, que o servidor recusa se mudou. */
+    versao: number;
     formId: string;
     numero: string | null;
     painel: { slug: string; nome: string };
@@ -100,10 +102,12 @@ export function obterCertificacao(id: number): Promise<DetalheCertificacaoAdmin>
 
 export function devolverCertificacao(
   id: number,
+  versao: number,
   apontamentos: string,
   itens: MarcaNaoConforme[],
 ): Promise<void> {
   return api.post(`/api/admin/certificacoes/${id}/devolver`, {
+    versao,
     apontamentos,
     itens: itens.map(({ formId, etapaId, motivo }) => ({ formId, etapaId, motivo })),
   });
@@ -120,10 +124,11 @@ export async function enviarCertificado(
   id: number,
   arquivo: File,
   modo: 'aprovacao' | 'nova-via',
+  versao?: number,
 ): Promise<void> {
   const rota = modo === 'aprovacao' ? 'aprovacao' : 'certificado';
   await api.enviarArquivo(
-    `/api/admin/certificacoes/${id}/${rota}${consulta({ nomeArquivo: arquivo.name, sha256: await sha256Hex(arquivo) })}`,
+    `/api/admin/certificacoes/${id}/${rota}${consulta({ nomeArquivo: arquivo.name, sha256: await sha256Hex(arquivo), versao })}`,
     arquivo,
   );
 }

@@ -18,6 +18,7 @@ import {
   gravarArquivoSeguro,
   hashDe,
   uidValido,
+  uidsConhecidos,
 } from './midias';
 
 /**
@@ -170,6 +171,10 @@ function espelharEm(lugar: Lugar, docs: Map<string, string | null>): ResultadoLu
     return r;
   }
   const vivas = new Set<string>();
+  // Sem a pasta das mídias (disco não montado, pasta trocada), nada sai do
+  // espelho: é justamente quando o backup faz falta.
+  const podePodar = existsSync(PASTA_MIDIAS);
+  if (!podePodar) r.erros.push(`A pasta das mídias (${PASTA_MIDIAS}) não está acessível.`);
   for (const pasta of [PASTA_MIDIAS, PASTA_LIXEIRA]) {
     if (!existsSync(pasta)) continue;
     for (const nome of readdirSync(pasta)) {
@@ -185,12 +190,17 @@ function espelharEm(lugar: Lugar, docs: Map<string, string | null>): ResultadoLu
       }
     }
   }
+  // Sai do espelho só o que saiu da lixeira de vez: nem no disco, nem na
+  // lixeira, nem registrado no banco. Uma foto registrada que sumiu do disco
+  // principal continua no espelho — é de lá que ela volta.
+  const conhecidas = podePodar ? uidsConhecidos() : new Set<string>();
   for (const nome of readdirSync(lugar.midias)) {
     if (nome.endsWith('.parcial')) {
       rmSync(join(lugar.midias, nome), { force: true });
       continue;
     }
-    if (uidValido(nome) && !vivas.has(nome) && !docs.has(nome.toLowerCase())) {
+    const uid = nome.toLowerCase();
+    if (podePodar && uidValido(nome) && !vivas.has(nome) && !docs.has(uid) && !conhecidas.has(uid)) {
       rmSync(join(lugar.midias, nome), { force: true });
     }
   }
@@ -290,11 +300,22 @@ export function fazerBackup(motivo: 'automatico' | 'manual'): Backup | null {
   return { arquivo: nome, tamanho: info.size, criadoEm: info.mtimeMs };
 }
 
-/** Chamado na subida e a cada hora: faz o backup do dia, se ainda não houver. */
+/**
+ * Chamado na subida e a cada hora: faz o backup do dia, se ainda não houver.
+ * Já feito, espelha mesmo assim — um documento que chegou antes de uma queda
+ * de energia, ou numa hora em que o destino estava fora do ar, é copiado
+ * agora, e não só no dia seguinte.
+ */
 export function backupDoDia(): void {
   try {
     const feito = fazerBackup('automatico');
     if (feito) console.log(`Backup diário gravado: ${join(PASTA_BACKUP, feito.arquivo)}`);
+    else if (!DESLIGADO) {
+      const inicio = Date.now();
+      const resultados = new Map<string, ResultadoLugar>();
+      espelharTudo(resultados);
+      fecharRodada(resultados, inicio);
+    }
   } catch (erro) {
     console.error('Falha no backup diário', erro);
   }

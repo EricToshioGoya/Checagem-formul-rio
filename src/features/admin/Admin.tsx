@@ -37,7 +37,10 @@ const ABAS: Array<{ id: Aba; rotulo: string; curto: string }> = [
   { id: 'sistema', rotulo: 'Sistema', curto: 'Sistema' },
 ];
 
-const ANTIGAS: Record<string, Aba> = { validacao: 'aprovacoes', pdfs: 'documentos' };
+const ANTIGAS: Record<string, { aba: Aba; secao?: string }> = {
+  validacao: { aba: 'aprovacoes', secao: 'certificacoes' },
+  pdfs: { aba: 'documentos' },
+};
 
 /** Selos de pendência de cada aba; relidos de tempos em tempos. */
 const RELEITURA_MS = 30_000;
@@ -55,8 +58,12 @@ export function Admin() {
   // A aba fica na URL: recarregar a página volta para onde se estava.
   const [parametros, setParametros] = useSearchParams();
   // Endereços antigos (avisos já enviados, favoritos) continuam abrindo.
-  const pedida = ANTIGAS[parametros.get('aba') ?? ''] ?? parametros.get('aba');
+  const antiga = ANTIGAS[parametros.get('aba') ?? ''];
+  const pedida = antiga?.aba ?? parametros.get('aba');
   const aba: Aba = ABAS.some((a) => a.id === pedida) ? (pedida as Aba) : 'acessos';
+  useEffect(() => {
+    if (antiga) setParametros({ aba: antiga.aba, ...(antiga.secao ? { secao: antiga.secao } : {}) }, { replace: true });
+  }, [antiga, setParametros]);
   const [resumo, setResumo] = useState<ResumoAdmin | null>(null);
 
   const sessaoVencida = useCallback(async () => {

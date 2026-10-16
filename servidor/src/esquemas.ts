@@ -350,6 +350,8 @@ export const devolucaoSchema = z
   .object({
     apontamentos: comentarioSchema,
     itens: listaDeItens,
+    /** Versão que a administração analisou; outra versão no servidor recusa a decisão. */
+    versao: z.number().int().min(0).optional(),
   })
   .refine((d) => d.apontamentos.length > 0 || d.itens.length > 0, {
     message: 'Marque ao menos uma etapa não conforme ou escreva um comentário.',
