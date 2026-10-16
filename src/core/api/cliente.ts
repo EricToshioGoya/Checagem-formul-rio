@@ -245,6 +245,10 @@ export interface PedidoAdminApi {
 export interface ResumoAdmin {
   pedidosAdmin: number;
   acessosPendentes: number;
+  /** PDFs de verificação aguardando aprovação. */
+  verificacoesPendentes?: number;
+  /** Solicitações de certificação enviadas, à espera de validação. */
+  certificacoesPendentes?: number;
 }
 
 /**
@@ -384,25 +388,36 @@ export interface RespostaHistorico extends Paginado {
   registros: RegistroHistorico[];
 }
 
-/** PDF de checklist guardado no arquivo do servidor (documentação de garantia). */
-export interface PdfArquivado {
+/**
+ * Documento guardado no servidor (documentação de garantia): PDF emitido pelo
+ * montador ou certificado anexado pela administração.
+ */
+export interface DocumentoArquivado {
+  categoria: 'verificacao' | 'checklist' | 'certificado';
   uid: string;
+  nomeArquivo: string;
+  /** Emissão do PDF ou anexação do certificado. */
+  em: number;
+  tamanho: number;
+  sha256: string;
   empresa: string;
-  nomeProjeto: string;
-  /** Tipo de verificação ou nome do checklist. */
+  projeto: string;
   titulo: string;
   painel: string | null;
   /** Nulo quando a conta de quem emitiu foi excluída. */
   montador: string | null;
-  nomeArquivo: string;
-  emitidoEm: number;
-  recebidoEm: number;
-  tamanho: number;
-  sha256: string;
+  verificacaoId: number | null;
+  /** Situação da aprovação (PDF de verificação) ou `aprovada` (certificado). */
+  situacao: string | null;
+  versao: number | null;
+  numero: string | null;
+  certificacaoId: number | null;
+  /** Última conferência do SHA-256; nula se ainda não conferido. */
+  integridade: { situacao: 'ok' | 'reparado' | 'corrompido' | 'ausente'; verificadoEm: number } | null;
 }
 
-export interface RespostaPdfs extends Paginado {
-  pdfs: PdfArquivado[];
+export interface RespostaDocumentos extends Paginado {
+  documentos: DocumentoArquivado[];
 }
 
 /** Andamento de um projeto de um montador num painel, do que ele sincronizou. */
@@ -491,13 +506,49 @@ export interface SituacaoAvisos {
   recentes: AvisoRecente[];
 }
 
+export interface DestinoBackup {
+  rotulo: string;
+  caminho: string;
+  /** Destino de `BACKUP_DESTINOS` (outro disco ou rede), e não a pasta local. */
+  externo: boolean;
+  /** Fica no mesmo disco dos dados: não protege contra a falha desse disco. */
+  mesmoDisco: boolean;
+  espaco: { livre: number; total: number } | null;
+  ultimaRodada: { em: number; ok: boolean; resumo: unknown } | null;
+  ultimoSucesso: number | null;
+}
+
+export interface ResultadoVerificacao {
+  ok: boolean;
+  iniciadoEm: number;
+  concluidoEm: number;
+  bancoIntegro: boolean;
+  problemasBanco: string[];
+  documentos: number;
+  conferidos: number;
+  copiasConferidas: number;
+  reparados: number;
+  semReparo: number;
+  copiasComFalha: number;
+  problemas: Array<{ uid: string; onde: string; problema: 'ausente' | 'corrompido'; reparado: boolean }>;
+}
+
+export interface SituacaoArmazenamento {
+  destinos: DestinoBackup[];
+  verificacao: { em: number; ok: boolean; resumo: unknown } | null;
+  documentos: { pdfs: number; certificados: number; fotos: number; comProblema: number };
+  alertas: Array<{ nivel: 'erro' | 'aviso'; mensagem: string }>;
+}
+
 export interface SituacaoSistema {
   avisos: SituacaoAvisos;
   backup: {
     pasta: string;
     dias: number;
     desligado: boolean;
+    destinos?: string[];
     recentes: Array<{ arquivo: string; tamanho: number; criadoEm: number }>;
   };
+  armazenamento?: SituacaoArmazenamento;
   publicacao: ItemPublicacao[];
 }

@@ -3,22 +3,22 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, type ResumoAdmin } from '../../core/api/cliente';
 import { useSessao } from '../../core/api/SessaoContexto';
 import { Andamento } from '../paineis/Andamento';
-import { ArquivoPdfs } from './ArquivoPdfs';
+import { Aprovacoes } from './aprovacoes/Aprovacoes';
+import { Documentos } from './Documentos';
 import { GestaoAcessos } from './GestaoAcessos';
 import { GestaoAdministradores } from './GestaoAdministradores';
 import { GestaoContas } from './GestaoContas';
 import { GestaoPaineis } from './GestaoPaineis';
 import { Historico } from './Historico';
 import { Sistema } from './Sistema';
-import { ValidacaoAbb } from './ValidacaoAbb';
 import { plural } from '../../../compartilhado/plural';
 import { sessaoAdminAcabou } from './sessaoAdmin';
 
 type Aba =
   | 'acessos'
   | 'andamento'
-  | 'validacao'
-  | 'pdfs'
+  | 'aprovacoes'
+  | 'documentos'
   | 'paineis'
   | 'contas'
   | 'administradores'
@@ -28,14 +28,16 @@ type Aba =
 const ABAS: Array<{ id: Aba; rotulo: string; curto: string }> = [
   { id: 'acessos', rotulo: 'Acessos', curto: 'Acessos' },
   { id: 'andamento', rotulo: 'Andamento', curto: 'Andamento' },
-  { id: 'validacao', rotulo: 'Validação ABB', curto: 'Validação' },
-  { id: 'pdfs', rotulo: 'Arquivo de PDFs', curto: 'PDFs' },
+  { id: 'aprovacoes', rotulo: 'Aprovações', curto: 'Aprovações' },
+  { id: 'documentos', rotulo: 'Documentos', curto: 'Documentos' },
   { id: 'paineis', rotulo: 'Painéis e checklists', curto: 'Painéis' },
   { id: 'contas', rotulo: 'Contas', curto: 'Contas' },
   { id: 'administradores', rotulo: 'Administradores', curto: 'Admins' },
   { id: 'historico', rotulo: 'Histórico', curto: 'Histórico' },
   { id: 'sistema', rotulo: 'Sistema', curto: 'Sistema' },
 ];
+
+const ANTIGAS: Record<string, Aba> = { validacao: 'aprovacoes', pdfs: 'documentos' };
 
 /** Selos de pendência de cada aba; relidos de tempos em tempos. */
 const RELEITURA_MS = 30_000;
@@ -52,9 +54,9 @@ export function Admin() {
   const navegar = useNavigate();
   // A aba fica na URL: recarregar a página volta para onde se estava.
   const [parametros, setParametros] = useSearchParams();
-  const aba: Aba = ABAS.some((a) => a.id === parametros.get('aba'))
-    ? (parametros.get('aba') as Aba)
-    : 'acessos';
+  // Endereços antigos (avisos já enviados, favoritos) continuam abrindo.
+  const pedida = ANTIGAS[parametros.get('aba') ?? ''] ?? parametros.get('aba');
+  const aba: Aba = ABAS.some((a) => a.id === pedida) ? (pedida as Aba) : 'acessos';
   const [resumo, setResumo] = useState<ResumoAdmin | null>(null);
 
   const sessaoVencida = useCallback(async () => {
@@ -81,6 +83,7 @@ export function Admin() {
   const selo: Partial<Record<Aba, number>> = {
     acessos: resumo?.acessosPendentes,
     administradores: resumo?.pedidosAdmin,
+    aprovacoes: (resumo?.verificacoesPendentes ?? 0) + (resumo?.certificacoesPendentes ?? 0),
   };
 
   return (
@@ -144,19 +147,22 @@ export function Admin() {
             </div>
             <Andamento onSessaoVencida={sessaoVencida} />
           </div>
-        ) : aba === 'validacao' ? (
-          <div className="space-y-3">
-            <div>
-              <h2 className="text-xl font-bold">Validação ABB</h2>
-              <p className="text-sm text-abb-gray">
-                Solicitações de certificação enviadas pelos montadores: aprovar
-                atribui o número do certificado, devolver reabre para o montador.
-              </p>
-            </div>
-            <ValidacaoAbb />
-          </div>
-        ) : aba === 'pdfs' ? (
-          <ArquivoPdfs onSessaoVencida={sessaoVencida} />
+        ) : aba === 'aprovacoes' ? (
+          <Aprovacoes
+            onSessaoVencida={sessaoVencida}
+            onAlterado={lerResumo}
+            pendentes={{
+              verificacoes: resumo?.verificacoesPendentes,
+              certificacoes: resumo?.certificacoesPendentes,
+            }}
+          />
+        ) : aba === 'documentos' ? (
+          <Documentos
+            onSessaoVencida={sessaoVencida}
+            onAbrirAnalise={(secao, id) =>
+              setParametros({ aba: 'aprovacoes', secao, abrir: String(id) })
+            }
+          />
         ) : aba === 'contas' ? (
           <GestaoContas onSessaoVencida={sessaoVencida} onAlterado={lerResumo} />
         ) : aba === 'administradores' ? (

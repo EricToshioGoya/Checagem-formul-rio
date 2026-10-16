@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { api, type SituacaoAvisos, type SituacaoSistema } from '../../core/api/cliente';
+import {
+  api,
+  type ResultadoVerificacao,
+  type SituacaoArmazenamento,
+  type SituacaoAvisos,
+  type SituacaoSistema,
+} from '../../core/api/cliente';
 import { AvisoFlutuante } from '../../shared/componentes/AvisoFlutuante';
 import { Botao } from '../../shared/componentes/Botao';
 import { Carregando, Erro } from '../../shared/componentes/Estado';
@@ -38,7 +44,8 @@ function Situacao({ ok, children }: { ok: boolean; children: ReactNode }) {
 export function Sistema({ onSessaoVencida }: { onSessaoVencida: () => void }) {
   const [dados, setDados] = useState<SituacaoSistema | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [ocupado, setOcupado] = useState<'backup' | 'aviso' | null>(null);
+  const [ocupado, setOcupado] = useState<'backup' | 'aviso' | 'verificacao' | null>(null);
+  const [resultado, setResultado] = useState<ResultadoVerificacao | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const temporizador = useRef<number | undefined>(undefined);
 
@@ -76,6 +83,24 @@ export function Sistema({ onSessaoVencida }: { onSessaoVencida: () => void }) {
     }
   };
 
+  const verificarAgora = async () => {
+    setOcupado('verificacao');
+    try {
+      const r = await api.post<{ verificacao: ResultadoVerificacao; armazenamento: SituacaoArmazenamento }>(
+        '/api/admin/sistema/verificacao',
+        {},
+      );
+      setResultado(r.verificacao);
+      setDados((d) => (d ? { ...d, armazenamento: r.armazenamento } : d));
+      avisar(r.verificacao.ok ? 'Todos os documentos conferidos.' : 'A verificação encontrou problemas — veja abaixo.');
+    } catch (e) {
+      if (sessaoAdminAcabou(e)) onSessaoVencida();
+      else setErro(e instanceof Error ? e.message : 'Não foi possível verificar os documentos.');
+    } finally {
+      setOcupado(null);
+    }
+  };
+
   const testarAviso = async () => {
     setOcupado('aviso');
     try {
@@ -98,7 +123,7 @@ export function Sistema({ onSessaoVencida }: { onSessaoVencida: () => void }) {
     <div className="space-y-4">
       <div>
         <h2 className="text-xl font-bold">Sistema</h2>
-        <p className="text-sm text-abb-gray">Publicação, backup e avisos de pedidos.</p>
+        <p className="text-sm text-abb-gray">Publicação, guarda dos documentos, backup e avisos.</p>
       </div>
 
       {erro ? <Erro detalhe={erro} /> : null}
@@ -125,6 +150,15 @@ export function Sistema({ onSessaoVencida }: { onSessaoVencida: () => void }) {
               ))}
             </ul>
           </Cartao>
+
+          {dados.armazenamento ? (
+            <Armazenamento
+              situacao={dados.armazenamento}
+              resultado={resultado}
+              verificando={ocupado === 'verificacao'}
+              onVerificar={() => void verificarAgora()}
+            />
+          ) : null}
 
           <Cartao
             titulo="Backup"
@@ -155,11 +189,19 @@ export function Sistema({ onSessaoVencida }: { onSessaoVencida: () => void }) {
             )}
             <details className="mt-3 text-sm text-abb-gray">
               <summary className="cursor-pointer font-semibold text-abb-black">Como restaurar</summary>
-              <p className="mt-1">
-                Pare o servidor, copie o arquivo do backup por cima de <code>acesso.db</code>, apague os arquivos
-                <code> acesso.db-wal</code> e <code>acesso.db-shm</code> ao lado dele, e suba o servidor de novo. As
-                fotos sincronizadas ficam na subpasta <code>midias</code> do backup.
-              </p>
+              <ol className="mt-1 list-decimal space-y-0.5 pl-5">
+                <li>Pare o servidor.</li>
+                <li>
+                  Copie a cópia mais recente do banco (<code>acesso-…db</code>, na pasta de backup, em{' '}
+                  <code>continuo/</code> ou em <code>banco/</code> de um destino) por cima de <code>acesso.db</code> e
+                  apague <code>acesso.db-wal</code> e <code>acesso.db-shm</code> ao lado dele.
+                </li>
+                <li>
+                  Copie o conteúdo da subpasta <code>midias</code> do backup (ou de um destino) para a pasta das
+                  mídias do servidor, sem apagar o que já estiver lá.
+                </li>
+                <li>Suba o servidor e clique em “Verificar agora”, acima: cada documento é conferido pelo SHA-256.</li>
+              </ol>
             </details>
           </Cartao>
 
@@ -238,5 +280,107 @@ export function Sistema({ onSessaoVencida }: { onSessaoVencida: () => void }) {
 
       <AvisoFlutuante texto={aviso} />
     </div>
+  );
+}
+
+/** Onde os documentos estão guardados, a última conferência e os alertas. */
+function Armazenamento({
+  situacao,
+  resultado,
+  verificando,
+  onVerificar,
+}: {
+  situacao: SituacaoArmazenamento;
+  resultado: ResultadoVerificacao | null;
+  verificando: boolean;
+  onVerificar: () => void;
+}) {
+  const { documentos, destinos, verificacao, alertas } = situacao;
+  return (
+    <Cartao
+      titulo="Guarda dos documentos"
+      acao={
+        <Botao tamanho="compacto" disabled={verificando} onClick={onVerificar}>
+          {verificando ? 'Verificando…' : 'Verificar agora'}
+        </Botao>
+      }
+    >
+      {alertas.length ? (
+        <ul className="mb-3 space-y-2">
+          {alertas.map((a) => (
+            <li
+              key={a.mensagem}
+              role={a.nivel === 'erro' ? 'alert' : undefined}
+              className={`rounded-md border p-2 text-sm ${a.nivel === 'erro' ? 'border-abb-red bg-red-50 text-abb-red' : 'border-amber-400 bg-amber-50 text-amber-900'}`}
+            >
+              {a.mensagem}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="text-sm text-abb-gray">
+        {documentos.pdfs} PDF(s), {documentos.certificados} certificado(s) e {documentos.fotos} foto(s) de envios
+        guardados. Nada disso é apagado pelo sistema.
+        {documentos.comProblema ? ` ${documentos.comProblema} com problema na última conferência.` : ''}
+      </p>
+      <p className="mt-1 text-sm text-abb-gray">
+        Última verificação de integridade:{' '}
+        {verificacao ? `${dataHoraBr(verificacao.em)} — ${verificacao.ok ? 'tudo íntegro' : 'com problemas'}` : 'ainda não rodou'}
+        . Roda sozinha uma vez por dia.
+      </p>
+      <ul className="mt-3 divide-y divide-abb-line/70 rounded-lg border border-abb-line/70 text-sm">
+        {destinos.map((d) => (
+          <li key={d.caminho} className="space-y-0.5 px-3 py-2">
+            <p className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold break-all">{d.externo ? d.caminho : `${d.rotulo} (${d.caminho})`}</span>
+              <Situacao ok={Boolean(d.ultimaRodada?.ok) && !d.mesmoDisco}>
+                {!d.ultimaRodada
+                  ? 'sem cópia ainda'
+                  : !d.ultimaRodada.ok
+                    ? 'última cópia falhou'
+                    : d.mesmoDisco
+                      ? 'mesmo disco dos dados'
+                      : 'em dia'}
+              </Situacao>
+            </p>
+            <p className="text-xs text-abb-gray">
+              Última cópia bem-sucedida: {d.ultimoSucesso ? dataHoraBr(d.ultimoSucesso) : '—'}
+              {d.espaco ? ` · ${formatarBytes(d.espaco.livre)} livres de ${formatarBytes(d.espaco.total)}` : ''}
+            </p>
+          </li>
+        ))}
+      </ul>
+      {resultado ? (
+        <div className="mt-3 rounded-lg border border-abb-line/70 p-3 text-sm">
+          <p className="font-semibold">
+            Conferência de agora: {resultado.conferidos} de {resultado.documentos} documento(s) íntegro(s)
+            {resultado.reparados ? `, ${resultado.reparados} reparado(s) a partir do backup` : ''}
+            {resultado.semReparo ? `, ${resultado.semReparo} sem cópia íntegra` : ''}
+            {resultado.copiasComFalha ? `, ${resultado.copiasComFalha} cópia(s) não refeita(s)` : ''}.
+          </p>
+          {!resultado.bancoIntegro ? (
+            <p className="mt-1 text-abb-red">O banco de dados acusou problema: {resultado.problemasBanco.join('; ')}</p>
+          ) : null}
+          {resultado.problemas.length ? (
+            <ul className="mt-2 max-h-48 list-disc overflow-y-auto pl-5 text-xs text-abb-gray">
+              {resultado.problemas.slice(0, 100).map((p, i) => (
+                <li key={i}>
+                  {p.uid} — {p.problema} em {p.onde}
+                  {p.reparado ? ' (reparado)' : ''}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+      <details className="mt-3 text-sm text-abb-gray">
+        <summary className="cursor-pointer font-semibold text-abb-black">Como proteger contra a perda de um disco</summary>
+        <p className="mt-1">
+          Configure no servidor <code>BACKUP_DESTINOS</code> com uma ou mais pastas em outro disco ou na rede
+          (separadas por <code>;</code>). Cada PDF, certificado e foto de envio é copiado para lá assim que chega, e
+          o banco a cada 15 minutos de atividade e uma vez por dia. Uma cópia com defeito é refeita sozinha.
+        </p>
+      </details>
+    </Cartao>
   );
 }

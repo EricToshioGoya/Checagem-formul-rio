@@ -880,6 +880,8 @@ export const rotasCertificacoes: Record<string, Manipulador> = {
           | undefined;
         return {
           numero: String(c.numero),
+          // Nulo quando a solicitação foi excluída: o certificado continua no registro.
+          certificacaoId: c.certificacaoId === null || c.certificacaoId === undefined ? null : Number(c.certificacaoId),
           tipoPainel: String(c.painelSlug),
           nomePainel: String(c.nomePainel),
           projeto: String(c.projeto),
