@@ -23,6 +23,8 @@ export interface Ambiente {
   /** Destino externo de backup (`BACKUP_DESTINOS`). */
   destino: string;
   saida(): string;
+  /** Para o servidor (SIGTERM) e mantém as pastas, para conferir o que ficou. */
+  parar(): Promise<void>;
   encerrar(): Promise<void>;
 }
 
@@ -81,8 +83,14 @@ export async function subirServidor(extra: Record<string, string> = {}): Promise
     dados,
     destino,
     saida: () => saida,
+    parar: async () => {
+      if (filho.exitCode === null && filho.signalCode === null) {
+        filho.kill('SIGTERM');
+        await once(filho, 'exit');
+      }
+    },
     encerrar: async () => {
-      if (filho.exitCode === null) {
+      if (filho.exitCode === null && filho.signalCode === null) {
         filho.kill('SIGTERM');
         await once(filho, 'exit');
       }

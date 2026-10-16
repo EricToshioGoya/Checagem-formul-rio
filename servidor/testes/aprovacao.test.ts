@@ -618,6 +618,25 @@ describe('backup externo e integridade dos documentos', () => {
   });
 });
 
+describe('encerramento do servidor', () => {
+  it('o backup que esperava o atraso roda antes de o servidor sair', async () => {
+    // Atraso longo: sem o encerramento, a cópia só sairia daqui a dez minutos.
+    const amb = await subirServidor({ BACKUP_ATRASO_MS: '600000' });
+    try {
+      const admin = await entrarComoAdmin(amb.url);
+      const montador = await novoMontador(amb.url, admin, 'eva@parceiro.local');
+      const conteudo = pdfFalso('chegou antes de desligar');
+      const uid = await enviarPdf(montador, 'sen-plus', conteudo);
+      assert.ok(!existsSync(join(amb.destino, 'midias', uid)), 'ainda não copiado');
+      await amb.parar();
+      assert.ok(readFileSync(join(amb.destino, 'midias', uid)).equals(conteudo));
+      assert.ok(readFileSync(join(amb.dados, 'backups', 'midias', uid)).equals(conteudo));
+    } finally {
+      await amb.encerrar();
+    }
+  });
+});
+
 describe('alertas de backup e migração do registro de certificados', () => {
   it('sem destino externo, a tela Sistema alerta', async () => {
     const amb = await subirServidor({ BACKUP_DESTINOS: '' });

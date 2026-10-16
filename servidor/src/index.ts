@@ -9,7 +9,7 @@ import { semearTipos } from './tiposChecklist';
 import { garantirAdminInicial } from './admin';
 import { sessaoDoToken, tokenDoCabecalho } from './auth';
 import { limparAvisosAntigos, processarFila } from './avisos';
-import { backupDoDia, verificacaoDoDia } from './backup';
+import { backupDoDia, concluirBackupPendente, verificacaoDoDia } from './backup';
 import {
   CONFIAR_PROXY,
   HTTPS_ATIVO,
@@ -298,6 +298,14 @@ setTimeout(() => {
 // A verificação de integridade lê todos os documentos do disco: começa um
 // pouco depois, para não pesar na subida.
 setTimeout(() => verificacaoDoDia(), 10 * 60 * 1000).unref();
+
+// Encerramento pedido (serviço parado, Ctrl+C): o backup que esperava roda antes de sair.
+for (const sinal of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(sinal, () => {
+    concluirBackupPendente();
+    process.exit(0);
+  });
+}
 
 servidor.listen(PORTA, () => {
   const protocolo = HTTPS_ATIVO ? 'https' : 'http';

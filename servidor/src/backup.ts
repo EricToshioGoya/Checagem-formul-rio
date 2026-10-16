@@ -324,6 +324,21 @@ export function agendarBackupContinuo(): void {
   temporizadorContinuo.unref?.();
 }
 
+/**
+ * Ao encerrar o servidor: a rodada que ainda esperava o atraso roda já, para
+ * um documento recém-chegado não ficar só no disco principal.
+ */
+export function concluirBackupPendente(): void {
+  if (!temporizadorContinuo) return;
+  clearTimeout(temporizadorContinuo);
+  temporizadorContinuo = null;
+  try {
+    backupContinuo();
+  } catch (erro) {
+    console.error('Falha no backup contínuo ao encerrar', erro);
+  }
+}
+
 export function backupContinuo(): void {
   const inicio = Date.now();
   const resultados = new Map<string, ResultadoLugar>();

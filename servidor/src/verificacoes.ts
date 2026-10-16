@@ -443,7 +443,7 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
         (pendentes.length ? `\n\n${pendentes.length} foto(s) não chegaram ao servidor.` : '') +
         '\n\nAnalise em Administração → Aprovações.',
       emails: emailsDosAdmins(),
-      rota: '#/admin?aba=aprovacoes',
+      rota: '#/admin?aba=aprovacoes&secao=verificacoes',
     });
     agendarBackupContinuo();
     return { verificacao: resumo(obter(l.id)!) };
