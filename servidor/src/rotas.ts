@@ -705,6 +705,9 @@ export const rotas: Record<string, Manipulador> = {
     return {
       pedidosAdmin: contar("SELECT COUNT(*) AS n FROM pedidos_admin WHERE status = 'pendente'"),
       acessosPendentes: contar("SELECT COUNT(*) AS n FROM solicitacoes WHERE status = 'pendente'"),
+      // Selo da aba Aprovações: verificações e certificações à espera de decisão.
+      verificacoesPendentes: contar("SELECT COUNT(*) AS n FROM verificacoes WHERE estado = 'aguardando'"),
+      certificacoesPendentes: contar("SELECT COUNT(*) AS n FROM certificacoes WHERE estado = 'enviada'"),
     };
   },
 

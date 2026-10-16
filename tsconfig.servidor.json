@@ -14,5 +14,5 @@
     "noUnusedParameters": true,
     "types": ["node"]
   },
-  "include": ["servidor/src", "compartilhado"]
+  "include": ["servidor/src", "servidor/testes", "compartilhado"]
 }

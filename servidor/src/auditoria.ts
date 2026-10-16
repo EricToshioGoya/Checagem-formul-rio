@@ -16,6 +16,7 @@ export type TipoAlvo =
   | 'conta'
   | 'administrador'
   | 'certificado'
+  | 'verificacao'
   | 'sistema';
 
 interface Fato {

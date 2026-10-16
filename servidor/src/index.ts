@@ -9,7 +9,7 @@ import { semearTipos } from './tiposChecklist';
 import { garantirAdminInicial } from './admin';
 import { sessaoDoToken, tokenDoCabecalho } from './auth';
 import { limparAvisosAntigos, processarFila } from './avisos';
-import { backupDoDia } from './backup';
+import { backupDoDia, verificacaoDoDia } from './backup';
 import {
   CONFIAR_PROXY,
   HTTPS_ATIVO,
@@ -25,8 +25,10 @@ import { rotasGestao } from './rotasGestao';
 import { rotasSync } from './rotasSync';
 import { TAMANHO_MAXIMO_VIDEO } from '../../compartilhado/midias';
 import { rotasApoio, TAMANHO_MAXIMO_APOIO } from './rotasApoio';
-import { rotasCertificacoes } from './certificacoes';
+import { rotasCertificacoes, TAMANHO_MAXIMO_CERTIFICADO } from './certificacoes';
 import { rotasPdfs, TAMANHO_MAXIMO_PDF_EMITIDO } from './rotasPdfs';
+import { rotasDocumentos } from './rotasDocumentos';
+import { rotasVerificacoes } from './verificacoes';
 
 /**
  * Servidor de acesso: contas, painéis, aprovação, sincronização das
@@ -45,6 +47,8 @@ const rotas = {
   ...rotasApoio,
   ...rotasCertificacoes,
   ...rotasPdfs,
+  ...rotasVerificacoes,
+  ...rotasDocumentos,
 };
 
 /**
@@ -58,9 +62,21 @@ const LIMITES: Record<string, number> = {
   'PUT /api/sync/midias/:uid': TAMANHO_MAXIMO_VIDEO + 1024,
   'PUT /api/admin/apoio/:uid': TAMANHO_MAXIMO_APOIO + 1024,
   'PUT /api/pdfs/:uid': TAMANHO_MAXIMO_PDF_EMITIDO + 1024,
+  'PUT /api/verificacoes/:uid/midias/:midia': TAMANHO_MAXIMO_VIDEO + 1024,
+  'PUT /api/admin/certificacoes/:id/aprovacao': TAMANHO_MAXIMO_CERTIFICADO + 1024,
+  'PUT /api/admin/certificacoes/:id/certificado': TAMANHO_MAXIMO_CERTIFICADO + 1024,
+  // O retrato de um envio para aprovação carrega as respostas de todas as TAGs.
+  'POST /api/verificacoes': 8 * 1024 * 1024,
 };
 /** Rotas que recebem arquivo, e não JSON. */
-const ROTAS_ARQUIVO = new Set(['PUT /api/sync/midias/:uid', 'PUT /api/admin/apoio/:uid', 'PUT /api/pdfs/:uid']);
+const ROTAS_ARQUIVO = new Set([
+  'PUT /api/sync/midias/:uid',
+  'PUT /api/admin/apoio/:uid',
+  'PUT /api/pdfs/:uid',
+  'PUT /api/verificacoes/:uid/midias/:midia',
+  'PUT /api/admin/certificacoes/:id/aprovacao',
+  'PUT /api/admin/certificacoes/:id/certificado',
+]);
 
 /**
  * `decodeURIComponent` lança erro com "%" malformado. Fora do `try` do
@@ -271,6 +287,7 @@ setInterval(() => {
   limparAvisosAntigos();
   faxinarMidias();
   backupDoDia();
+  verificacaoDoDia();
 }, 60 * 60 * 1000).unref();
 // O backup do dia e a faxina rodam logo depois da subida, sem atrasá-la.
 setTimeout(() => {
@@ -278,6 +295,9 @@ setTimeout(() => {
   faxinarMidias();
   void processarFila();
 }, 5_000).unref();
+// A verificação de integridade lê todos os documentos do disco: começa um
+// pouco depois, para não pesar na subida.
+setTimeout(() => verificacaoDoDia(), 10 * 60 * 1000).unref();
 
 servidor.listen(PORTA, () => {
   const protocolo = HTTPS_ATIVO ? 'https' : 'http';

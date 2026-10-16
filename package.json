@@ -15,7 +15,8 @@
     "lint": "tsc -b --noEmit",
     "validar-formularios": "tsx scripts/validarFormularios.ts",
     "fumaca": "node scripts/fumaca.mjs",
-    "testes": "node scripts/testes/executar.mjs"
+    "testes": "node scripts/testes/executar.mjs",
+    "testes-servidor": "node --no-warnings --import tsx --test servidor/testes/*.test.ts"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",
