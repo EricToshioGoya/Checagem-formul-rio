@@ -52,7 +52,6 @@ import {
   existe as formularioExiste,
   listarEntradasPorPainelId,
   obterDefinicao,
-  painelDoFormulario,
   salvarDefinicao,
 } from './formularios';
 import {
@@ -696,8 +695,14 @@ export const rotas: Record<string, Manipulador> = {
     return {
       pedidosAdmin: contar("SELECT COUNT(*) AS n FROM pedidos_admin WHERE status = 'pendente'"),
       acessosPendentes: contar("SELECT COUNT(*) AS n FROM solicitacoes WHERE status = 'pendente'"),
-      // Selo da aba Aprovações: verificações e certificações à espera de decisão.
-      verificacoesPendentes: contar("SELECT COUNT(*) AS n FROM verificacoes WHERE estado = 'aguardando'"),
+      // Selos das abas Aprovações (PDF do projeto) e Certificados (checklist
+      // que contém certificado, e as solicitações antigas).
+      verificacoesPendentes: contar(
+        "SELECT COUNT(*) AS n FROM verificacoes WHERE estado = 'aguardando' AND categoria = 'verificacao'",
+      ),
+      certificadosPendentes: contar(
+        "SELECT COUNT(*) AS n FROM verificacoes WHERE estado = 'aguardando' AND categoria = 'certificado'",
+      ),
       certificacoesPendentes: contar("SELECT COUNT(*) AS n FROM certificacoes WHERE estado = 'enviada'"),
     };
   },
@@ -1391,15 +1396,13 @@ export const rotas: Record<string, Manipulador> = {
     if (typeof enviada?.tipo === 'string' && enviada.tipo !== anterior?.tipo && !obterTipo(enviada.tipo)) {
       throw new ErroHttp(400, 'Tipo de checklist não cadastrado.');
     }
-    if (enviada?.emiteCertificado === true && !anterior?.emiteCertificado) {
-      const painel = banco
-        .prepare('SELECT certificado FROM paineis WHERE id = ?')
-        .get(painelDoFormulario(id)) as { certificado: string | null } | undefined;
-      if (!painel?.certificado) {
-        throw new ErroHttp(
-          400,
-          'Para emitir certificado, informe antes o modelo do certificado e quem assina, em "Editar painel".',
-        );
+    // O modelo citado tem de ser um que a administração enviou: o certificado
+    // sai dele na aprovação.
+    const modelo = (enviada as { modeloCertificado?: { uid?: unknown } } | null)?.modeloCertificado;
+    if (modelo) {
+      const uid = typeof modelo.uid === 'string' ? modelo.uid.toLowerCase() : '';
+      if (!banco.prepare('SELECT 1 FROM modelos_certificado WHERE uid = ?').get(uid)) {
+        throw new ErroHttp(400, 'O modelo do certificado não foi encontrado. Envie o PDF de novo.');
       }
     }
 

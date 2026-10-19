@@ -54,6 +54,7 @@ function entradaDe(linha: LinhaFormulario): EntradaCatalogo {
     painelSlug: linha.painelSlug,
     ativo: linha.ativo === 1,
     emiteCertificado: d.emiteCertificado,
+    temModeloCertificado: Boolean(d.modeloCertificado),
     etapas: contarEtapasAtivas(d),
     atualizadoEm: linha.atualizadoEm,
   };

@@ -124,6 +124,7 @@ export const rotasPdfs: Record<string, Manipulador> = {
       banco.prepare('SELECT 1 FROM sync_midias WHERE uid = ?').get(uid) ??
       banco.prepare('SELECT 1 FROM apoio_midias WHERE uid = ?').get(uid) ??
       banco.prepare('SELECT 1 FROM certificados_anexos WHERE uid = ?').get(uid) ??
+      banco.prepare('SELECT 1 FROM modelos_certificado WHERE uid = ?').get(uid) ??
       banco.prepare('SELECT 1 FROM midias_protegidas WHERE uid = ?').get(uid);
     if (usado) throw new ErroHttp(409, 'Identificador do PDF já usado.');
 

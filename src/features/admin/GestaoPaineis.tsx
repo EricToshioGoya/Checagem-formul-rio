@@ -47,7 +47,6 @@ interface Aberto {
   formId: string;
   painelNome: string;
   ativo: boolean;
-  certificadoConfigurado: boolean;
 }
 
 /**
@@ -184,7 +183,6 @@ export function GestaoPaineis() {
         formId: formulario.id,
         painelNome: painel.nome,
         ativo: formulario.ativo,
-        certificadoConfigurado: painel.certificado !== null,
       });
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível criar o checklist.');
@@ -245,7 +243,6 @@ export function GestaoPaineis() {
         formId={aberto.formId}
         painelNome={aberto.painelNome}
         ativoInicial={aberto.ativo}
-        certificadoConfigurado={aberto.certificadoConfigurado}
         tipos={tipos}
         onVoltar={() => {
           setAberto(null);
@@ -414,7 +411,11 @@ export function GestaoPaineis() {
                           {f.etapas === 0
                             ? 'em branco'
                             : plural(f.etapas, 'verificação', 'verificações')}
-                          {f.emiteCertificado ? ' · emite certificado' : ''}
+                          {f.emiteCertificado
+                            ? f.temModeloCertificado
+                              ? ' · contém certificado'
+                              : ' · contém certificado (falta o modelo em PDF)'
+                            : ''}
                           {f.ativo ? '' : ' · desativado'}
                         </p>
                       </div>
@@ -427,7 +428,6 @@ export function GestaoPaineis() {
                               formId: f.id,
                               painelNome: p.nome,
                               ativo: f.ativo,
-                              certificadoConfigurado: p.certificado !== null,
                             })
                           }
                         >
@@ -473,11 +473,11 @@ export function GestaoPaineis() {
                 onChange={(e) => setRascunho({ ...rascunho, comCertificado: e.target.checked })}
               />
               <span className="min-w-0">
-                <span className="block text-base font-semibold">Certificado ABB</span>
+                <span className="block text-base font-semibold">Certificado ABB das solicitações antigas</span>
                 <span className="block text-sm text-abb-gray">
-                  Toda verificação gera o dossiê em PDF. Configure o certificado para que
-                  os checklists marcados com "Emite certificado" passem pela validação
-                  da ABB e terminem no certificado emitido.
+                  Só para as solicitações de certificação abertas antes da mudança. Nos
+                  checklists, o certificado agora é o modelo em PDF enviado no próprio
+                  checklist, em "Contém certificado?".
                 </span>
               </span>
             </label>

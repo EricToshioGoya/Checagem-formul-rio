@@ -33,6 +33,7 @@ import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { Aviso, Carregando, Erro, Vazio } from '../../shared/componentes/Estado';
 import { IconeVoltar } from '../../shared/componentes/Icones';
 import { EditorOpcoes } from './EditorOpcoes';
+import { CertificadoDoChecklist } from './CertificadoDoChecklist';
 
 interface Props {
   formId: string;
@@ -43,8 +44,6 @@ interface Props {
    * reativaria em silêncio.
    */
   ativoInicial: boolean;
-  /** O painel tem modelo de certificado e signatário: o checklist pode emitir certificado. */
-  certificadoConfigurado: boolean;
   /** Tipos de verificação cadastrados, para trocar o tipo do checklist. */
   tipos: readonly TipoChecklistApi[];
   onVoltar: () => void;
@@ -85,7 +84,6 @@ export function ConstrutorChecklist({
   formId,
   painelNome,
   ativoInicial,
-  certificadoConfigurado,
   tipos,
   onVoltar,
   onAlterado,
@@ -301,23 +299,12 @@ export function ConstrutorChecklist({
           </select>
         </div>
 
-        <label className="flex items-center gap-2 text-base">
-          <input
-            type="checkbox"
-            className="size-5 accent-abb-red"
-            checked={definicao.emiteCertificado}
-            disabled={!certificadoConfigurado && !definicao.emiteCertificado}
-            onChange={(e) => alterar({ ...definicao, emiteCertificado: e.target.checked })}
-          />
-          <span>
-            Emite certificado ABB
-            <span className="block text-sm text-abb-gray">
-              {certificadoConfigurado || definicao.emiteCertificado
-                ? 'Marcado, o montador preenche este checklist numa solicitação de certificação: a ABB valida e o certificado é emitido. Desmarcado, é uma verificação comum, com dossiê em PDF.'
-                : 'Para marcar, informe antes o modelo do certificado e quem assina, em "Editar painel".'}
-            </span>
-          </span>
-        </label>
+        <CertificadoDoChecklist
+          definicao={definicao}
+          onAlterar={(mudanca) => {
+            if (atual.current) alterar({ ...atual.current, ...mudanca });
+          }}
+        />
 
         <label className="flex items-center gap-2 text-base">
           <input

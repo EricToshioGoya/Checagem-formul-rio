@@ -532,9 +532,9 @@ export const rotasCertificacoes: Record<string, Manipulador> = {
       texto:
         `${eu.nome} (${eu.email}) enviou a solicitação do painel ${painel?.nome ?? ''}` +
         (dados.tagPainel ? ` — TAG ${dados.tagPainel}` : '') +
-        '.\n\nAnalise em Administração → Aprovações → Certificações.',
+        '.\n\nAnalise em Administração → Certificados → Solicitações antigas.',
       emails: emailsDosAdmins(),
-      rota: '#/admin?aba=aprovacoes&secao=certificacoes',
+      rota: '#/admin?aba=certificados&secao=antigas',
     });
     return { ok: true };
   },

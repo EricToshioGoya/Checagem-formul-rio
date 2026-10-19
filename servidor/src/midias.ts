@@ -119,12 +119,13 @@ export function documentosEntre(uids: Iterable<string>): Set<string> {
   const consulta = banco.prepare(
     `SELECT 1 FROM pdfs_emitidos WHERE uid = ?
      UNION ALL SELECT 1 FROM certificados_anexos WHERE uid = ?
+     UNION ALL SELECT 1 FROM modelos_certificado WHERE uid = ?
      UNION ALL SELECT 1 FROM midias_protegidas WHERE uid = ? AND situacao = 'recebida'
      LIMIT 1`,
   );
   for (const bruto of uids) {
     const uid = bruto.toLowerCase();
-    if (consulta.get(uid, uid, uid)) protegidos.add(uid);
+    if (consulta.get(uid, uid, uid, uid)) protegidos.add(uid);
   }
   return protegidos;
 }
@@ -182,6 +183,7 @@ export function uidsConhecidos(): Set<string> {
            UNION SELECT uid FROM apoio_midias
            UNION SELECT uid FROM pdfs_emitidos
            UNION SELECT uid FROM certificados_anexos
+           UNION SELECT uid FROM modelos_certificado
            UNION SELECT uid FROM midias_protegidas WHERE situacao = 'recebida'`,
         )
         .all() as Array<{ uid: string }>

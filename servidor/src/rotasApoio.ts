@@ -76,7 +76,9 @@ export const rotasApoio: Record<string, Manipulador> = {
     const usado =
       banco.prepare('SELECT 1 FROM apoio_midias WHERE uid = ?').get(uid) ??
       banco.prepare('SELECT 1 FROM sync_midias WHERE uid = ?').get(uid) ??
-      banco.prepare('SELECT 1 FROM pdfs_emitidos WHERE uid = ?').get(uid);
+      banco.prepare('SELECT 1 FROM pdfs_emitidos WHERE uid = ?').get(uid) ??
+      banco.prepare('SELECT 1 FROM certificados_anexos WHERE uid = ?').get(uid) ??
+      banco.prepare('SELECT 1 FROM modelos_certificado WHERE uid = ?').get(uid);
     if (usado) throw new ErroHttp(409, 'Identificador de imagem já usado.');
 
     gravarMidia(uid, dados);

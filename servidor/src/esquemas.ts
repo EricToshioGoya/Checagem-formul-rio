@@ -366,6 +366,11 @@ export const envioVerificacaoSchema = z.object({
   tipo: z.string().regex(PADRAO_ID_TIPO, 'Tipo de verificação inválido.'),
   geradoEm: z.number().int().positive(),
   documento: documentoProjetoSchema,
+  /**
+   * PDF de um checklist que contém certificado: o envio vale para uma TAG e
+   * um checklist, e vai para a aba Certificados em vez de Aprovações.
+   */
+  certificado: z.object({ tagUid: uidSchema, formId: textoCurto }).optional(),
 });
 
 /** Fim do envio: as fotos que não existem mais no aparelho vão como ausentes. */
