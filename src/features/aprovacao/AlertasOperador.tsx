@@ -4,6 +4,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useSessao } from '../../core/api/SessaoContexto';
 import { lerCatalogoPaineis } from '../../core/api/acessoLocal';
 import {
+  ehCertificado,
+  rotuloDaDecisao,
   chaveDecisao,
   lerVistas,
   marcarVistas,
@@ -15,14 +17,16 @@ import { Botao } from '../../shared/componentes/Botao';
 import { Modal } from '../../shared/componentes/Modal';
 import { dataHoraBr } from '../../shared/utils/texto';
 import { CertificadosAnexados } from '../solicitacoes/CertificadosAnexados';
+import { BaixarCertificado } from './BaixarCertificado';
 
 interface Novidade {
   chave: string;
   tom: 'correcao' | 'aprovada';
   titulo: string;
   detalhe: string;
-  link: string;
-  rotuloLink: string;
+  /** Atalho do pop-up; ausente quando a novidade já está à vista na tela inicial. */
+  link?: string;
+  rotuloLink?: string;
 }
 
 const nomeDoPainel = (slug: string) => lerCatalogoPaineis()[slug]?.nome ?? slug;
@@ -54,6 +58,8 @@ export function AlertasOperador() {
   const comCertificado = solicitacoes.filter(
     (s) => (s.estado === 'aprovada' || s.estado === 'emitida') && s.numeroCertificado,
   );
+  // Checklists que contêm certificado, aprovados: o certificado emitido.
+  const emitidos = decisoes.filter((d) => ehCertificado(d) && d.estado === 'aprovada' && d.certificado?.numero);
 
   const novidades = useMemo<Novidade[]>(() => {
     const lista: Novidade[] = [];
@@ -67,11 +73,18 @@ export function AlertasOperador() {
               chave,
               tom: 'correcao',
               titulo: `Correção pedida — ${d.projeto.nome}`,
-              detalhe: `${d.tipo.rotulo}: ${d.itens.length} etapa(s) a corrigir.${d.comentario ? ` ${d.comentario}` : ''}`,
+              detalhe: `${rotuloDaDecisao(d)}: ${d.itens.length} etapa(s) a corrigir.${d.comentario ? ` ${d.comentario}` : ''}`,
               link: `/correcoes/${d.uid}`,
               rotuloLink: 'Corrigir agora',
             }
-          : {
+          : ehCertificado(d)
+            ? {
+                chave,
+                tom: 'aprovada',
+                titulo: `Certificado nº ${d.certificado?.numero ?? ''} emitido`,
+                detalhe: `${d.tipo.rotulo} · TAG ${d.tags[0] ?? ''} · ${d.projeto.nome}${d.decididoPor ? `, aprovado por ${d.decididoPor}` : ''}. Baixe na tela inicial, em "Certificados aprovados".`,
+              }
+            : {
               chave,
               tom: 'aprovada',
               titulo: `Verificação aprovada — ${d.projeto.nome}`,
@@ -134,7 +147,7 @@ export function AlertasOperador() {
               <li key={d.uid} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-amber-50 p-3">
                 <span className="min-w-0 text-base">
                   <span className="block font-bold">
-                    {d.projeto.nome} · {d.tipo.rotulo}
+                    {d.projeto.nome} · {rotuloDaDecisao(d)}
                   </span>
                   <span className="text-sm text-amber-900">
                     {d.painel.nome} · {d.itens.length} etapa(s) a corrigir · reprovada em{' '}
@@ -172,13 +185,25 @@ export function AlertasOperador() {
         </section>
       ) : null}
 
-      {comCertificado.length ? (
+      {comCertificado.length || emitidos.length ? (
         <section
           className="space-y-3 rounded-lg border-2 border-green-600 bg-green-50 p-4"
           aria-label="Certificados disponíveis"
         >
           <h2 className="text-lg font-bold text-green-800">Certificados aprovados</h2>
           <ul className="space-y-3">
+            {emitidos.map((d) => (
+              <li key={d.uid} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-white p-3">
+                <p className="min-w-0 text-base">
+                  <span className="block font-bold">Certificado nº {d.certificado?.numero}</span>
+                  <span className="text-sm text-abb-gray">
+                    {d.tipo.rotulo} · TAG {d.tags[0] ?? ''} · {d.projeto.nome} · {d.painel.nome} · emitido em{' '}
+                    {dataHoraBr(d.decididoEm ?? undefined)}
+                  </span>
+                </p>
+                <BaixarCertificado decisao={d} />
+              </li>
+            ))}
             {comCertificado.map((s) => (
               <li key={s.id} className="space-y-2 rounded-md bg-white p-3">
                 <p className="text-base">
@@ -216,13 +241,15 @@ export function AlertasOperador() {
                 {n.titulo}
               </p>
               <p className="text-base whitespace-pre-line">{n.detalhe}</p>
-              <Link
-                to={n.link}
-                onClick={fecharPopup}
-                className="inline-flex min-h-12 items-center rounded-md border border-abb-line-botao bg-white px-4 text-base font-semibold hover:bg-abb-offwhite-hover"
-              >
-                {n.rotuloLink}
-              </Link>
+              {n.link ? (
+                <Link
+                  to={n.link}
+                  onClick={fecharPopup}
+                  className="inline-flex min-h-12 items-center rounded-md border border-abb-line-botao bg-white px-4 text-base font-semibold hover:bg-abb-offwhite-hover"
+                >
+                  {n.rotuloLink}
+                </Link>
+              ) : null}
             </li>
           ))}
         </ul>

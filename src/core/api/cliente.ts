@@ -248,6 +248,8 @@ export interface ResumoAdmin {
   acessosPendentes: number;
   /** PDFs de verificação aguardando aprovação. */
   verificacoesPendentes?: number;
+  /** Checklists que contêm certificado aguardando aprovação. */
+  certificadosPendentes?: number;
   /** Solicitações de certificação enviadas, à espera de validação. */
   certificacoesPendentes?: number;
 }
@@ -413,6 +415,8 @@ export interface DocumentoArquivado {
   versao: number | null;
   numero: string | null;
   certificacaoId: number | null;
+  /** O PDF (ou o certificado) veio de um envio: do PDF do projeto ou de um checklist com certificado. */
+  envioCategoria: 'verificacao' | 'certificado' | null;
   /** Última conferência do SHA-256; nula se ainda não conferido. */
   integridade: { situacao: 'ok' | 'reparado' | 'corrompido' | 'ausente'; verificadoEm: number } | null;
 }

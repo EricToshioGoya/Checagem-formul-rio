@@ -4,6 +4,7 @@ import { api, type ResumoAdmin } from '../../core/api/cliente';
 import { useSessao } from '../../core/api/SessaoContexto';
 import { Andamento } from '../paineis/Andamento';
 import { Aprovacoes } from './aprovacoes/Aprovacoes';
+import { Certificados } from './aprovacoes/Certificados';
 import { Documentos } from './Documentos';
 import { GestaoAcessos } from './GestaoAcessos';
 import { GestaoAdministradores } from './GestaoAdministradores';
@@ -18,6 +19,7 @@ type Aba =
   | 'acessos'
   | 'andamento'
   | 'aprovacoes'
+  | 'certificados'
   | 'documentos'
   | 'paineis'
   | 'contas'
@@ -29,6 +31,7 @@ const ABAS: Array<{ id: Aba; rotulo: string; curto: string }> = [
   { id: 'acessos', rotulo: 'Acessos', curto: 'Acessos' },
   { id: 'andamento', rotulo: 'Andamento', curto: 'Andamento' },
   { id: 'aprovacoes', rotulo: 'Aprovações', curto: 'Aprovações' },
+  { id: 'certificados', rotulo: 'Certificados', curto: 'Certificados' },
   { id: 'documentos', rotulo: 'Documentos', curto: 'Documentos' },
   { id: 'paineis', rotulo: 'Painéis e checklists', curto: 'Painéis' },
   { id: 'contas', rotulo: 'Contas', curto: 'Contas' },
@@ -38,7 +41,10 @@ const ABAS: Array<{ id: Aba; rotulo: string; curto: string }> = [
 ];
 
 const ANTIGAS: Record<string, { aba: Aba; secao?: string }> = {
-  validacao: { aba: 'aprovacoes', secao: 'certificacoes' },
+  validacao: { aba: 'certificados', secao: 'antigas' },
+  // Seções que moraram em Aprovações antes da aba Certificados.
+  'aprovacoes:certificacoes': { aba: 'certificados', secao: 'antigas' },
+  'aprovacoes:certificados': { aba: 'certificados', secao: 'emitidos' },
   pdfs: { aba: 'documentos' },
 };
 
@@ -58,7 +64,8 @@ export function Admin() {
   // A aba fica na URL: recarregar a página volta para onde se estava.
   const [parametros, setParametros] = useSearchParams();
   // Endereços antigos (avisos já enviados, favoritos) continuam abrindo.
-  const antiga = ANTIGAS[parametros.get('aba') ?? ''];
+  const antiga =
+    ANTIGAS[parametros.get('aba') ?? ''] ?? ANTIGAS[`${parametros.get('aba')}:${parametros.get('secao')}`];
   const pedida = antiga?.aba ?? parametros.get('aba');
   const aba: Aba = ABAS.some((a) => a.id === pedida) ? (pedida as Aba) : 'acessos';
   useEffect(() => {
@@ -90,7 +97,8 @@ export function Admin() {
   const selo: Partial<Record<Aba, number>> = {
     acessos: resumo?.acessosPendentes,
     administradores: resumo?.pedidosAdmin,
-    aprovacoes: (resumo?.verificacoesPendentes ?? 0) + (resumo?.certificacoesPendentes ?? 0),
+    aprovacoes: resumo?.verificacoesPendentes,
+    certificados: (resumo?.certificadosPendentes ?? 0) + (resumo?.certificacoesPendentes ?? 0),
   };
 
   return (
@@ -155,19 +163,25 @@ export function Admin() {
             <Andamento onSessaoVencida={sessaoVencida} />
           </div>
         ) : aba === 'aprovacoes' ? (
-          <Aprovacoes
+          <Aprovacoes onSessaoVencida={sessaoVencida} onAlterado={lerResumo} />
+        ) : aba === 'certificados' ? (
+          <Certificados
             onSessaoVencida={sessaoVencida}
             onAlterado={lerResumo}
             pendentes={{
-              verificacoes: resumo?.verificacoesPendentes,
-              certificacoes: resumo?.certificacoesPendentes,
+              checklists: resumo?.certificadosPendentes,
+              antigas: resumo?.certificacoesPendentes,
             }}
           />
         ) : aba === 'documentos' ? (
           <Documentos
             onSessaoVencida={sessaoVencida}
-            onAbrirAnalise={(secao, id) =>
-              setParametros({ aba: 'aprovacoes', secao, abrir: String(id) })
+            onAbrirAnalise={(destino, id) =>
+              setParametros(
+                destino === 'aprovacao'
+                  ? { aba: 'aprovacoes', abrir: String(id) }
+                  : { aba: 'certificados', secao: destino === 'certificado' ? 'fila' : 'antigas', abrir: String(id) },
+              )
             }
           />
         ) : aba === 'contas' ? (

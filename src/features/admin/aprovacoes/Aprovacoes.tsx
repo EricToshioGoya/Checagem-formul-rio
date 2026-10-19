@@ -20,18 +20,9 @@ import { baixarBlob } from '../../../shared/utils/download';
 import { dataHoraBr } from '../../../shared/utils/texto';
 import { EtiquetaVerificacao } from '../../aprovacao/SituacaoAprovacao';
 import { sessaoAdminAcabou } from '../sessaoAdmin';
-import { AnaliseCertificacao } from './AnaliseCertificacao';
 import { AnaliseVerificacao } from './AnaliseVerificacao';
 
-type Secao = 'verificacoes' | 'certificacoes' | 'certificados';
-
-const SECOES: Array<{ id: Secao; rotulo: string }> = [
-  { id: 'verificacoes', rotulo: 'Verificações (PDF do projeto)' },
-  { id: 'certificacoes', rotulo: 'Certificações' },
-  { id: 'certificados', rotulo: 'Certificados emitidos' },
-];
-
-const FILTROS: Array<{ id: string; rotulo: string }> = [
+export const FILTROS: Array<{ id: string; rotulo: string }> = [
   { id: 'aguardando', rotulo: 'Aguardando' },
   { id: 'reprovada', rotulo: 'Reprovadas' },
   { id: 'aprovada', rotulo: 'Aprovadas' },
@@ -43,122 +34,68 @@ interface Props {
   onSessaoVencida: () => void;
   /** Relê os selos das abas depois de uma decisão. */
   onAlterado: () => void;
-  pendentes?: { verificacoes?: number; certificacoes?: number };
 }
 
 /**
- * Aprovações: a fila dos PDFs de verificação enviados pelos montadores, a das
- * solicitações de certificação e o registro dos certificados emitidos. O que
- * está aberto fica no endereço, para recarregar a página sem perder o lugar.
+ * Aprovações: a fila dos PDFs de projeto (um por tipo de verificação)
+ * enviados pelos montadores. O checklist que contém certificado tem a aba
+ * própria, Certificados. O que está aberto fica no endereço, para recarregar
+ * a página sem perder o lugar.
  */
-export function Aprovacoes({ onSessaoVencida, onAlterado, pendentes }: Props) {
+export function Aprovacoes({ onSessaoVencida, onAlterado }: Props) {
   const [parametros, setParametros] = useSearchParams();
-  const secao: Secao = SECOES.some((s) => s.id === parametros.get('secao'))
-    ? (parametros.get('secao') as Secao)
-    : 'verificacoes';
   const aberta = Number(parametros.get('abrir')) || null;
   const [mensagem, setMensagem] = useState<string | null>(null);
 
-  const ir = (proxima: Secao, abrir?: number) => {
-    const p: Record<string, string> = { aba: 'aprovacoes', secao: proxima };
+  const ir = (abrir?: number) => {
+    const p: Record<string, string> = { aba: 'aprovacoes' };
     if (abrir) p.abrir = String(abrir);
     setParametros(p, { replace: !abrir });
   };
 
-  const decidido = (texto: string) => {
-    setMensagem(texto);
-    onAlterado();
-    ir(secao);
-  };
-
-  if (aberta && secao === 'verificacoes') {
+  if (aberta) {
     return (
       <AnaliseVerificacao
         id={aberta}
-        onVoltar={() => ir('verificacoes')}
-        onDecidido={decidido}
+        onVoltar={() => ir()}
+        onDecidido={(texto) => {
+          setMensagem(texto);
+          onAlterado();
+          ir();
+        }}
         onSessaoVencida={onSessaoVencida}
       />
     );
   }
-  if (aberta && secao === 'certificacoes') {
-    return (
-      <AnaliseCertificacao
-        id={aberta}
-        onVoltar={() => ir('certificacoes')}
-        onDecidido={decidido}
-        onSessaoVencida={onSessaoVencida}
-      />
-    );
-  }
-
-  const selo = (id: Secao) =>
-    id === 'verificacoes' ? pendentes?.verificacoes : id === 'certificacoes' ? pendentes?.certificacoes : undefined;
 
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-xl font-bold">Aprovações</h2>
         <p className="text-sm text-abb-gray">
-          O que os montadores enviaram para aprovação. Marque as etapas não conformes com o motivo:
-          o montador vê o alerta e corrige.
+          Os PDFs de projeto enviados para aprovação. Marque as etapas não conformes com o motivo: o
+          montador vê o alerta e corrige. Os checklists que contêm certificado ficam na aba
+          Certificados.
         </p>
       </div>
-
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filas de aprovação">
-        {SECOES.map((s) => {
-          const n = selo(s.id) ?? 0;
-          return (
-            <button
-              key={s.id}
-              type="button"
-              role="tab"
-              aria-selected={secao === s.id}
-              onClick={() => {
-                setMensagem(null);
-                ir(s.id);
-              }}
-              className={[
-                'inline-flex min-h-10 items-center gap-1.5 rounded-full border px-4 text-sm font-semibold',
-                secao === s.id
-                  ? 'border-abb-black bg-abb-black text-white'
-                  : 'border-abb-line-botao bg-abb-offwhite text-abb-black hover:bg-abb-offwhite-hover',
-              ].join(' ')}
-            >
-              {s.rotulo}
-              {n > 0 ? (
-                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-500 px-1 text-xs font-bold text-white">
-                  {n}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
-
       {mensagem ? (
         <div className="rounded-md border border-green-600 bg-green-50 p-3 text-base text-green-900" role="status">
           {mensagem}
         </div>
       ) : null}
-
-      {secao === 'verificacoes' ? (
-        <FilaVerificacoes onAbrir={(id) => ir('verificacoes', id)} onSessaoVencida={onSessaoVencida} />
-      ) : secao === 'certificacoes' ? (
-        <FilaCertificacoes onAbrir={(id) => ir('certificacoes', id)} onSessaoVencida={onSessaoVencida} />
-      ) : (
-        <RegistroCertificados onSessaoVencida={onSessaoVencida} />
-      )}
+      <FilaVerificacoes onAbrir={(id) => ir(id)} onSessaoVencida={onSessaoVencida} />
     </div>
   );
 }
 
-function FilaVerificacoes({
+export function FilaVerificacoes({
   onAbrir,
   onSessaoVencida,
+  categoria = 'verificacao',
 }: {
   onAbrir: (id: number) => void;
   onSessaoVencida: () => void;
+  categoria?: 'verificacao' | 'certificado';
 }) {
   const [estado, setEstado] = useState('aguardando');
   const [pagina, setPagina] = useState(1);
@@ -168,7 +105,7 @@ function FilaVerificacoes({
   useEffect(() => {
     let ativo = true;
     setDados(null);
-    listarVerificacoes(estado, pagina)
+    listarVerificacoes(estado, pagina, categoria)
       .then((d) => {
         if (!ativo) return;
         setDados(d);
@@ -182,7 +119,7 @@ function FilaVerificacoes({
     return () => {
       ativo = false;
     };
-  }, [estado, pagina, onSessaoVencida]);
+  }, [estado, pagina, categoria, onSessaoVencida]);
 
   return (
     <section className="space-y-3">
@@ -207,7 +144,9 @@ function FilaVerificacoes({
       {dados ? (
         dados.itens.length === 0 ? (
           <Vazio titulo={estado === 'aguardando' ? 'Nada aguardando aprovação' : 'Nenhum envio nesta situação'}>
-            O PDF do projeto chega aqui sozinho quando o montador o gera.
+            {categoria === 'certificado'
+              ? 'O checklist que contém certificado chega aqui sozinho quando o montador o termina e gera o PDF.'
+              : 'O PDF do projeto chega aqui sozinho quando o montador o gera.'}
           </Vazio>
         ) : (
           <>
@@ -222,11 +161,17 @@ function FilaVerificacoes({
                       {v.painel.nome} · {v.projeto.empresa}
                     </p>
                     <p className="text-lg font-bold break-words">
-                      {v.projeto.nome} <span className="font-normal text-abb-gray">· {v.tipo.rotulo}</span>
+                      {categoria === 'certificado' ? `TAG ${v.tags[0] ?? ''} · ${v.projeto.nome}` : v.projeto.nome}{' '}
+                      <span className="font-normal text-abb-gray">· {v.tipo.rotulo}</span>
                     </p>
+                    {v.certificado?.numero ? (
+                      <p className="text-base font-semibold text-green-800">Certificado nº {v.certificado.numero}</p>
+                    ) : null}
                     <p className="text-sm text-abb-gray">
                       Versão {v.versao ?? '—'} · {v.montador.nome} · enviado em {dataHoraBr(v.enviadoEm ?? undefined)}
-                      {v.tags.length ? ` · TAGs: ${v.tags.slice(0, 5).join(', ')}${v.tags.length > 5 ? '…' : ''}` : ''}
+                      {categoria === 'verificacao' && v.tags.length
+                        ? ` · TAGs: ${v.tags.slice(0, 5).join(', ')}${v.tags.length > 5 ? '…' : ''}`
+                        : ''}
                     </p>
                     {v.progresso ? (
                       <p className="text-sm text-abb-gray">
@@ -257,7 +202,7 @@ function FilaVerificacoes({
   );
 }
 
-function FilaCertificacoes({
+export function FilaCertificacoes({
   onAbrir,
   onSessaoVencida,
 }: {
@@ -319,8 +264,16 @@ function FilaCertificacoes({
   );
 }
 
-function RegistroCertificados({ onSessaoVencida }: { onSessaoVencida: () => void }) {
+/** Sem acento e em minúsculas, para a busca não depender de como se digitou. */
+const normalizar = (t: string) =>
+  t
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+export function RegistroCertificados({ onSessaoVencida }: { onSessaoVencida: () => void }) {
   const [certificados, setCertificados] = useState<CertificadoRegistrado[] | null>(null);
+  const [busca, setBusca] = useState('');
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
@@ -373,23 +326,45 @@ function RegistroCertificados({ onSessaoVencida }: { onSessaoVencida: () => void
   };
 
   if (!certificados && !erro) return <Carregando mensagem="Lendo o registro de certificados…" />;
+  const termos = normalizar(busca).split(/\s+/).filter(Boolean);
+  const filtrados = (certificados ?? []).filter((c) => {
+    const texto = normalizar(
+      [c.numero, c.numero.replace('-', ''), c.tagPainel, c.projeto, c.nomePainel, c.montador, c.clienteFinal].join(' '),
+    );
+    return termos.every((t) => texto.includes(t));
+  });
   return (
     <section className="space-y-3">
+      <label className="block">
+        <span className="mb-1 block text-base font-semibold">Buscar certificado</span>
+        <input
+          type="search"
+          className="min-h-12 w-full rounded-md border border-abb-line bg-white px-3 text-base focus:border-abb-red"
+          placeholder="Código (ex.: 7K3F-9Q2M), TAG, projeto, painel ou montador…"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+        />
+      </label>
       {mensagem ? (
         <div className="rounded-md border border-green-600 bg-green-50 p-3 text-base text-green-900">{mensagem}</div>
       ) : null}
       {erro ? <Erro detalhe={erro} /> : null}
       {certificados && certificados.length === 0 ? (
         <Vazio titulo="Nenhum certificado emitido">
-          O número sequencial é atribuído pelo servidor na aprovação e não é reaproveitado.
+          O código único é gerado na aprovação do checklist e nunca se repete.
         </Vazio>
       ) : null}
-      {certificados?.length ? (
+      {certificados?.length && !filtrados.length ? (
+        <p className="rounded-xl border border-abb-line bg-white p-6 text-center text-sm text-abb-gray">
+          Nenhum certificado com essa busca.
+        </p>
+      ) : null}
+      {filtrados.length ? (
         <div className="overflow-x-auto rounded-lg border border-abb-line bg-white">
           <table className="w-full min-w-[56rem] border-collapse text-base">
             <thead>
               <tr className="bg-neutral-100 text-left">
-                <th className="border-b border-abb-line p-2">Nº</th>
+                <th className="border-b border-abb-line p-2">Código / Nº</th>
                 <th className="border-b border-abb-line p-2">Data</th>
                 <th className="border-b border-abb-line p-2">Painel</th>
                 <th className="border-b border-abb-line p-2">Projeto</th>
@@ -399,7 +374,7 @@ function RegistroCertificados({ onSessaoVencida }: { onSessaoVencida: () => void
               </tr>
             </thead>
             <tbody>
-              {certificados.map((c) => (
+              {filtrados.map((c) => (
                 <tr key={c.numero}>
                   <td className="border-b border-abb-line p-2 font-bold">{c.numero}</td>
                   <td className="border-b border-abb-line p-2">{dataHoraBr(c.emitidoEm)}</td>

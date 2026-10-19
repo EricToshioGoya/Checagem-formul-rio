@@ -572,6 +572,7 @@ export function Preenchimento() {
         nome={contexto.definicao.nome}
         pendentes={progresso.pendentes}
         antesDeGerar={descarregar}
+        contemCertificado={contexto.definicao.emiteCertificado}
         onFechar={() => setPdfAberto(false)}
       />
     </div>

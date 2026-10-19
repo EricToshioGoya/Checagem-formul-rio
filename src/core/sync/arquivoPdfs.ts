@@ -85,6 +85,7 @@ async function enviarAprovacao(
     tipo: aprovacao.tipo,
     geradoEm: pdf.emitidoEm,
     documento: aprovacao.documento,
+    ...(aprovacao.certificado ? { certificado: aprovacao.certificado } : {}),
   });
   const ausentes: string[] = [];
   for (const midiaUid of faltando) {
@@ -171,6 +172,10 @@ export interface SituacaoRegistro {
   recusas: string[];
   /** PDFs que seguem para a aprovação da administração (enviados ou na fila). */
   paraAprovacao: number;
+  /** Deles, os de checklist que contém certificado (aba Certificados). */
+  paraCertificado: number;
+  /** Checklist que contém certificado que não seguiu para a aba Certificados: por quê. */
+  semCertificado: string[];
 }
 
 /**
@@ -191,6 +196,7 @@ async function retratoDoTipo(
     painelId: projeto.painelId,
     projetoUid: projeto.uid,
     tipo: verificacao.tipo,
+    ...(verificacao.certificado ? { certificado: verificacao.certificado } : {}),
     documento: {
       projeto: documento.projeto,
       tags: documento.tags.filter((t) => doTipo[t.uid]).map((t) => ({ ...t, formIds: doTipo[t.uid] })),
@@ -211,12 +217,16 @@ export async function registrarPdfs(
 ): Promise<SituacaoRegistro> {
   const uids: string[] = [];
   let paraAprovacao = 0;
+  let paraCertificado = 0;
+  const semCertificado: string[] = [];
   for (const arquivo of arquivos) {
     if (!arquivo.registro) continue;
-    const { verificacao, ...registro } = arquivo.registro;
+    const { verificacao, semCertificado: motivo, ...registro } = arquivo.registro;
+    if (motivo) semCertificado.push(motivo);
     const aprovacao =
       verificacao && projetoId !== undefined ? await retratoDoTipo(projetoId, verificacao) : null;
     if (aprovacao) paraAprovacao += 1;
+    if (aprovacao?.certificado) paraCertificado += 1;
     const uid = novoUid();
     uids.push(uid);
     await PdfPendenteRepository.adicionar({
@@ -235,5 +245,7 @@ export async function registrarPdfs(
     pendentes: restantes.filter((p) => !p.recusa).length,
     recusas: restantes.flatMap((p) => (p.recusa ? [p.recusa] : [])),
     paraAprovacao,
+    paraCertificado,
+    semCertificado,
   };
 }

@@ -11,6 +11,8 @@ interface Props {
   semMotivo: number;
   rotuloAprovar: string;
   rotuloReprovar: string;
+  /** O que a confirmação da aprovação explica (ex.: a emissão do certificado). */
+  mensagemAprovar?: string;
   /** Conteúdo extra antes dos botões (ex.: o arquivo do certificado). */
   extra?: ReactNode;
   /** Motivo de não poder aprovar ainda, além das marcas (ex.: falta o arquivo). */
@@ -28,6 +30,7 @@ export function PainelDecisao({
   semMotivo,
   rotuloAprovar,
   rotuloReprovar,
+  mensagemAprovar = 'A aprovação é definitiva e o montador será avisado.',
   extra,
   bloqueioAprovar,
   onDecidir,
@@ -92,7 +95,7 @@ export function PainelDecisao({
         titulo={confirmando === 'aprovada' ? 'Confirmar aprovação' : 'Confirmar pedido de correção'}
         mensagem={
           confirmando === 'aprovada'
-            ? 'A aprovação é definitiva e o montador será avisado.'
+            ? mensagemAprovar
             : `O montador será avisado e verá ${marcadas ? `as ${marcadas} etapa(s) marcada(s), com o motivo de cada uma` : 'o comentário'} em destaque na tela inicial.`
         }
         textoConfirmar={confirmando === 'aprovada' ? 'Aprovar' : 'Pedir correção'}

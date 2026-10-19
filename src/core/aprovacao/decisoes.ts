@@ -41,6 +41,24 @@ export interface DecisaoVerificacao {
   itens: ItemDecisao[];
   /** Versão aprovada mais recente do mesmo projeto e tipo, se houver. */
   ultimaAprovada: { versao: number; decididoEm: number } | null;
+  /** `verificacao`: PDF do projeto. `certificado`: checklist que contém certificado (uma TAG). */
+  categoria?: 'verificacao' | 'certificado';
+  /** No checklist que contém certificado: a TAG, o checklist e, aprovado, o código emitido. */
+  certificado?: { tagUid: string | null; formId: string | null; numero: string | null; uid: string | null } | null;
+}
+
+export const ehCertificado = (d: DecisaoVerificacao): boolean => d.categoria === 'certificado';
+
+/** Como a decisão aparece para o montador: o tipo do PDF, ou o checklist e a TAG do certificado. */
+export function rotuloDaDecisao(d: DecisaoVerificacao): string {
+  return ehCertificado(d) ? `Certificado — ${d.tipo.rotulo} · TAG ${d.tags[0] ?? ''}` : d.tipo.rotulo;
+}
+
+/** Baixa o certificado emitido para um checklist aprovado. Exige conexão. */
+export async function baixarCertificadoEmitido(d: DecisaoVerificacao): Promise<{ blob: Blob; nome: string }> {
+  const blob = await api.baixarArquivo(`/api/verificacoes/${d.uid}/certificado`);
+  const nome = `Certificado ${d.certificado?.numero ?? ''} - TAG ${d.tags[0] ?? ''}.pdf`.replace(/[\\/:*?"<>|]/g, '-');
+  return { blob, nome };
 }
 
 const EVENTO = 'decisoes-atualizadas';

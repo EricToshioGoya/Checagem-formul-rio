@@ -24,6 +24,9 @@ export interface ResumoVerificacaoAdmin {
   decididoPor: string | null;
   comentario: string;
   itens: ItemNaoConforme[];
+  /** `verificacao`: PDF do projeto (Aprovações). `certificado`: checklist que contém certificado (Certificados). */
+  categoria?: 'verificacao' | 'certificado';
+  certificado?: { tagUid: string | null; formId: string | null; numero: string | null; uid: string | null } | null;
 }
 
 export interface RespostaVerificacoesAdmin extends Paginado {
@@ -45,6 +48,8 @@ export interface DetalheVerificacaoAdmin {
   definicoes: Record<string, DefinicaoFormulario | null>;
   midias: MidiaDoEnvio[];
   versoes: ResumoVerificacaoAdmin[];
+  /** Checklist que contém certificado, aprovado: o certificado emitido. */
+  certificadoEmitido?: { uid: string; numero: string; nomeArquivo: string; tamanho: number; anexadoEm: number } | null;
   pdf: { uid: string; nomeArquivo: string; tamanho: number; sha256: string; emitidoEm: number } | null;
 }
 
@@ -56,8 +61,12 @@ export interface MarcaNaoConforme {
   motivo: string;
 }
 
-export function listarVerificacoes(estado: string, pagina: number): Promise<RespostaVerificacoesAdmin> {
-  return api.get(`/api/admin/verificacoes${consulta({ estado, pagina })}`);
+export function listarVerificacoes(
+  estado: string,
+  pagina: number,
+  categoria: 'verificacao' | 'certificado' = 'verificacao',
+): Promise<RespostaVerificacoesAdmin> {
+  return api.get(`/api/admin/verificacoes${consulta({ estado, pagina, categoria })}`);
 }
 
 export function obterVerificacao(id: number): Promise<DetalheVerificacaoAdmin> {
@@ -69,7 +78,7 @@ export function decidirVerificacao(
   decisao: 'aprovada' | 'reprovada',
   comentario: string,
   itens: MarcaNaoConforme[],
-): Promise<{ verificacao: ResumoVerificacaoAdmin }> {
+): Promise<{ verificacao: ResumoVerificacaoAdmin; certificado?: { numero: string; uid: string } | null }> {
   return api.post(`/api/admin/verificacoes/${id}/decisao`, { decisao, comentario, itens });
 }
 
