@@ -9,8 +9,8 @@ import type { Painel } from '../paineis/tipos';
 
 /**
  * Validação ABB pela administração. Lê as solicitações enviadas do servidor —
- * de qualquer aparelho — e decide por lá: aprovar atribui o número do
- * certificado, que o servidor sorteia de um contador único.
+ * de qualquer aparelho — e decide por lá (ver `core/aprovacao/admin`):
+ * aprovar anexa o certificado e atribui o número, de um contador único.
  */
 
 export interface SolicitacaoParaValidar {
@@ -54,16 +54,14 @@ export async function listarParaValidar(): Promise<LinhaDeValidacao[]> {
   return linhas;
 }
 
-export async function aprovarSolicitacao(id: number): Promise<{ numero: string }> {
-  return api.post<{ numero: string }>(`/api/admin/certificacoes/${id}/aprovar`);
-}
-
-export async function devolverSolicitacao(id: number, apontamentos: string): Promise<void> {
-  await api.post(`/api/admin/certificacoes/${id}/devolver`, { apontamentos });
-}
+/** Certificado do registro, com o último arquivo anexado. */
+export type CertificadoRegistrado = Omit<Certificado, 'id' | 'solicitacaoId'> & {
+  /** Nulo quando a solicitação foi excluída; o certificado continua no registro. */
+  certificacaoId: number | null;
+  anexo: { uid: string; nomeArquivo: string; mime: string; tamanho: number; anexadoEm: number } | null;
+};
 
 /** Registro das emissões: todos os certificados numerados. */
-export async function listarCertificados(): Promise<Array<Omit<Certificado, 'id' | 'solicitacaoId'>>> {
-  return (await api.get<{ certificados: Array<Omit<Certificado, 'id' | 'solicitacaoId'>> }>('/api/admin/certificados'))
-    .certificados;
+export async function listarCertificados(): Promise<CertificadoRegistrado[]> {
+  return (await api.get<{ certificados: CertificadoRegistrado[] }>('/api/admin/certificados')).certificados;
 }

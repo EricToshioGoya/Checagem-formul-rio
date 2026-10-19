@@ -12,7 +12,6 @@ import {
 import { camposObrigatoriosVazios } from '../../core/forms/validacaoCampos';
 import type { Solicitacao } from '../../core/db/tipos';
 import type { ValoresCabecalho } from '../../core/forms/tipos';
-import { baixarBlob } from '../../shared/utils/download';
 import { Botao } from '../../shared/componentes/Botao';
 import { BarraProgresso } from '../../shared/componentes/BarraProgresso';
 import { GradeCampos } from '../../shared/componentes/GradeCampos';
@@ -26,6 +25,9 @@ import { AcessoBloqueado } from '../paineis/AcessoBloqueado';
 import { EtiquetaEstado } from './estado';
 import { useAcessoCertificacao } from './acesso';
 import { DialogoPdfChecklist } from '../pdf/DialogoPdfChecklist';
+import { ItensApontados } from '../aprovacao/ItensApontados';
+import { CertificadosAnexados } from './CertificadosAnexados';
+import { ID_CABECALHO } from '../../core/aprovacao/decisoes';
 
 export function DetalheSolicitacao() {
   const { solicitacaoId } = useParams();
@@ -119,23 +121,6 @@ export function DetalheSolicitacao() {
     }
   };
 
-  const baixarCertificado = async () => {
-    setOcupado(true);
-    setErro(null);
-    try {
-      const { gerarPdfCertificado } = await import('../../core/certificado/emissao');
-      const arquivo = await gerarPdfCertificado(id);
-      baixarBlob(arquivo.blob, arquivo.nome);
-      await servicoValidacao.registrarEmissao(id, usuario?.nome ?? valores.operador ?? '');
-      setMensagem(`Certificado ${arquivo.numero} gerado: ${arquivo.nome}`);
-      await recarregar();
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Falha ao gerar o certificado.');
-    } finally {
-      setOcupado(false);
-    }
-  };
-
   return (
     <div className="space-y-5">
       <div className="flex items-start gap-2">
@@ -159,8 +144,25 @@ export function DetalheSolicitacao() {
         </div>
       </div>
 
-      {solicitacao.estado === 'devolvida' && solicitacao.apontamentos ? (
-        <Erro titulo="Devolvida com apontamentos" detalhe={solicitacao.apontamentos} />
+      {solicitacao.estado === 'devolvida' ? (
+        <section
+          className="space-y-3 rounded-lg border-2 border-amber-500 bg-amber-50 p-4"
+          aria-label="Correções pedidas pela administração"
+        >
+          <h2 className="text-lg font-bold text-amber-900">Devolvida para correção</h2>
+          <p className="text-base text-amber-900">
+            Corrija o que a administração apontou e envie de novo para validação.
+          </p>
+          <ItensApontados
+            itens={solicitacao.itens ?? []}
+            comentario={solicitacao.apontamentos}
+            linkPara={(item) =>
+              item.etapaId === ID_CABECALHO
+                ? null
+                : `/solicitacoes/${id}/checklist?etapa=${encodeURIComponent(item.etapaId)}`
+            }
+          />
+        </section>
       ) : null}
 
       {solicitacao.numeroCertificado ? (
@@ -173,10 +175,11 @@ export function DetalheSolicitacao() {
             {dataHoraBr(solicitacao.aprovadoEm)}.
           </p>
           <div className="mt-3">
-            <Botao variante="primario" onClick={baixarCertificado} disabled={ocupado}>
-              <IconePdf className="h-5 w-5" />
-              {ocupado ? 'Gerando…' : 'Baixar certificado'}
-            </Botao>
+            <CertificadosAnexados
+              solicitacao={solicitacao}
+              por={usuario?.nome ?? valores.operador ?? ''}
+              onBaixado={() => void recarregar()}
+            />
           </div>
         </div>
       ) : null}

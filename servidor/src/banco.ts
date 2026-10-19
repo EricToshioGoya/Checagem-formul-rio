@@ -148,6 +148,31 @@ function ddlSyncProjetos(nome: string): string {
   );`;
 }
 
+/**
+ * Registro das emissões: guarda uma cópia dos dados no momento da aprovação,
+ * para alterar a solicitação depois não reescrever o certificado. Não cai em
+ * cascata com a solicitação: excluir a conta do montador (LGPD) leva a
+ * solicitação, mas o registro do certificado emitido fica.
+ */
+function ddlCertificados(nome: string): string {
+  return `CREATE TABLE IF NOT EXISTS ${nome} (
+    numero          TEXT    PRIMARY KEY,
+    certificacaoId  INTEGER REFERENCES certificacoes(id) ON DELETE SET NULL,
+    painelSlug      TEXT    NOT NULL,
+    nomePainel      TEXT    NOT NULL,
+    projeto         TEXT    NOT NULL,
+    tagPainel       TEXT    NOT NULL,
+    clienteFinal    TEXT    NOT NULL,
+    montador        TEXT    NOT NULL,
+    correnteNominal TEXT    NOT NULL,
+    correnteCurtoCircuito TEXT NOT NULL,
+    responsavel     TEXT    NOT NULL,
+    emitidoEm       INTEGER NOT NULL,
+    -- Retrato da solicitação aprovada (dados, respostas e fotos), em JSON.
+    retrato         TEXT
+  );`;
+}
+
 migrarSolicitacoesComPrazo();
 
 banco.exec(`
@@ -274,22 +299,7 @@ banco.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_certificacoes_estado ON certificacoes (estado, atualizadoEm);
 
-  -- Registro das emissões: guarda uma cópia dos dados no momento da
-  -- aprovação, para alterar a solicitação depois não reescrever o certificado.
-  CREATE TABLE IF NOT EXISTS certificados (
-    numero          TEXT    PRIMARY KEY,
-    certificacaoId  INTEGER NOT NULL REFERENCES certificacoes(id) ON DELETE CASCADE,
-    painelSlug      TEXT    NOT NULL,
-    nomePainel      TEXT    NOT NULL,
-    projeto         TEXT    NOT NULL,
-    tagPainel       TEXT    NOT NULL,
-    clienteFinal    TEXT    NOT NULL,
-    montador        TEXT    NOT NULL,
-    correnteNominal TEXT    NOT NULL,
-    correnteCurtoCircuito TEXT NOT NULL,
-    responsavel     TEXT    NOT NULL,
-    emitidoEm       INTEGER NOT NULL
-  );
+  ${ddlCertificados('certificados')}
 
   -- Contadores sequenciais. O do certificado é lido e incrementado na mesma
   -- transação que grava o certificado: dois aprovadores nunca pegam o mesmo número.
@@ -441,6 +451,214 @@ function migrarSyncPorProjeto(): void {
 migrarSyncPorProjeto();
 banco.exec('CREATE INDEX IF NOT EXISTS idx_sync_projetos_painel ON sync_projetos (usuarioId, painelId)');
 banco.exec('CREATE INDEX IF NOT EXISTS idx_sync_midias_projeto ON sync_midias (usuarioId, projetoUid)');
+
+/**
+ * Bancos anteriores criaram `certificados` em cascata com a solicitação:
+ * excluir a conta do montador apagava o registro do certificado emitido. A
+ * tabela é recriada sem a cascata, com as mesmas linhas.
+ */
+function migrarCertificadosSemCascata(): void {
+  const atual = banco
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'certificados'")
+    .get() as { sql: string } | undefined;
+  if (!atual || !/ON DELETE CASCADE/i.test(atual.sql)) return;
+
+  banco.exec('PRAGMA foreign_keys = OFF');
+  banco.exec('BEGIN');
+  try {
+    banco.exec('DROP TABLE IF EXISTS certificados_novo');
+    banco.exec(ddlCertificados('certificados_novo'));
+    banco.exec(
+      `INSERT INTO certificados_novo
+         (numero, certificacaoId, painelSlug, nomePainel, projeto, tagPainel, clienteFinal, montador,
+          correnteNominal, correnteCurtoCircuito, responsavel, emitidoEm)
+       SELECT numero, certificacaoId, painelSlug, nomePainel, projeto, tagPainel, clienteFinal, montador,
+              correnteNominal, correnteCurtoCircuito, responsavel, emitidoEm
+         FROM certificados`,
+    );
+    banco.exec('DROP TABLE certificados');
+    banco.exec('ALTER TABLE certificados_novo RENAME TO certificados');
+    banco.exec('COMMIT');
+  } catch (erro) {
+    banco.exec('ROLLBACK');
+    throw erro;
+  } finally {
+    banco.exec('PRAGMA foreign_keys = ON');
+  }
+  console.warn('Registro de certificados migrado: não é mais apagado junto com a conta do montador.');
+}
+
+migrarCertificadosSemCascata();
+
+// ------------------------------------------------- guarda dos documentos
+
+/**
+ * O PDF preenchido e o certificado são documentos de garantia: depois de
+ * confirmados, nada no sistema os apaga ou troca. As tabelas abaixo guardam o
+ * fluxo de aprovação e as fotos citadas nos documentos; os gatilhos fazem a
+ * regra valer no próprio banco — um defeito no código do servidor também não
+ * consegue apagar um documento.
+ *
+ * Contas e painéis excluídos não levam nada daqui: os vínculos viram nulos e
+ * os nomes ficam gravados na própria linha.
+ */
+banco.exec(`
+  -- Envio do PDF de um projeto, de um tipo de verificação, para aprovação da
+  -- administração. Guarda o retrato das respostas e das fotos daquele tipo no
+  -- momento em que o PDF foi gerado: é o que o administrador analisa.
+  CREATE TABLE IF NOT EXISTS verificacoes (
+    id              INTEGER PRIMARY KEY,
+    uid             TEXT    NOT NULL UNIQUE,
+    usuarioId       INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+    montadorNome    TEXT    NOT NULL,
+    montadorEmail   TEXT    NOT NULL,
+    painelId        INTEGER REFERENCES paineis(id)  ON DELETE SET NULL,
+    painelNome      TEXT    NOT NULL,
+    projetoUid      TEXT    NOT NULL,
+    -- Conta e projeto: o uid legado de um projeto se repete entre contas.
+    projetoChave    TEXT    NOT NULL,
+    empresa         TEXT    NOT NULL,
+    nomeProjeto     TEXT    NOT NULL,
+    tipo            TEXT    NOT NULL,
+    tipoRotulo      TEXT    NOT NULL,
+    -- Atribuída quando o envio fica completo (todas as fotos recebidas).
+    versao          INTEGER,
+    estado          TEXT    NOT NULL
+                    CHECK (estado IN ('recebendo', 'aguardando', 'aprovada', 'reprovada', 'substituida')),
+    pdfUid          TEXT    NOT NULL REFERENCES pdfs_emitidos(uid),
+    documento       TEXT    NOT NULL,
+    tags            TEXT    NOT NULL,
+    geradoEm        INTEGER NOT NULL,
+    criadoEm        INTEGER NOT NULL,
+    enviadoEm       INTEGER,
+    decididoEm      INTEGER,
+    decididoPor     INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+    decididoPorNome TEXT,
+    comentario      TEXT    NOT NULL DEFAULT '',
+    -- Etapas marcadas como não conformes: [{ tagUid, tagNome, formId, etapaId, ... motivo }].
+    itens           TEXT    NOT NULL DEFAULT '[]',
+    busca           TEXT    NOT NULL,
+    UNIQUE (projetoChave, tipo, versao)
+  );
+  CREATE INDEX IF NOT EXISTS idx_verificacoes_estado  ON verificacoes (estado, enviadoEm);
+  CREATE INDEX IF NOT EXISTS idx_verificacoes_projeto ON verificacoes (projetoChave, tipo);
+  CREATE INDEX IF NOT EXISTS idx_verificacoes_usuario ON verificacoes (usuarioId);
+  CREATE INDEX IF NOT EXISTS idx_verificacoes_pdf     ON verificacoes (pdfUid);
+
+  -- Fotos citadas num documento (envio de verificação ou certificação
+  -- aprovada). Ficam protegidas da lixeira e da faxina mesmo que o montador as
+  -- apague depois no aparelho; o SHA-256 é gravado quando o arquivo chega.
+  CREATE TABLE IF NOT EXISTS midias_protegidas (
+    origem   TEXT    NOT NULL CHECK (origem IN ('verificacao', 'certificacao')),
+    origemId INTEGER NOT NULL,
+    uid      TEXT    NOT NULL,
+    mime     TEXT    NOT NULL,
+    tagUid   TEXT,
+    formId   TEXT,
+    etapaId  TEXT    NOT NULL,
+    ordem    INTEGER NOT NULL DEFAULT 0,
+    situacao TEXT    NOT NULL DEFAULT 'pendente' CHECK (situacao IN ('pendente', 'recebida', 'ausente')),
+    sha256   TEXT,
+    tamanho  INTEGER,
+    PRIMARY KEY (origem, origemId, uid)
+  );
+  CREATE INDEX IF NOT EXISTS idx_midias_protegidas_uid ON midias_protegidas (uid);
+
+  -- Certificados anexados pela administração ao aprovar uma certificação.
+  CREATE TABLE IF NOT EXISTS certificados_anexos (
+    uid             TEXT    PRIMARY KEY,
+    certificacaoId  INTEGER REFERENCES certificacoes(id) ON DELETE SET NULL,
+    certificacaoUid TEXT    NOT NULL,
+    numero          TEXT    NOT NULL,
+    painelId        INTEGER REFERENCES paineis(id)  ON DELETE SET NULL,
+    painelNome      TEXT    NOT NULL,
+    projeto         TEXT    NOT NULL,
+    tagPainel       TEXT    NOT NULL,
+    clienteFinal    TEXT    NOT NULL,
+    empresa         TEXT    NOT NULL,
+    montadorId      INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+    montadorNome    TEXT    NOT NULL,
+    nomeArquivo     TEXT    NOT NULL,
+    mime            TEXT    NOT NULL,
+    tamanho         INTEGER NOT NULL,
+    sha256          TEXT    NOT NULL,
+    anexadoPor      INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+    anexadoPorNome  TEXT    NOT NULL,
+    anexadoEm       INTEGER NOT NULL,
+    busca           TEXT    NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_certificados_anexos_cert ON certificados_anexos (certificacaoId);
+  CREATE INDEX IF NOT EXISTS idx_certificados_anexos_em   ON certificados_anexos (anexadoEm);
+
+  -- Resultado da última conferência de cada documento guardado.
+  CREATE TABLE IF NOT EXISTS integridade_arquivos (
+    uid          TEXT    PRIMARY KEY,
+    situacao     TEXT    NOT NULL CHECK (situacao IN ('ok', 'reparado', 'corrompido', 'ausente')),
+    verificadoEm INTEGER NOT NULL,
+    detalhe      TEXT
+  );
+
+  -- Rodadas de backup nos destinos e de verificação de integridade.
+  CREATE TABLE IF NOT EXISTS registros_armazenamento (
+    id          INTEGER PRIMARY KEY,
+    tipo        TEXT    NOT NULL CHECK (tipo IN ('backup', 'verificacao')),
+    destino     TEXT    NOT NULL DEFAULT '',
+    iniciadoEm  INTEGER NOT NULL,
+    concluidoEm INTEGER NOT NULL,
+    ok          INTEGER NOT NULL CHECK (ok IN (0, 1)),
+    resumo      TEXT    NOT NULL DEFAULT '{}'
+  );
+  CREATE INDEX IF NOT EXISTS idx_registros_armazenamento ON registros_armazenamento (tipo, destino, concluidoEm);
+
+  CREATE TRIGGER IF NOT EXISTS pdfs_emitidos_sem_exclusao BEFORE DELETE ON pdfs_emitidos
+  BEGIN SELECT RAISE(ABORT, 'Um PDF arquivado não pode ser apagado.'); END;
+  CREATE TRIGGER IF NOT EXISTS pdfs_emitidos_imutavel
+  BEFORE UPDATE OF uid, empresa, nomeProjeto, titulo, nomeArquivo, emitidoEm, recebidoEm, tamanho, sha256
+  ON pdfs_emitidos
+  BEGIN SELECT RAISE(ABORT, 'Um PDF arquivado não pode ser alterado.'); END;
+
+  CREATE TRIGGER IF NOT EXISTS certificados_sem_exclusao BEFORE DELETE ON certificados
+  BEGIN SELECT RAISE(ABORT, 'O registro de um certificado não pode ser apagado.'); END;
+  -- O retrato pode ser preenchido uma vez (certificados aprovados antes de ele
+  -- existir); depois disso, nada muda. A versão antiga do gatilho o travava.
+  DROP TRIGGER IF EXISTS certificados_imutavel;
+  CREATE TRIGGER certificados_imutavel
+  BEFORE UPDATE OF numero, painelSlug, nomePainel, projeto, tagPainel, clienteFinal, montador, emitidoEm
+  ON certificados
+  BEGIN SELECT RAISE(ABORT, 'O registro de um certificado não pode ser alterado.'); END;
+  CREATE TRIGGER IF NOT EXISTS certificados_retrato_definitivo
+  BEFORE UPDATE OF retrato ON certificados
+  WHEN OLD.retrato IS NOT NULL
+  BEGIN SELECT RAISE(ABORT, 'O registro de um certificado não pode ser alterado.'); END;
+
+  CREATE TRIGGER IF NOT EXISTS certificados_anexos_sem_exclusao BEFORE DELETE ON certificados_anexos
+  BEGIN SELECT RAISE(ABORT, 'Um certificado anexado não pode ser apagado.'); END;
+  CREATE TRIGGER IF NOT EXISTS certificados_anexos_imutavel
+  BEFORE UPDATE OF uid, certificacaoUid, numero, nomeArquivo, mime, tamanho, sha256, anexadoEm
+  ON certificados_anexos
+  BEGIN SELECT RAISE(ABORT, 'Um certificado anexado não pode ser alterado.'); END;
+
+  CREATE TRIGGER IF NOT EXISTS verificacoes_sem_exclusao BEFORE DELETE ON verificacoes
+  BEGIN SELECT RAISE(ABORT, 'Um envio para aprovação não pode ser apagado.'); END;
+  CREATE TRIGGER IF NOT EXISTS verificacoes_identidade
+  BEFORE UPDATE OF uid, projetoUid, projetoChave, tipo, pdfUid, documento, geradoEm, criadoEm
+  ON verificacoes
+  BEGIN SELECT RAISE(ABORT, 'A identificação de um envio não pode ser alterada.'); END;
+  CREATE TRIGGER IF NOT EXISTS verificacoes_decisao_definitiva
+  BEFORE UPDATE OF estado, versao, enviadoEm, decididoEm, decididoPorNome, comentario, itens
+  ON verificacoes
+  WHEN OLD.estado NOT IN ('recebendo', 'aguardando')
+  BEGIN SELECT RAISE(ABORT, 'A decisão sobre um envio é definitiva.'); END;
+
+  CREATE TRIGGER IF NOT EXISTS midias_protegidas_sem_exclusao BEFORE DELETE ON midias_protegidas
+  BEGIN SELECT RAISE(ABORT, 'Uma foto citada num documento não pode ser apagada.'); END;
+  CREATE TRIGGER IF NOT EXISTS midias_protegidas_definitiva BEFORE UPDATE ON midias_protegidas
+  WHEN OLD.situacao <> 'pendente'
+  BEGIN SELECT RAISE(ABORT, 'Uma foto citada num documento não pode ser alterada.'); END;
+`);
+
+// Itens marcados como não conformes na devolução de uma certificação.
+garantirColuna('certificacoes', 'itens', "TEXT NOT NULL DEFAULT '[]'");
 
 export type Papel = 'montador' | 'admin';
 

@@ -1,7 +1,14 @@
 import { api, ErroApi, type PainelApi } from '../api/cliente';
 import { db } from '../db/db';
 import { MidiaRepository, PreenchimentoRepository } from '../db/repositorios';
-import type { Certificado, EstadoSolicitacao, EventoSolicitacao, Solicitacao } from '../db/tipos';
+import type {
+  AnexoCertificado,
+  Certificado,
+  EstadoSolicitacao,
+  EventoSolicitacao,
+  ItemNaoConforme,
+  Solicitacao,
+} from '../db/tipos';
 import { guardarCatalogoPaineis, lerCatalogoPaineis } from '../api/acessoLocal';
 
 /**
@@ -19,6 +26,8 @@ interface RespostaServidor {
   estado: EstadoSolicitacao;
   versao: number;
   apontamentos: string | null;
+  itens: ItemNaoConforme[];
+  anexos: AnexoCertificado[];
   numero: string | null;
   aprovadoEm: number | null;
   aprovadoPor: string | null;
@@ -109,9 +118,18 @@ export async function pedirValidacaoNoServidor(solicitacao: Solicitacao): Promis
   await api.post(`/api/certificacoes/${solicitacao.uid}/enviar`);
 }
 
-/** Registra no servidor que o certificado foi gerado. */
+/** Registra no servidor que o certificado foi baixado pelo montador. */
 export async function registrarEmissaoNoServidor(solicitacao: Solicitacao): Promise<void> {
   await api.post(`/api/certificacoes/${solicitacao.uid}/emissao`);
+}
+
+/** O arquivo do certificado anexado pela administração. Exige conexão. */
+export function baixarCertificadoAnexado(solicitacao: Solicitacao, anexo: AnexoCertificado): Promise<Blob> {
+  return api.baixarArquivo(`/api/certificacoes/${solicitacao.uid}/certificados/${anexo.uid}`);
+}
+
+function mesmosAnexos(a: AnexoCertificado[] | undefined, b: AnexoCertificado[]): boolean {
+  return (a ?? []).map((x) => x.uid).join(',') === b.map((x) => x.uid).join(',');
 }
 
 /**
@@ -136,12 +154,22 @@ export async function atualizarSolicitacoesDoServidor(usuarioId: number): Promis
     // `devolvida` volta ao montador mesmo depois de ele ter reaberto o rascunho? Não:
     // só vale se a cópia local ainda estiver `enviada`.
     const devolucaoValida = remota.estado === 'devolvida' ? local.estado === 'enviada' : avancou;
-    if (!devolucaoValida) continue;
+    if (!devolucaoValida) {
+      // A administração anexou outra via do certificado. Vale também com o
+      // aparelho em "emitida" e o servidor ainda em "aprovada".
+      if (remota.numero && !mesmosAnexos(local.anexos, remota.anexos ?? [])) {
+        await db.solicitacoes.update(local.id!, { anexos: remota.anexos ?? [], historico: remota.historico });
+        mudou += 1;
+      }
+      continue;
+    }
 
     await db.transaction('rw', db.solicitacoes, db.certificados, async () => {
       await db.solicitacoes.update(local.id!, {
         estado: remota.estado,
         apontamentos: remota.apontamentos ?? undefined,
+        itens: remota.itens ?? [],
+        anexos: remota.anexos ?? [],
         numeroCertificado: remota.numero ?? undefined,
         aprovadoEm: remota.aprovadoEm ?? undefined,
         aprovadoPor: remota.aprovadoPor ?? undefined,

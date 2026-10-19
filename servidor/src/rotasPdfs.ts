@@ -1,7 +1,7 @@
-import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { banco } from './banco';
-import { caminhoMidia, gravarMidia, uidValido } from './midias';
+import { banco, emTransacao } from './banco';
+import { agendarBackupContinuo } from './backup';
+import { caminhoDocumento, conferirHashRecebido, paraBusca } from './documentos';
+import { gravarMidia, uidValido } from './midias';
 import { lerPagina } from './paginacao';
 import { ErroHttp, exigirAdmin, exigirSessao, RespostaArquivo, type Contexto } from './rotas';
 
@@ -12,8 +12,10 @@ import { ErroHttp, exigirAdmin, exigirSessao, RespostaArquivo, type Contexto } f
  * O aparelho gera o PDF (offline, se preciso), guarda numa fila e envia na
  * primeira conexão; o `uid` escolhido lá torna o envio idempotente. A
  * administração busca por empresa, projeto e período de emissão e baixa o
- * arquivo original. Não há rota para alterar nem excluir: o SHA-256 gravado
- * no recebimento comprova que o arquivo é o mesmo.
+ * arquivo original. Não há rota para alterar nem excluir — e o banco recusa
+ * as duas coisas por gatilho. O aparelho manda o SHA-256 que calculou: um
+ * arquivo que chega diferente (transferência incompleta) é recusado, e o hash
+ * gravado comprova depois que o arquivo é o mesmo.
  */
 
 type Manipulador = (ctx: Contexto) => unknown;
@@ -21,13 +23,6 @@ type Manipulador = (ctx: Contexto) => unknown;
 /** 100 MB: um dossiê com todas as fotos incorporadas de várias TAGs. */
 export const TAMANHO_MAXIMO_PDF_EMITIDO = 100 * 1024 * 1024;
 
-/** Sem acento e em minúsculas: "São João" e "sao joao" se encontram. */
-function paraBusca(texto: string): string {
-  return texto
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase();
-}
 
 function textoOpcional(ctx: Contexto, campo: string, rotulo: string, maximo = 200): string {
   const valor = (ctx.consulta.get(campo) ?? '').trim();
@@ -80,6 +75,29 @@ function publico(l: LinhaPdf) {
   };
 }
 
+/**
+ * Recalcula o texto de busca dos PDFs: os arquivados antes de a busca incluir
+ * título, arquivo, painel e montador só tinham empresa e projeto. Roda na
+ * subida; só muda o que estiver diferente.
+ */
+export function atualizarBuscaDosPdfs(): void {
+  const linhas = banco
+    .prepare(
+      `SELECT d.uid, d.empresa, d.nomeProjeto, d.titulo, d.nomeArquivo, d.painelNome, d.busca, u.nome AS montador
+         FROM pdfs_emitidos d LEFT JOIN usuarios u ON u.id = d.usuarioId`,
+    )
+    .all() as Array<Record<string, string | null>>;
+  const gravar = banco.prepare('UPDATE pdfs_emitidos SET busca = ? WHERE uid = ?');
+  emTransacao(() => {
+    for (const l of linhas) {
+      const busca = paraBusca(
+        `${l.empresa ?? ''} ${l.nomeProjeto ?? ''} ${l.titulo ?? ''} ${l.nomeArquivo ?? ''} ${l.painelNome ?? ''} ${l.montador ?? ''}`,
+      );
+      if (busca !== l.busca) gravar.run(busca, l.uid);
+    }
+  });
+}
+
 export const rotasPdfs: Record<string, Manipulador> = {
   /**
    * Recebe um PDF emitido no aparelho. Os dados vêm na consulta, o arquivo no
@@ -104,7 +122,9 @@ export const rotasPdfs: Record<string, Manipulador> = {
     // outro arquivo sobrescreveria aquele arquivo.
     const usado =
       banco.prepare('SELECT 1 FROM sync_midias WHERE uid = ?').get(uid) ??
-      banco.prepare('SELECT 1 FROM apoio_midias WHERE uid = ?').get(uid);
+      banco.prepare('SELECT 1 FROM apoio_midias WHERE uid = ?').get(uid) ??
+      banco.prepare('SELECT 1 FROM certificados_anexos WHERE uid = ?').get(uid) ??
+      banco.prepare('SELECT 1 FROM midias_protegidas WHERE uid = ?').get(uid);
     if (usado) throw new ErroHttp(409, 'Identificador do PDF já usado.');
 
     const dados = ctx.corpoBruto;
@@ -116,6 +136,7 @@ export const rotasPdfs: Record<string, Manipulador> = {
     if (dados.length > TAMANHO_MAXIMO_PDF_EMITIDO) {
       throw new ErroHttp(413, 'PDF grande demais (máximo 100 MB).');
     }
+    const sha256 = conferirHashRecebido(ctx.consulta.get('sha256'), dados);
 
     // Empresa e projeto em branco no aparelho não impedem o arquivamento.
     const empresa = textoOpcional(ctx, 'empresa', 'Empresa') || '—';
@@ -152,9 +173,10 @@ export const rotasPdfs: Record<string, Manipulador> = {
         emitidoEm,
         Date.now(),
         dados.length,
-        createHash('sha256').update(dados).digest('hex'),
-        paraBusca(`${empresa} ${nomeProjeto}`),
+        sha256,
+        paraBusca(`${empresa} ${nomeProjeto} ${titulo} ${nomeArquivo} ${painel?.nome ?? ''} ${eu.nome}`),
       );
+    agendarBackupContinuo();
     return { ok: true };
   },
 
@@ -203,10 +225,10 @@ export const rotasPdfs: Record<string, Manipulador> = {
     exigirAdmin(ctx);
     const uid = ctx.params.uid.toLowerCase();
     if (!uidValido(uid)) throw new ErroHttp(400, 'Identificador do PDF inválido.');
-    const caminho = caminhoMidia(uid);
-    if (!banco.prepare('SELECT 1 FROM pdfs_emitidos WHERE uid = ?').get(uid) || !existsSync(caminho)) {
-      throw new ErroHttp(404, 'PDF não encontrado.');
-    }
-    return new RespostaArquivo(caminho, 'application/pdf');
+    const pdf = banco.prepare('SELECT sha256, tamanho FROM pdfs_emitidos WHERE uid = ?').get(uid) as
+      | { sha256: string; tamanho: number }
+      | undefined;
+    if (!pdf) throw new ErroHttp(404, 'PDF não encontrado.');
+    return new RespostaArquivo(caminhoDocumento(uid, pdf.sha256, Number(pdf.tamanho)), 'application/pdf');
   },
 };

@@ -1,6 +1,6 @@
 import { codigoDe } from '../../../compartilhado/formulario';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { MidiaRepository, PreenchimentoRepository } from '../../core/db/repositorios';
 import { propagarCabecalho } from '../../core/forms/dadosTag';
@@ -39,7 +39,14 @@ import {
 } from './contexto';
 
 const ID_CABECALHO = '__cabecalho__';
-type Filtro = 'todas' | 'respondidas' | 'pendentes';
+type Filtro = 'todas' | 'respondidas' | 'pendentes' | 'correcoes';
+
+const ROTULO_FILTRO: Record<Filtro, string> = {
+  todas: 'Todas',
+  pendentes: 'Pendentes',
+  respondidas: 'Respondidas',
+  correcoes: 'Correções',
+};
 
 /**
  * Tipos que se respondem com um toque, e não digitando. A resposta vai para o
@@ -59,6 +66,9 @@ export function Preenchimento() {
   const navegar = useNavigate();
   const desktop = useDesktop();
   const { usuario } = useSessao();
+  const [parametros] = useSearchParams();
+  /** Etapa pedida no endereço: o "Corrigir" de uma etapa reprovada abre direto nela. */
+  const etapaPedida = parametros.get('etapa');
 
   const [contexto, setContexto] = useState<ContextoPreenchimento | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -158,10 +168,12 @@ export function Preenchimento() {
         setCabecalho(resolvido.cabecalhoInicial);
         // Sem campos de cabeçalho (checklist de solicitação), a tela abre
         // direto na primeira etapa em vez de uma aba vazia.
-        if (resolvido.definicao.cabecalho.length === 0) {
-          const primeira = resolvido.definicao.secoes
-            .flatMap((sec) => sec.etapas)
-            .find((e) => e.ativa !== false && !e.exibirSe);
+        const todasEtapas = resolvido.definicao.secoes.flatMap((sec) => sec.etapas);
+        if (etapaPedida && (etapaPedida === ID_CABECALHO || todasEtapas.some((e) => e.id === etapaPedida))) {
+          setSelecionada(etapaPedida);
+          if (Object.keys(resolvido.correcoes).length) setFiltro('correcoes');
+        } else if (resolvido.definicao.cabecalho.length === 0) {
+          const primeira = todasEtapas.find((e) => e.ativa !== false && !e.exibirSe);
           if (primeira) setSelecionada(primeira.id);
         }
       } catch (e) {
@@ -171,6 +183,7 @@ export function Preenchimento() {
     return () => {
       ativo = false;
     };
+    // A etapa pedida (`etapaPedida`) só vale na abertura: fica fora das dependências.
   }, [projetoId, tagId, formId, solicitacaoId, usuario]);
 
   // As etapas condicionais entram e saem conforme a resposta que as governa.
@@ -198,10 +211,11 @@ export function Preenchimento() {
     () =>
       etapas.filter(({ etapa }) => {
         if (filtro === 'todas' || etapa.id === selecionada) return true;
+        if (filtro === 'correcoes') return Boolean(contexto?.correcoes[etapa.id]);
         const ok = estaRespondida(etapa);
         return filtro === 'respondidas' ? ok : !ok;
       }),
-    [etapas, filtro, estaRespondida, selecionada],
+    [etapas, filtro, estaRespondida, selecionada, contexto],
   );
 
   const progresso = useMemo(
@@ -283,13 +297,16 @@ export function Preenchimento() {
             setIndiceAberto(false);
           }}
           className={[
-            'flex min-h-12 w-full items-center rounded-md border-2 px-3 text-left text-base font-semibold',
+            'flex min-h-12 w-full items-center justify-between gap-2 rounded-md border-2 px-3 text-left text-base font-semibold',
             selecionada === ID_CABECALHO
               ? 'border-abb-red bg-red-50'
-              : 'border-abb-line-botao bg-abb-offwhite hover:bg-abb-offwhite-hover',
+              : contexto.correcoes[ID_CABECALHO]
+                ? 'border-amber-500 bg-amber-50 hover:bg-amber-100'
+                : 'border-abb-line-botao bg-abb-offwhite hover:bg-abb-offwhite-hover',
           ].join(' ')}
         >
           Dados do painel
+          {contexto.correcoes[ID_CABECALHO] ? <MarcaCorrecao /> : null}
         </button>
       ) : null}
 
@@ -316,7 +333,9 @@ export function Preenchimento() {
                         'flex min-h-12 w-full items-start gap-2 rounded-md border px-3 py-2 text-left',
                         selecionada === etapa.id
                           ? 'border-abb-red bg-red-50'
-                          : 'border-abb-line-botao bg-abb-offwhite hover:bg-abb-offwhite-hover',
+                          : contexto.correcoes[etapa.id]
+                            ? 'border-2 border-amber-500 bg-amber-50 hover:bg-amber-100'
+                            : 'border-abb-line-botao bg-abb-offwhite hover:bg-abb-offwhite-hover',
                       ].join(' ')}
                     >
                       <span
@@ -330,8 +349,11 @@ export function Preenchimento() {
                       >
                         {ok ? <IconeCheck className="h-4 w-4" /> : null}
                       </span>
-                      <span className="min-w-0">
-                        <span className="block text-sm font-bold">{codigoDe(etapa)}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center justify-between gap-2 text-sm font-bold">
+                          {codigoDe(etapa)}
+                          {contexto.correcoes[etapa.id] ? <MarcaCorrecao /> : null}
+                        </span>
                         <span className="block truncate text-sm text-abb-gray">
                           {etapa.descricao}
                         </span>
@@ -374,10 +396,19 @@ export function Preenchimento() {
 
   // `fieldset disabled` desliga todos os controles de uma vez, inclusive os
   // botões de foto, sem duplicar a lógica em cada tipo de campo.
+  const motivoAtual = contexto.correcoes[selecionada];
   const painel = (
-    <fieldset disabled={contexto.somenteLeitura} className="min-w-0 border-0 p-0">
-      {conteudo}
-    </fieldset>
+    <div className="space-y-3">
+      {motivoAtual ? (
+        <div className="rounded-lg border-2 border-amber-500 bg-amber-50 p-3" role="note">
+          <p className="text-base font-bold text-amber-900">Apontado pela administração</p>
+          <p className="mt-1 text-base whitespace-pre-line text-amber-900">{motivoAtual}</p>
+        </div>
+      ) : null}
+      <fieldset disabled={contexto.somenteLeitura} className="min-w-0 border-0 p-0">
+        {conteudo}
+      </fieldset>
+    </div>
   );
 
   return (
@@ -439,20 +470,33 @@ export function Preenchimento() {
               tela da etapa que está sendo respondida. */}
           <div className="flex items-center gap-2">
             <div className="flex flex-1 gap-2 overflow-x-auto">
-              {(['todas', 'pendentes', 'respondidas'] as Filtro[]).map((f) => (
+              {(
+                [
+                  ...(Object.keys(contexto.correcoes).length ? ['correcoes'] : []),
+                  'todas',
+                  'pendentes',
+                  'respondidas',
+                ] as Filtro[]
+              ).map((f) => (
                 <button
                   key={f}
                   type="button"
                   onClick={() => setFiltro(f)}
                   aria-pressed={filtro === f}
                   className={[
-                    'min-h-10 shrink-0 rounded-full border px-3 text-sm font-semibold capitalize sm:px-4',
+                    'min-h-10 shrink-0 rounded-full border px-3 text-sm font-semibold sm:px-4',
                     filtro === f
-                      ? 'border-abb-red bg-abb-red text-white'
-                      : 'border-abb-line-botao bg-abb-offwhite text-abb-black hover:bg-abb-offwhite-hover',
+                      ? f === 'correcoes'
+                        ? 'border-amber-500 bg-amber-500 text-abb-black'
+                        : 'border-abb-red bg-abb-red text-white'
+                      : f === 'correcoes'
+                        ? 'border-amber-500 bg-amber-50 text-amber-900 hover:bg-amber-100'
+                        : 'border-abb-line-botao bg-abb-offwhite text-abb-black hover:bg-abb-offwhite-hover',
                   ].join(' ')}
                 >
-                  {f}
+                  {f === 'correcoes'
+                    ? `${ROTULO_FILTRO[f]} (${Object.keys(contexto.correcoes).length})`
+                    : ROTULO_FILTRO[f]}
                 </button>
               ))}
             </div>
@@ -531,5 +575,14 @@ export function Preenchimento() {
         onFechar={() => setPdfAberto(false)}
       />
     </div>
+  );
+}
+
+/** Selo das etapas apontadas pela administração, no índice. */
+function MarcaCorrecao() {
+  return (
+    <span className="shrink-0 rounded bg-amber-500 px-1.5 py-0.5 text-xs font-bold text-abb-black">
+      Corrigir
+    </span>
   );
 }
