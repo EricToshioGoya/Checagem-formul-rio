@@ -356,10 +356,15 @@ export function DetalheProjeto() {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="text-base font-bold">
-                          {infoDoTipo(f.entrada.tipo).rotulo}
+                        <p className="text-base font-bold">{f.entrada.nome}</p>
+                        <p className="text-sm text-abb-gray">
+                          {infoDoTipo(f.entrada.tipo).rotulo} · {f.entrada.linhaProduto}
                         </p>
-                        <p className="text-sm text-abb-gray">{f.entrada.linhaProduto}</p>
+                        {f.entrada.emiteCertificado ? (
+                          <span className="mt-1 inline-block rounded bg-sky-100 px-2 py-0.5 text-xs font-bold text-sky-900">
+                            Contém certificado
+                          </span>
+                        ) : null}
                       </div>
                       <IconeSeta className="h-5 w-5 shrink-0 text-abb-red" />
                     </div>
