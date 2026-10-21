@@ -6,7 +6,7 @@ import { Modal } from '../../shared/componentes/Modal';
 import { Aviso, Erro } from '../../shared/componentes/Estado';
 import { useSessao } from '../../core/api/SessaoContexto';
 import { registrarPdfs } from '../../core/sync/arquivoPdfs';
-import { atualizarDecisoes } from '../../core/aprovacao/decisoes';
+import { atualizarDecisoes, certificadoEmitido } from '../../core/aprovacao/decisoes';
 import { ArquivosGerados, EscolhaFotos, type EstadoRegistro } from './PartesDialogoPdf';
 
 interface Props {
@@ -60,6 +60,15 @@ export function DialogoPdfChecklist({
       // garantia) e, o de um checklist que contém certificado, para a aba
       // Certificados. Sem rede, fica na fila do aparelho e segue depois.
       if (usuario) {
+        // Certificado já emitido para este checklist: o PDF é só guardado.
+        for (const { registro: r } of arquivos) {
+          const pedido = r?.verificacao?.certificado;
+          const emitido = pedido && certificadoEmitido(usuario.id, pedido.tagUid, pedido.formId);
+          if (r && emitido) {
+            delete r.verificacao;
+            r.semCertificado = `O certificado nº ${emitido.certificado?.numero} deste checklist já foi emitido; o PDF foi só guardado.`;
+          }
+        }
         setRegistro(null);
         setRegistro(await registrarPdfs(usuario.id, arquivos, 'projetoId' in alvo ? alvo.projetoId : undefined));
         if (contemCertificado) void atualizarDecisoes(usuario.id);

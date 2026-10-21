@@ -109,7 +109,7 @@ describe('checklist que contém certificado', () => {
   });
 
   /** Retrato de uma TAG com o checklist, completo ou não. */
-  function corpo(envioUid: string, pdfUid: string, completo: boolean, form = formId) {
+  function corpo(envioUid: string, pdfUid: string, completo: boolean, form = formId, tag = tagUid) {
     const agora = Date.now();
     return {
       uid: envioUid,
@@ -118,13 +118,13 @@ describe('checklist que contém certificado', () => {
       projetoUid,
       tipo: 'montagem',
       geradoEm: agora,
-      certificado: { tagUid, formId: form },
+      certificado: { tagUid: tag, formId: form },
       documento: {
         projeto: { empresa: 'Painéis Ação Ltda', nomeProjeto: 'Linha 9', operador: 'Gil', criadoEm: agora, atualizadoEm: agora },
-        tags: [{ uid: tagUid, nome: 'QGBT-09', ordem: 0, formIds: [form] }],
+        tags: [{ uid: tag, nome: 'QGBT-09', ordem: 0, formIds: [form] }],
         preenchimentos: [
           {
-            tagUid,
+            tagUid: tag,
             formId: form,
             formRevisao: 'rev00',
             cabecalho: { clienteFinal: 'Cliente Z' },
@@ -286,9 +286,58 @@ describe('checklist que contém certificado', () => {
     const bd = new DatabaseSync(join(amb.dados, 'acesso.db'));
     try {
       assert.throws(() => bd.prepare('DELETE FROM modelos_certificado WHERE uid = ?').run(modeloUid));
+      assert.throws(() => bd.prepare("UPDATE modelos_certificado SET nomeArquivo = 'x.pdf' WHERE uid = ?").run(modeloUid));
       assert.throws(() => bd.prepare("UPDATE verificacoes SET certificadoNumero = 'XXXX-XXXX' WHERE id = ?").run(idV2));
+      // A exclusão da conta de quem enviou o modelo anula só o enviadoPor (LGPD).
+      bd.prepare('UPDATE modelos_certificado SET enviadoPor = NULL WHERE uid = ?').run(modeloUid);
     } finally {
       bd.close();
     }
+  });
+
+  it('gerar o PDF de novo depois da aprovação não emite outro certificado', async () => {
+    const envio = novoUid();
+    const r = await montador.pedir('POST', '/api/verificacoes', corpo(envio, await enviarPdf(montador, painel.slug), true));
+    assert.equal(r.status, 409);
+    assert.equal(r.dados.codigo, 'certificado-ja-emitido');
+    assert.ok(r.dados.erro.includes(codigo));
+
+    const { verificacoes } = await montador.ok('GET', '/api/verificacoes');
+    const doChecklist = (verificacoes as Array<{ certificado: { tagUid: string } | null; estado: string }>).filter(
+      (v) => v.certificado?.tagUid === tagUid,
+    );
+    assert.equal(doChecklist.length, 1);
+    assert.equal(doChecklist[0].estado, 'aprovada', 'o certificado continua à vista do montador');
+  });
+
+  it('o pedido aguardando ainda é aprovado se o checklist for excluído', async () => {
+    const criado = await admin.ok('POST', `/api/admin/paineis/${painel.id}/formularios`, {
+      tipo: 'montagem',
+      nome: 'Checklist que será excluído',
+    });
+    const id = criado.formulario.id as string;
+    await admin.ok('PUT', `/api/admin/formularios/${id}`, {
+      nome: 'Checklist que será excluído',
+      ativo: true,
+      definicao: definicao(id, 'Checklist que será excluído', {
+        emiteCertificado: true,
+        modeloCertificado: { uid: modeloUid, nomeArquivo: 'Modelo ABB.pdf', paginas: 2 },
+      }),
+    });
+    const envio = novoUid();
+    await montador.ok('POST', '/api/verificacoes', corpo(envio, await enviarPdf(montador, painel.slug), true, id, novoUid()));
+    const fim = await montador.ok('POST', `/api/verificacoes/${envio}/concluir`, {});
+    await admin.ok('DELETE', `/api/admin/formularios/${id}`);
+
+    const r = await admin.ok('POST', `/api/admin/verificacoes/${fim.verificacao.id}/decisao`, { decisao: 'aprovada' });
+    assert.match(r.certificado.numero, PADRAO_CODIGO);
+    assert.notEqual(r.certificado.numero, codigo, 'cada certificado tem o seu código');
+  });
+
+  it('editar o painel não exige o certificado das solicitações antigas', async () => {
+    await admin.ok('PUT', `/api/admin/paineis/${painel.id}`, {
+      nome: 'SEN Plus',
+      responsaveis: [admin.usuario!.email],
+    });
   });
 });

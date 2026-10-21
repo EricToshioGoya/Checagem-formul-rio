@@ -575,6 +575,10 @@ certificado emitido do modelo, com código único (ex.: 7K3F-9Q2M) ──> monta
 - **Código único:** 8 caracteres aleatórios no formato `XXXX-XXXX`, sem as
   letras e números que se confundem (0/O, 1/I/L), conferido contra todos os
   certificados já registrados. Nunca se repete nem se altera.
+- **Um certificado por checklist da TAG:** gerar o PDF de novo depois da
+  aprovação só guarda o PDF. O certificado sai do modelo atual do checklist;
+  se o checklist for excluído com o pedido aguardando, do modelo vigente
+  quando o montador o terminou.
 - **O montador baixa o certificado** na tela inicial (seção *Certificados
   aprovados*, com pop-up na primeira vez) e na tela do projeto. A
   administração o encontra em **Certificados → Certificados emitidos** (busca

@@ -86,6 +86,7 @@ interface Linha {
   categoria: CategoriaEnvio;
   certTagUid: string | null;
   certFormId: string | null;
+  certModeloUid: string | null;
   certificadoNumero: string | null;
   certificadoUid: string | null;
 }
@@ -280,12 +281,17 @@ interface Emissao {
   nomeArquivo: string;
   tamanho: number;
   sha256: string;
+  modeloUid: string;
 }
 
-/** Gera e grava o PDF do certificado a partir do modelo do checklist. */
+/**
+ * Gera e grava o PDF do certificado a partir do modelo do checklist: o atual
+ * (a administração pode ter trocado um modelo errado) ou, se o checklist foi
+ * excluído ou ficou sem modelo, o vigente quando o montador o terminou.
+ */
 async function emitirCertificado(l: Linha, documento: DocumentoProjeto, eu: Usuario, agora: number): Promise<Emissao> {
   const definicao = l.certFormId ? obterDefinicao(l.certFormId) : null;
-  const modelo = definicao?.modeloCertificado?.uid.toLowerCase();
+  const modelo = (definicao?.modeloCertificado?.uid ?? l.certModeloUid)?.toLowerCase();
   if (!modelo) {
     throw new ErroHttp(
       409,
@@ -309,7 +315,28 @@ async function emitirCertificado(l: Linha, documento: DocumentoProjeto, eu: Usua
   const uid = randomUUID();
   gravarMidia(uid, pdf);
   const nomeArquivo = `Certificado ${codigo} - TAG ${tag}`.replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, '-').slice(0, 180) + '.pdf';
-  return { codigo, uid, nomeArquivo, tamanho: pdf.length, sha256: hashDe(pdf) };
+  return { codigo, uid, nomeArquivo, tamanho: pdf.length, sha256: hashDe(pdf), modeloUid: modelo };
+}
+
+/**
+ * Um certificado por checklist da TAG: gerar o PDF de novo depois da
+ * aprovação só guarda o PDF. Conferido no envio, na conclusão e na decisão
+ * (um envio pode ter começado antes da aprovação de outra versão).
+ */
+function exigirCertificadoNaoEmitido(projetoChave: string, tipo: string): void {
+  const emitido = banco
+    .prepare(
+      `SELECT certificadoNumero FROM verificacoes
+        WHERE projetoChave = ? AND tipo = ? AND estado = 'aprovada' AND certificadoNumero IS NOT NULL`,
+    )
+    .get(projetoChave, tipo) as { certificadoNumero: string } | undefined;
+  if (emitido) {
+    throw new ErroHttp(
+      409,
+      `O certificado nº ${emitido.certificadoNumero} deste checklist já foi emitido. O PDF foi guardado.`,
+      'certificado-ja-emitido',
+    );
+  }
 }
 
 /** Registro do certificado emitido (dentro da transação da decisão). */
@@ -338,7 +365,7 @@ function registrarCertificado(l: Linha, documento: DocumentoProjeto, eu: Usuario
       eu.nome,
       agora,
       // O retrato do que foi aprovado: sobrevive à exclusão do projeto e da conta.
-      JSON.stringify({ verificacaoUid: l.uid, formId: l.certFormId, documento }),
+      JSON.stringify({ verificacaoUid: l.uid, formId: l.certFormId, modeloUid: e.modeloUid, documento }),
     );
   banco
     .prepare(
@@ -413,6 +440,12 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
     let tipoRotulo = obterTipo(e.tipo)?.rotulo ?? infoDoTipo(e.tipo).rotulo;
     let certTagUid: string | null = null;
     let certFormId: string | null = null;
+    let certModeloUid: string | null = null;
+    const projetoUid = e.projetoUid.toLowerCase();
+    // O id da conta pode ser reaproveitado depois de uma exclusão (e o projeto
+    // legado tem o mesmo uid em toda conta): a criação da conta separa as
+    // versões de quem saiu das de quem chegou.
+    const projetoChave = `${eu.id}.${eu.criadoEm}:${projetoUid}`;
     if (e.certificado) {
       // Checklist que contém certificado: uma TAG, um checklist, completo, e
       // com o modelo do certificado já enviado pela administração.
@@ -432,6 +465,7 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
       if (e.documento.tags.length !== 1 || e.documento.tags[0].uid.toLowerCase() !== tagUid) {
         throw new ErroHttp(400, 'O envio do certificado vale para uma TAG só.');
       }
+      exigirCertificadoNaoEmitido(projetoChave, `certificado:${tagUid}:${formId}`);
       const preenchimento = e.documento.preenchimentos.find(
         (p) => p.tagUid.toLowerCase() === tagUid && p.formId === formId,
       );
@@ -452,8 +486,8 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
       tipoRotulo = definicao.nome;
       certTagUid = tagUid;
       certFormId = formId;
+      certModeloUid = modelo;
     }
-    const projetoUid = e.projetoUid.toLowerCase();
     const nomesTags = [...e.documento.tags].sort((a, b) => a.ordem - b.ordem).map((t) => t.nome);
     const agora = Date.now();
 
@@ -463,8 +497,8 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
           `INSERT INTO verificacoes
              (uid, usuarioId, montadorNome, montadorEmail, painelId, painelNome, projetoUid, projetoChave,
               empresa, nomeProjeto, tipo, tipoRotulo, estado, pdfUid, documento, tags, geradoEm, criadoEm, busca,
-              categoria, certTagUid, certFormId)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'recebendo', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              categoria, certTagUid, certFormId, certModeloUid)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'recebendo', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           uid,
@@ -474,10 +508,7 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
           painel.id,
           painel.nome,
           projetoUid,
-          // O id da conta pode ser reaproveitado depois de uma exclusão (e o
-          // projeto legado tem o mesmo uid em toda conta): a criação da conta
-          // separa as versões de quem saiu das de quem chegou.
-          `${eu.id}.${eu.criadoEm}:${projetoUid}`,
+          projetoChave,
           e.documento.projeto.empresa || '—',
           e.documento.projeto.nomeProjeto || '—',
           tipoChave,
@@ -493,6 +524,7 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
           categoria,
           certTagUid,
           certFormId,
+          certModeloUid,
         );
       const novo = Number(info.lastInsertRowid);
       const inserir = banco.prepare(
@@ -565,6 +597,7 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
     if (!r.success) throw new ErroHttp(400, primeiroErro(r.error));
     const l = doMontador(eu, uidDaUrl(ctx.params.uid));
     if (l.estado !== 'recebendo') return { verificacao: resumo(l) };
+    if (l.categoria === 'certificado') exigirCertificadoNaoEmitido(l.projetoChave, l.tipo);
 
     const pendentes = faltandoDo(l.id, eu);
     const ausentes = new Set(r.data.ausentes.map((u) => u.toLowerCase()));

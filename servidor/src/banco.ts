@@ -668,6 +668,9 @@ garantirColuna('verificacoes', 'certTagUid', 'TEXT');
 garantirColuna('verificacoes', 'certFormId', 'TEXT');
 garantirColuna('verificacoes', 'certificadoNumero', 'TEXT');
 garantirColuna('verificacoes', 'certificadoUid', 'TEXT');
+// O modelo vigente quando o montador terminou o checklist: a aprovação ainda
+// emite dele se o checklist for excluído ou deixar de ter modelo.
+garantirColuna('verificacoes', 'certModeloUid', 'TEXT');
 garantirColuna('certificados_anexos', 'verificacaoId', 'INTEGER');
 
 banco.exec(`
@@ -685,12 +688,16 @@ banco.exec(`
   );
   CREATE TRIGGER IF NOT EXISTS modelos_certificado_sem_exclusao BEFORE DELETE ON modelos_certificado
   BEGIN SELECT RAISE(ABORT, 'Um modelo de certificado não pode ser apagado.'); END;
-  CREATE TRIGGER IF NOT EXISTS modelos_certificado_imutavel BEFORE UPDATE ON modelos_certificado
+  -- Sem enviadoPor: a exclusão da conta de quem enviou o anula (LGPD).
+  DROP TRIGGER IF EXISTS modelos_certificado_imutavel;
+  CREATE TRIGGER modelos_certificado_imutavel
+  BEFORE UPDATE OF uid, nomeArquivo, tamanho, sha256, paginas, enviadoEm, enviadoPorNome ON modelos_certificado
   BEGIN SELECT RAISE(ABORT, 'Um modelo de certificado não pode ser alterado.'); END;
 
   CREATE INDEX IF NOT EXISTS idx_verificacoes_categoria ON verificacoes (categoria, estado, enviadoEm);
-  CREATE TRIGGER IF NOT EXISTS verificacoes_certificado_definitivo
-  BEFORE UPDATE OF categoria, certTagUid, certFormId, certificadoNumero, certificadoUid
+  DROP TRIGGER IF EXISTS verificacoes_certificado_definitivo;
+  CREATE TRIGGER verificacoes_certificado_definitivo
+  BEFORE UPDATE OF categoria, certTagUid, certFormId, certModeloUid, certificadoNumero, certificadoUid
   ON verificacoes
   WHEN OLD.estado NOT IN ('recebendo', 'aguardando')
   BEGIN SELECT RAISE(ABORT, 'O certificado de um envio decidido não pode ser alterado.'); END;

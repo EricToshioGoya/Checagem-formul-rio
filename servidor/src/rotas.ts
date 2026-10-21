@@ -255,17 +255,6 @@ function dadosDeCertificado(l: Record<string, unknown>) {
   };
 }
 
-/** Checklists do painel marcados com "Emite certificado", ativos ou não. */
-function checklistsComCertificado(painelId: number): number {
-  const l = banco
-    .prepare(
-      `SELECT COUNT(*) AS n FROM formularios
-        WHERE painelId = ? AND json_extract(definicao, '$.emiteCertificado') = 1`,
-    )
-    .get(painelId) as { n: number };
-  return Number(l.n);
-}
-
 interface PainelComAcesso {
   id: number;
   slug: string;
@@ -948,14 +937,6 @@ export const rotas: Record<string, Manipulador> = {
       | { nome: string; certificado: string | null }
       | undefined;
     if (!antes) throw new ErroHttp(404, 'Painel não encontrado.');
-    const comCertificado = checklistsComCertificado(id);
-    if (!certificado && comCertificado > 0) {
-      throw new ErroHttp(
-        400,
-        `${plural(comCertificado, 'checklist deste painel emite', 'checklists deste painel emitem')} certificado: ` +
-          'mantenha o modelo e quem assina, ou desmarque "Emite certificado" nesses checklists antes.',
-      );
-    }
     const responsaveisAntes = mapaResponsaveis().get(id) ?? [];
 
     // O `slug` não muda ao renomear: ele amarra o painel aos formulários do

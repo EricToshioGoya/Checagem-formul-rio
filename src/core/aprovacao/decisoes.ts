@@ -54,6 +54,19 @@ export function rotuloDaDecisao(d: DecisaoVerificacao): string {
   return ehCertificado(d) ? `Certificado — ${d.tipo.rotulo} · TAG ${d.tags[0] ?? ''}` : d.tipo.rotulo;
 }
 
+/** O certificado já emitido para o checklist da TAG, se houver: um por checklist. */
+export function certificadoEmitido(usuarioId: number, tagUid: string, formId: string): DecisaoVerificacao | undefined {
+  const tag = tagUid.toLowerCase();
+  return lerDecisoesGuardadas(usuarioId).find(
+    (d) =>
+      ehCertificado(d) &&
+      d.estado === 'aprovada' &&
+      Boolean(d.certificado?.numero) &&
+      d.certificado?.tagUid?.toLowerCase() === tag &&
+      d.certificado.formId === formId,
+  );
+}
+
 /** Baixa o certificado emitido para um checklist aprovado. Exige conexão. */
 export async function baixarCertificadoEmitido(d: DecisaoVerificacao): Promise<{ blob: Blob; nome: string }> {
   const blob = await api.baixarArquivo(`/api/verificacoes/${d.uid}/certificado`);
