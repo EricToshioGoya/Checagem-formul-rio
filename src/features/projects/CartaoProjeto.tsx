@@ -10,7 +10,7 @@ import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { IconeLixeira, IconeSeta } from '../../shared/componentes/Icones';
 import { dataHoraBr } from '../../shared/utils/texto';
 import { SituacaoSincronizacao } from './SituacaoSincronizacao';
-import { lerDecisoesGuardadas } from '../../core/aprovacao/decisoes';
+import { lerDecisoesGuardadas, reprovadas } from '../../core/aprovacao/decisoes';
 
 /**
  * Percentual de preenchimento de cada projeto. Calculado com o painel do
@@ -55,8 +55,8 @@ export function CartaoProjeto({ projeto: p, percentual, onExcluir }: Props) {
   // Última leitura guardada das decisões: o selo aparece também sem rede.
   const correcoes =
     p.usuarioId !== undefined && p.uid
-      ? lerDecisoesGuardadas(p.usuarioId).filter(
-          (d) => d.estado === 'reprovada' && d.projeto.uid.toLowerCase() === p.uid!.toLowerCase(),
+      ? reprovadas(lerDecisoesGuardadas(p.usuarioId)).filter(
+          (d) => d.projeto.uid.toLowerCase() === p.uid!.toLowerCase(),
         )
       : [];
   return (

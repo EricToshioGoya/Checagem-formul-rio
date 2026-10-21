@@ -1,4 +1,4 @@
-import { api } from '../api/cliente';
+import { api, consulta } from '../api/cliente';
 import type { Certificado, EventoSolicitacao } from '../db/tipos';
 import type { Progresso } from '../forms/progresso';
 import type { ValoresCabecalho } from '../forms/tipos';
@@ -61,7 +61,8 @@ export type CertificadoRegistrado = Omit<Certificado, 'id' | 'solicitacaoId'> & 
   anexo: { uid: string; nomeArquivo: string; mime: string; tamanho: number; anexadoEm: number } | null;
 };
 
-/** Registro das emissões: todos os certificados numerados. */
-export async function listarCertificados(): Promise<CertificadoRegistrado[]> {
-  return (await api.get<{ certificados: CertificadoRegistrado[] }>('/api/admin/certificados')).certificados;
+/** Registro das emissões: os 500 mais recentes ou, com `busca`, os que batem com ela. */
+export async function listarCertificados(busca?: string): Promise<CertificadoRegistrado[]> {
+  return (await api.get<{ certificados: CertificadoRegistrado[] }>(`/api/admin/certificados${consulta({ busca })}`))
+    .certificados;
 }

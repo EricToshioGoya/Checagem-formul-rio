@@ -217,15 +217,13 @@ export async function gerarArquivosChecklist(
   });
 
   // Checklist que contém certificado, na TAG do projeto: terminado, o PDF
-  // segue para a aba Certificados.
+  // segue para a aba Certificados. Se falta o modelo, quem diz é o servidor: a
+  // cópia do checklist no aparelho pode ser de antes de a administração enviá-lo.
   const pdf = arquivos.find((a) => a.registro);
   const definicao = formulario.definicao;
   if (pdf?.registro && 'projetoId' in alvo && definicao.emiteCertificado) {
     if (!tag.uid) {
       pdf.registro.semCertificado = 'A TAG ainda não tem identificação; sincronize o projeto e gere de novo.';
-    } else if (!definicao.modeloCertificado) {
-      pdf.registro.semCertificado =
-        'Este checklist ainda não tem o modelo do certificado. Avise a administração; o PDF foi guardado.';
     } else if (formulario.progresso.total === 0 || formulario.progresso.pendentes > 0) {
       pdf.registro.semCertificado = `Faltam ${formulario.progresso.pendentes} etapa(s): responda todas e gere o PDF de novo para pedir o certificado.`;
     } else {

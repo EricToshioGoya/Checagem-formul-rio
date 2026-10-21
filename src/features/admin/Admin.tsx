@@ -68,9 +68,19 @@ export function Admin() {
     ANTIGAS[parametros.get('aba') ?? ''] ?? ANTIGAS[`${parametros.get('aba')}:${parametros.get('secao')}`];
   const pedida = antiga?.aba ?? parametros.get('aba');
   const aba: Aba = ABAS.some((a) => a.id === pedida) ? (pedida as Aba) : 'acessos';
+  const abrirAntiga = parametros.get('abrir');
   useEffect(() => {
-    if (antiga) setParametros({ aba: antiga.aba, ...(antiga.secao ? { secao: antiga.secao } : {}) }, { replace: true });
-  }, [antiga, setParametros]);
+    if (!antiga) return;
+    setParametros(
+      {
+        aba: antiga.aba,
+        ...(antiga.secao ? { secao: antiga.secao } : {}),
+        // O item que o endereço antigo abria continua aberto.
+        ...(abrirAntiga ? { abrir: abrirAntiga } : {}),
+      },
+      { replace: true },
+    );
+  }, [antiga, abrirAntiga, setParametros]);
   const [resumo, setResumo] = useState<ResumoAdmin | null>(null);
 
   const sessaoVencida = useCallback(async () => {
@@ -150,7 +160,7 @@ export function Admin() {
       </div>
 
       <div role="tabpanel" id={`painel-${aba}`} aria-labelledby={`aba-${aba}`}>
-        {aba === 'acessos' ? (
+        {antiga ? null : aba === 'acessos' ? (
           <GestaoAcessos onSessaoVencida={sessaoVencida} onAlterado={lerResumo} />
         ) : aba === 'andamento' ? (
           <div className="space-y-3">

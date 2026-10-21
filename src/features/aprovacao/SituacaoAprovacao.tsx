@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import {
   ehCertificado,
   rotuloDaDecisao,
+  superadaPorCertificado,
   type DecisaoVerificacao,
   type EstadoVerificacao,
 } from '../../core/aprovacao/decisoes';
@@ -25,12 +26,13 @@ export function EtiquetaVerificacao({ estado }: { estado: EstadoVerificacao }) {
  * dele. A reprovada leva às correções.
  */
 export function SituacaoAprovacaoProjeto({ decisoes }: { decisoes: DecisaoVerificacao[] }) {
-  if (!decisoes.length) return null;
+  const vigentes = decisoes.filter((d) => !superadaPorCertificado(d, decisoes));
+  if (!vigentes.length) return null;
   return (
     <section className="space-y-2 rounded-lg border border-abb-line bg-white p-4" aria-label="Aprovação da administração">
       <h2 className="text-lg font-bold">Aprovação da administração</h2>
       <ul className="space-y-2">
-        {decisoes.map((d) => (
+        {vigentes.map((d) => (
           <li
             key={d.uid}
             className={[

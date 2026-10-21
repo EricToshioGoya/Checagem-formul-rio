@@ -1,4 +1,12 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib';
+import {
+  PDFDocument,
+  StandardFonts,
+  concatTransformationMatrix,
+  popGraphicsState,
+  pushGraphicsState,
+  rgb,
+  type PDFFont,
+} from 'pdf-lib';
 
 /**
  * Carimbo do certificado: em todas as páginas do modelo, uma faixa no rodapé
@@ -33,11 +41,29 @@ function caber(texto: string, fonte: PDFFont, tamanho: number, largura: number):
 }
 
 function dataHora(em: number): string {
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-    timeZone: process.env.TZ || 'America/Sao_Paulo',
-  }).format(new Date(em));
+  const formato = (timeZone: string) =>
+    new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone }).format(new Date(em));
+  try {
+    return formato(process.env.TZ || 'America/Sao_Paulo');
+  } catch {
+    // TZ no formato POSIX (ex.: ':/etc/localtime'), que o Intl não aceita.
+    return formato('America/Sao_Paulo');
+  }
+}
+
+/**
+ * Leva as coordenadas da página como o leitor a mostra (origem no canto
+ * inferior esquerdo visível) às da página sem a rotação (/Rotate): a faixa sai
+ * no rodapé visível também no modelo em paisagem gravado como retrato girado.
+ */
+function matrizVisivel(
+  rotacao: number,
+  c: { x: number; y: number; width: number; height: number },
+): [number, number, number, number, number, number] {
+  if (rotacao === 90) return [0, 1, -1, 0, c.x + c.width, c.y];
+  if (rotacao === 180) return [-1, 0, 0, -1, c.x + c.width, c.y + c.height];
+  if (rotacao === 270) return [0, -1, 1, 0, c.x, c.y + c.height];
+  return [1, 0, 0, 1, c.x, c.y];
 }
 
 export async function carimbarCertificado(modelo: Uint8Array, d: DadosCarimbo): Promise<Buffer> {
@@ -58,11 +84,14 @@ export async function carimbarCertificado(modelo: Uint8Array, d: DadosCarimbo): 
 
   paginas.forEach((pagina, i) => {
     const caixa = pagina.getCropBox();
-    const margem = Math.min(18, caixa.width * 0.03);
+    const rotacao = ((pagina.getRotation().angle % 360) + 360) % 360;
+    const larguraVisivel = rotacao === 90 || rotacao === 270 ? caixa.height : caixa.width;
+    pagina.pushOperators(pushGraphicsState(), concatTransformationMatrix(...matrizVisivel(rotacao, caixa)));
+    const margem = Math.min(18, larguraVisivel * 0.03);
     const altura = 40;
-    const largura = caixa.width - margem * 2;
-    const x = caixa.x + margem;
-    const y = caixa.y + margem;
+    const largura = larguraVisivel - margem * 2;
+    const x = margem;
+    const y = margem;
     const util = largura - 16;
     pagina.drawRectangle({
       x,
@@ -92,6 +121,7 @@ export async function carimbarCertificado(modelo: Uint8Array, d: DadosCarimbo): 
     });
     pagina.drawText(caber(linha2, normal, 7.5, util), { x: x + 8, y: y + 15, size: 7.5, font: normal, color: rgb(0.1, 0.1, 0.1) });
     pagina.drawText(caber(linha3, normal, 7.5, util), { x: x + 8, y: y + 6, size: 7.5, font: normal, color: rgb(0.1, 0.1, 0.1) });
+    pagina.pushOperators(popGraphicsState());
   });
 
   documento.setTitle(`Certificado ${d.codigo}`);

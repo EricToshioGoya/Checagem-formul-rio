@@ -225,6 +225,9 @@ export async function registrarPdfs(
     if (motivo) semCertificado.push(motivo);
     const aprovacao =
       verificacao && projetoId !== undefined ? await retratoDoTipo(projetoId, verificacao) : null;
+    if (verificacao?.certificado && !aprovacao) {
+      semCertificado.push('Projeto sem painel: o certificado só pode ser pedido num projeto aberto dentro de um painel.');
+    }
     if (aprovacao) paraAprovacao += 1;
     if (aprovacao?.certificado) paraCertificado += 1;
     const uid = novoUid();

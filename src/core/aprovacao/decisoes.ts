@@ -139,9 +139,31 @@ export function useDecisoes(usuarioId: number | undefined): {
   return { decisoes, recarregar };
 }
 
+/**
+ * Reprovação do PDF do projeto cujas etapas são todas de checklists que
+ * passaram a conter certificado e já foram reenviados pela aba Certificados:
+ * o PDF do projeto não leva mais esses checklists, e a correção seguiu por lá.
+ */
+export function superadaPorCertificado(d: DecisaoVerificacao, decisoes: DecisaoVerificacao[]): boolean {
+  if (ehCertificado(d) || !d.itens.length) return false;
+  return d.itens.every((item) => {
+    const tag = item.tagUid?.toLowerCase();
+    return (
+      tag !== undefined &&
+      decisoes.some(
+        (c) =>
+          ehCertificado(c) &&
+          c.certificado?.tagUid?.toLowerCase() === tag &&
+          c.certificado.formId === item.formId &&
+          (c.enviadoEm ?? 0) > (d.decididoEm ?? 0),
+      )
+    );
+  });
+}
+
 /** Projeto e tipo com a versão mais recente reprovada: há correção a fazer. */
 export function reprovadas(decisoes: DecisaoVerificacao[]): DecisaoVerificacao[] {
-  return decisoes.filter((d) => d.estado === 'reprovada');
+  return decisoes.filter((d) => d.estado === 'reprovada' && !superadaPorCertificado(d, decisoes));
 }
 
 /**

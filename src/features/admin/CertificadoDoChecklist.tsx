@@ -4,6 +4,7 @@ import { api, consulta } from '../../core/api/cliente';
 import { novoUid } from '../../core/db/db';
 import { Botao } from '../../shared/componentes/Botao';
 import { Aviso } from '../../shared/componentes/Estado';
+import { baixarBlob } from '../../shared/utils/download';
 import { sha256Hex } from '../../shared/utils/hash';
 import { formatarBytes } from '../../shared/utils/texto';
 
@@ -56,7 +57,6 @@ export function CertificadoDoChecklist({ definicao, onAlterar }: Props) {
         corpo,
       );
       onAlterar({
-        emiteCertificado: true,
         modeloCertificado: { uid: novo.uid, nomeArquivo: novo.nomeArquivo, tamanho: novo.tamanho, paginas: novo.paginas },
       });
     } catch (e) {
@@ -70,10 +70,7 @@ export function CertificadoDoChecklist({ definicao, onAlterar }: Props) {
     if (!modelo) return;
     setErro(null);
     try {
-      const blob = await api.baixarArquivo(`/api/admin/modelos-certificado/${modelo.uid}`);
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank', 'noopener');
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      baixarBlob(await api.baixarArquivo(`/api/admin/modelos-certificado/${modelo.uid}`), modelo.nomeArquivo);
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível abrir o modelo.');
     }
@@ -89,6 +86,7 @@ export function CertificadoDoChecklist({ definicao, onAlterar }: Props) {
             name={`certificado-${definicao.id}`}
             className="size-5 accent-abb-red"
             checked={sim}
+            disabled={enviando}
             onChange={() => onAlterar({ emiteCertificado: true })}
           />
           Sim
@@ -99,6 +97,7 @@ export function CertificadoDoChecklist({ definicao, onAlterar }: Props) {
             name={`certificado-${definicao.id}`}
             className="size-5 accent-abb-red"
             checked={!sim}
+            disabled={enviando}
             onChange={() => onAlterar({ emiteCertificado: false })}
           />
           Não

@@ -104,6 +104,8 @@ export function ConstrutorChecklist({
    * da imagem): o estado capturado no início já pode estar velho.
    */
   const atual = useRef<DefinicaoFormulario | null>(null);
+  /** O mesmo para "Disponível para os montadores": o fim de um envio não volta o valor. */
+  const ativoAtual = useRef(ativoInicial);
 
   const gravar = useCallback(
     async ({ definicao: nova, ativo: ligado }: Pendente) => {
@@ -144,12 +146,13 @@ export function ConstrutorChecklist({
     setErro(null);
     atual.current = nova;
     setDefinicao(nova);
-    agendar({ definicao: nova, ativo });
+    agendar({ definicao: nova, ativo: ativoAtual.current });
   };
 
   const alterarAtivo = (ligado: boolean) => {
+    ativoAtual.current = ligado;
     setAtivo(ligado);
-    if (definicao) agendar({ definicao, ativo: ligado });
+    if (atual.current) agendar({ definicao: atual.current, ativo: ligado });
   };
 
   const alterarSecoes = (fn: (secoes: Secao[]) => Secao[]) => {

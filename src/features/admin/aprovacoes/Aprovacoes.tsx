@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../../core/api/cliente';
 import {
@@ -277,20 +277,30 @@ export function RegistroCertificados({ onSessaoVencida }: { onSessaoVencida: () 
   const [erro, setErro] = useState<string | null>(null);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
+  // A busca vai ao servidor (o registro inteiro, não só os 500 mais recentes);
+  // só a resposta do pedido mais novo vale.
+  const termo = useRef('');
+  const pedido = useRef(0);
 
   const carregar = useCallback(async () => {
+    const meu = ++pedido.current;
     try {
-      setCertificados(await listarCertificados());
+      const lista = await listarCertificados(termo.current || undefined);
+      if (meu !== pedido.current) return;
+      setCertificados(lista);
       setErro(null);
     } catch (e) {
+      if (meu !== pedido.current) return;
       if (sessaoAdminAcabou(e)) onSessaoVencida();
       else setErro(e instanceof Error ? e.message : 'Não foi possível ler o registro.');
     }
   }, [onSessaoVencida]);
 
   useEffect(() => {
-    void carregar();
-  }, [carregar]);
+    termo.current = busca.trim();
+    const espera = window.setTimeout(() => void carregar(), termo.current ? 300 : 0);
+    return () => window.clearTimeout(espera);
+  }, [busca, carregar]);
 
   const baixar = async (c: CertificadoRegistrado) => {
     if (!c.anexo) return;

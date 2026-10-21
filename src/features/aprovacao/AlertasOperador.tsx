@@ -9,10 +9,12 @@ import {
   chaveDecisao,
   lerVistas,
   marcarVistas,
+  reprovadas as reprovadasDe,
   useDecisoes,
 } from '../../core/aprovacao/decisoes';
 import { atualizarSolicitacoesDoServidor, solicitacaoStore } from '../../core/certificacao';
-import type { Solicitacao } from '../../core/db/tipos';
+import { PdfPendenteRepository } from '../../core/db/repositorios';
+import type { PdfPendente, Solicitacao } from '../../core/db/tipos';
 import { Botao } from '../../shared/componentes/Botao';
 import { Modal } from '../../shared/componentes/Modal';
 import { dataHoraBr } from '../../shared/utils/texto';
@@ -53,7 +55,16 @@ export function AlertasOperador() {
     [] as Solicitacao[],
   );
 
-  const reprovadas = decisoes.filter((d) => d.estado === 'reprovada');
+  // PDFs gerados sem rede cujo envio o servidor recusou depois (ex.: o
+  // checklist ganhou uma etapa): sem isto, o pedido sumiria em silêncio.
+  const recusados = useLiveQuery(
+    async () =>
+      usuario ? (await PdfPendenteRepository.listar(usuario.id)).filter((p) => p.recusa) : ([] as PdfPendente[]),
+    [usuario?.id],
+    [] as PdfPendente[],
+  );
+
+  const reprovadas = reprovadasDe(decisoes);
   const devolvidas = solicitacoes.filter((s) => s.estado === 'devolvida');
   const comCertificado = solicitacoes.filter(
     (s) => (s.estado === 'aprovada' || s.estado === 'emitida') && s.numeroCertificado,
@@ -179,6 +190,34 @@ export function AlertasOperador() {
                 >
                   Corrigir
                 </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {recusados.length ? (
+        <section
+          className="space-y-3 rounded-lg border-2 border-abb-red bg-red-50 p-4"
+          aria-label="Envios recusados pelo servidor"
+        >
+          <h2 className="text-lg font-bold text-abb-red">Envios recusados pelo servidor ({recusados.length})</h2>
+          <ul className="space-y-2">
+            {recusados.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-white p-3">
+                <p className="min-w-0 text-base">
+                  <span className="block font-bold break-all">{p.nomeArquivo}</span>
+                  <span className="text-sm text-abb-gray">{p.recusa}</span>
+                  {p.aprovacao?.certificado ? (
+                    <span className="block text-sm text-abb-gray">
+                      Sincronize na tela de painéis, confira o checklist e gere o PDF dele de novo para pedir o
+                      certificado.
+                    </span>
+                  ) : null}
+                </p>
+                <Botao tamanho="compacto" onClick={() => void PdfPendenteRepository.remover(p.id!)}>
+                  Dispensar
+                </Botao>
               </li>
             ))}
           </ul>

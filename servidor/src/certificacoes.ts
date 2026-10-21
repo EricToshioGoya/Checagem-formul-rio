@@ -911,9 +911,23 @@ export const rotasCertificacoes: Record<string, Manipulador> = {
   /** Registro das emissões: todos os certificados numerados, com o arquivo anexado. */
   'GET /api/admin/certificados': (ctx) => {
     exigirAdmin(ctx);
-    const linhas = banco.prepare('SELECT * FROM certificados ORDER BY emitidoEm DESC LIMIT 500').all() as Array<
-      Record<string, unknown>
-    >;
+    // Sem busca, os 500 mais recentes; com ela, procura em todo o registro
+    // (um código antigo continua achável).
+    const termos = paraBusca(ctx.consulta.get('busca') ?? '').split(' ').filter(Boolean);
+    const todas = banco
+      .prepare(`SELECT * FROM certificados ORDER BY emitidoEm DESC${termos.length ? '' : ' LIMIT 500'}`)
+      .all() as Array<Record<string, unknown>>;
+    const linhas = termos.length
+      ? todas
+          .filter((c) => {
+            const numero = String(c.numero);
+            const texto = paraBusca(
+              [numero, numero.replace('-', ''), c.tagPainel, c.projeto, c.nomePainel, c.montador, c.clienteFinal].join(' '),
+            );
+            return termos.every((t) => texto.includes(t));
+          })
+          .slice(0, 500)
+      : todas;
     const ultimoAnexo = banco.prepare(
       `SELECT uid, nomeArquivo, mime, tamanho, anexadoEm FROM certificados_anexos
         WHERE numero = ? ORDER BY anexadoEm DESC LIMIT 1`,

@@ -273,6 +273,13 @@ describe('checklist que contém certificado', () => {
     assert.ok(registro);
     assert.equal(registro.tagPainel, 'QGBT-09');
     assert.ok(registro.anexo);
+    // A busca vai ao registro inteiro, com ou sem o hífen do código.
+    const achados = await admin.ok('GET', `/api/admin/certificados?busca=${codigo.replace('-', '').toLowerCase()}`);
+    assert.deepEqual(
+      (achados.certificados as Array<{ numero: string }>).map((c) => c.numero),
+      [codigo],
+    );
+    assert.equal((await admin.ok('GET', '/api/admin/certificados?busca=nada-com-isso')).certificados.length, 0);
 
     const busca = await admin.ok('GET', `/api/admin/documentos?busca=${encodeURIComponent(codigo.toLowerCase())}`);
     assert.equal(busca.documentos.length, 1);
@@ -332,6 +339,34 @@ describe('checklist que contém certificado', () => {
     const r = await admin.ok('POST', `/api/admin/verificacoes/${fim.verificacao.id}/decisao`, { decisao: 'aprovada' });
     assert.match(r.certificado.numero, PADRAO_CODIGO);
     assert.notEqual(r.certificado.numero, codigo, 'cada certificado tem o seu código');
+  });
+
+  it('o carimbo aceita TZ no formato POSIX e página girada', async () => {
+    const { carimbarCertificado } = await import('../src/carimboCertificado');
+    const { degrees } = await import('pdf-lib');
+    const d = await PDFDocument.create();
+    d.addPage([595, 842]).setRotation(degrees(90));
+    const antes = process.env.TZ;
+    process.env.TZ = ':/etc/localtime';
+    try {
+      const pdf = await carimbarCertificado(await d.save(), {
+        codigo: 'ABCD-EFGH',
+        emitidoEm: Date.now(),
+        aprovadoPor: 'Ana',
+        empresa: 'Ação',
+        projeto: 'Linha 9',
+        tag: 'QGBT-09',
+        painel: 'SEN Plus',
+        checklist: 'Inspeção',
+        montador: 'Gil',
+      });
+      const lido = await PDFDocument.load(pdf);
+      assert.equal(lido.getTitle(), 'Certificado ABCD-EFGH');
+      assert.equal(lido.getPage(0).getRotation().angle, 90, 'o modelo continua girado');
+    } finally {
+      if (antes === undefined) delete process.env.TZ;
+      else process.env.TZ = antes;
+    }
   });
 
   it('editar o painel não exige o certificado das solicitações antigas', async () => {
