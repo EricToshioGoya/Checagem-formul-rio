@@ -1,5 +1,12 @@
 import { Link } from 'react-router-dom';
-import type { DecisaoVerificacao, EstadoVerificacao } from '../../core/aprovacao/decisoes';
+import {
+  ehCertificado,
+  rotuloDaDecisao,
+  superadaPorCertificado,
+  type DecisaoVerificacao,
+  type EstadoVerificacao,
+} from '../../core/aprovacao/decisoes';
+import { BaixarCertificado } from './BaixarCertificado';
 import { dataHoraBr } from '../../shared/utils/texto';
 
 export const ROTULO_VERIFICACAO: Record<EstadoVerificacao, { texto: string; classe: string }> = {
@@ -19,12 +26,13 @@ export function EtiquetaVerificacao({ estado }: { estado: EstadoVerificacao }) {
  * dele. A reprovada leva às correções.
  */
 export function SituacaoAprovacaoProjeto({ decisoes }: { decisoes: DecisaoVerificacao[] }) {
-  if (!decisoes.length) return null;
+  const vigentes = decisoes.filter((d) => !superadaPorCertificado(d, decisoes));
+  if (!vigentes.length) return null;
   return (
     <section className="space-y-2 rounded-lg border border-abb-line bg-white p-4" aria-label="Aprovação da administração">
       <h2 className="text-lg font-bold">Aprovação da administração</h2>
       <ul className="space-y-2">
-        {decisoes.map((d) => (
+        {vigentes.map((d) => (
           <li
             key={d.uid}
             className={[
@@ -34,8 +42,11 @@ export function SituacaoAprovacaoProjeto({ decisoes }: { decisoes: DecisaoVerifi
           >
             <div className="min-w-0">
               <p className="text-base font-bold">
-                {d.tipo.rotulo} <span className="font-normal text-abb-gray">· versão {d.versao ?? '—'}</span>
+                {rotuloDaDecisao(d)} <span className="font-normal text-abb-gray">· versão {d.versao ?? '—'}</span>
               </p>
+              {ehCertificado(d) && d.estado === 'aprovada' && d.certificado?.numero ? (
+                <p className="text-base font-semibold text-green-800">Certificado nº {d.certificado.numero}</p>
+              ) : null}
               <p className="text-sm text-abb-gray">
                 {d.estado === 'aguardando'
                   ? `Enviado em ${dataHoraBr(d.enviadoEm ?? d.geradoEm)}`
@@ -47,6 +58,9 @@ export function SituacaoAprovacaoProjeto({ decisoes }: { decisoes: DecisaoVerifi
             </div>
             <div className="flex items-center gap-2">
               <EtiquetaVerificacao estado={d.estado} />
+              {ehCertificado(d) && d.estado === 'aprovada' && d.certificado?.numero ? (
+                <BaixarCertificado decisao={d} compacto />
+              ) : null}
               {d.estado === 'reprovada' ? (
                 <Link
                   to={`/correcoes/${d.uid}`}

@@ -29,6 +29,7 @@ import { protegerCertificacoesAprovadas, rotasCertificacoes, TAMANHO_MAXIMO_CERT
 import { atualizarBuscaDosPdfs, rotasPdfs, TAMANHO_MAXIMO_PDF_EMITIDO } from './rotasPdfs';
 import { rotasDocumentos } from './rotasDocumentos';
 import { rotasVerificacoes } from './verificacoes';
+import { rotasCertificadosChecklist, TAMANHO_MAXIMO_MODELO } from './certificadosChecklist';
 
 /**
  * Servidor de acesso: contas, painéis, aprovação, sincronização das
@@ -48,6 +49,7 @@ const rotas = {
   ...rotasCertificacoes,
   ...rotasPdfs,
   ...rotasVerificacoes,
+  ...rotasCertificadosChecklist,
   ...rotasDocumentos,
 };
 
@@ -65,6 +67,7 @@ const LIMITES: Record<string, number> = {
   'PUT /api/verificacoes/:uid/midias/:midia': TAMANHO_MAXIMO_VIDEO + 1024,
   'PUT /api/admin/certificacoes/:id/aprovacao': TAMANHO_MAXIMO_CERTIFICADO + 1024,
   'PUT /api/admin/certificacoes/:id/certificado': TAMANHO_MAXIMO_CERTIFICADO + 1024,
+  'PUT /api/admin/modelos-certificado/:uid': TAMANHO_MAXIMO_MODELO + 1024,
   // O retrato de um envio para aprovação carrega as respostas de todas as TAGs.
   'POST /api/verificacoes': 8 * 1024 * 1024,
 };
@@ -76,6 +79,7 @@ const ROTAS_ARQUIVO = new Set([
   'PUT /api/verificacoes/:uid/midias/:midia',
   'PUT /api/admin/certificacoes/:id/aprovacao',
   'PUT /api/admin/certificacoes/:id/certificado',
+  'PUT /api/admin/modelos-certificado/:uid',
 ]);
 
 /**

@@ -34,6 +34,7 @@ function paraEntrada(f: FormularioCache): EntradaCatalogo {
     painelSlug: f.painelSlug,
     ativo: f.ativo,
     emiteCertificado: f.emiteCertificado ?? f.definicao.emiteCertificado ?? false,
+    temModeloCertificado: Boolean(f.definicao.modeloCertificado),
     etapas: f.etapas,
     atualizadoEm: f.atualizadoEm,
   };
@@ -97,9 +98,9 @@ export async function sincronizarPaineis(
 }
 
 /**
- * Para que o checklist é usado: `verificacao` entra nos projetos (TAG →
- * dossiê em PDF); `certificacao` é o que emite certificado, preenchido numa
- * solicitação de certificação.
+ * Para que o checklist é usado: `verificacao` são todos os que entram nos
+ * projetos (TAG → PDF), inclusive os que contêm certificado; `certificacao`
+ * são só os que contêm certificado — usado pelas solicitações antigas.
  */
 export type UsoChecklist = 'verificacao' | 'certificacao';
 
@@ -108,8 +109,8 @@ export type UsoChecklist = 'verificacao' | 'certificacao';
  * lista vazia, e a tela mostra o aviso em vez de oferecer o formulário de
  * outra linha — as etapas de um SEN Plus não valem para um MNS.
  *
- * Por padrão vêm só os de verificação: os que emitem certificado são
- * preenchidos numa solicitação, e não numa TAG do projeto.
+ * Por padrão vêm todos: o checklist que contém certificado também é
+ * preenchido na TAG do projeto.
  */
 export async function formulariosDoPainel(
   painelSlug: string | undefined,
@@ -123,7 +124,7 @@ export async function formulariosDoPainel(
   return lista
     .filter((f) => f.ativo)
     .map(paraEntrada)
-    .filter((f) => f.emiteCertificado === (uso === 'certificacao'))
+    .filter((f) => uso === 'verificacao' || f.emiteCertificado)
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 

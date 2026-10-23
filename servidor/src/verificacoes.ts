@@ -1,11 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import { existsSync, statSync } from 'node:fs';
 import { codigoDe, type DefinicaoFormulario } from '../../compartilhado/formulario';
+import { calcularProgresso, contarMidias, type MapaRespostas } from '../../compartilhado/progresso';
 import { infoDoTipo } from '../../compartilhado/tiposChecklist';
 import { andamentoDoDocumento } from './andamento';
 import { registrar } from './auditoria';
 import { avisar } from './avisos';
 import { agendarBackupContinuo } from './backup';
 import { banco, emTransacao, type Usuario } from './banco';
+import { gerarCertificadoDoModelo, novoCodigoCertificado } from './certificadosChecklist';
 import { caminhoDocumento, conferirHashRecebido, paraBusca } from './documentos';
 import {
   conclusaoVerificacaoSchema,
@@ -17,8 +20,8 @@ import {
   type DocumentoProjeto,
   type ItemNaoConforme,
 } from './esquemas';
-import { obterDefinicao } from './formularios';
-import { caminhoMidia, gravarMidia, hashDoArquivo, uidValido } from './midias';
+import { obterDefinicao, painelDoFormulario } from './formularios';
+import { caminhoMidia, gravarMidia, hashDe, hashDoArquivo, uidValido } from './midias';
 import { lerPagina } from './paginacao';
 import {
   ErroHttp,
@@ -51,6 +54,9 @@ type Manipulador = (ctx: Contexto) => unknown;
 
 export type EstadoVerificacao = 'recebendo' | 'aguardando' | 'aprovada' | 'reprovada' | 'substituida';
 
+/** `verificacao`: PDF do projeto (aba Aprovações). `certificado`: checklist que contém certificado (aba Certificados). */
+export type CategoriaEnvio = 'verificacao' | 'certificado';
+
 interface Linha {
   id: number;
   uid: string;
@@ -77,6 +83,12 @@ interface Linha {
   decididoPorNome: string | null;
   comentario: string;
   itens: string;
+  categoria: CategoriaEnvio;
+  certTagUid: string | null;
+  certFormId: string | null;
+  certModeloUid: string | null;
+  certificadoNumero: string | null;
+  certificadoUid: string | null;
 }
 
 /** Etapa não conforme como fica gravada: legível mesmo sem o checklist. */
@@ -125,6 +137,11 @@ function resumo(l: Linha) {
     decididoPor: l.decididoPorNome,
     comentario: l.comentario,
     itens: JSON.parse(l.itens) as ItemGravado[],
+    categoria: l.categoria ?? 'verificacao',
+    certificado:
+      l.categoria === 'certificado'
+        ? { tagUid: l.certTagUid, formId: l.certFormId, numero: l.certificadoNumero, uid: l.certificadoUid }
+        : null,
   };
 }
 
@@ -258,6 +275,131 @@ function enviadoNaEtapa(documento: DocumentoProjeto, item: ItemGravado) {
   };
 }
 
+interface Emissao {
+  codigo: string;
+  uid: string;
+  nomeArquivo: string;
+  tamanho: number;
+  sha256: string;
+  modeloUid: string;
+}
+
+/**
+ * Gera e grava o PDF do certificado a partir do modelo do checklist: o atual
+ * (a administração pode ter trocado um modelo errado) ou, se o checklist foi
+ * excluído ou ficou sem modelo, o vigente quando o montador o terminou.
+ */
+async function emitirCertificado(l: Linha, documento: DocumentoProjeto, eu: Usuario, agora: number): Promise<Emissao> {
+  const definicao = l.certFormId ? obterDefinicao(l.certFormId) : null;
+  const modelo = (definicao?.modeloCertificado?.uid ?? l.certModeloUid)?.toLowerCase();
+  if (!modelo) {
+    throw new ErroHttp(
+      409,
+      'O checklist não tem mais o modelo do certificado. Envie o modelo ao editar o checklist e aprove de novo.',
+      'sem-modelo-certificado',
+    );
+  }
+  const tag = documento.tags[0]?.nome ?? '';
+  const codigo = novoCodigoCertificado();
+  const pdf = await gerarCertificadoDoModelo(modelo, {
+    codigo,
+    emitidoEm: agora,
+    aprovadoPor: eu.nome,
+    empresa: l.empresa,
+    projeto: l.nomeProjeto,
+    tag,
+    painel: l.painelNome,
+    checklist: l.tipoRotulo,
+    montador: l.montadorNome,
+  });
+  const uid = randomUUID();
+  gravarMidia(uid, pdf);
+  const nomeArquivo = `Certificado ${codigo} - TAG ${tag}`.replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, '-').slice(0, 180) + '.pdf';
+  return { codigo, uid, nomeArquivo, tamanho: pdf.length, sha256: hashDe(pdf), modeloUid: modelo };
+}
+
+/**
+ * Um certificado por checklist da TAG: gerar o PDF de novo depois da
+ * aprovação só guarda o PDF. Conferido no envio, na conclusão e na decisão
+ * (um envio pode ter começado antes da aprovação de outra versão).
+ */
+function exigirCertificadoNaoEmitido(projetoChave: string, tipo: string): void {
+  const emitido = banco
+    .prepare(
+      `SELECT certificadoNumero FROM verificacoes
+        WHERE projetoChave = ? AND tipo = ? AND estado = 'aprovada' AND certificadoNumero IS NOT NULL`,
+    )
+    .get(projetoChave, tipo) as { certificadoNumero: string } | undefined;
+  if (emitido) {
+    throw new ErroHttp(
+      409,
+      `O certificado nº ${emitido.certificadoNumero} deste checklist já foi emitido. O PDF foi guardado.`,
+      'certificado-ja-emitido',
+    );
+  }
+}
+
+/** Registro do certificado emitido (dentro da transação da decisão). */
+function registrarCertificado(l: Linha, documento: DocumentoProjeto, eu: Usuario, agora: number, e: Emissao): void {
+  const tag = documento.tags[0]?.nome ?? '';
+  const cabecalho = documento.preenchimentos[0]?.cabecalho ?? {};
+  const painelSlug =
+    l.painelId === null
+      ? ''
+      : ((banco.prepare('SELECT slug FROM paineis WHERE id = ?').get(l.painelId) as { slug: string } | undefined)?.slug ?? '');
+  banco
+    .prepare(
+      `INSERT INTO certificados
+         (numero, certificacaoId, painelSlug, nomePainel, projeto, tagPainel, clienteFinal, montador,
+          correnteNominal, correnteCurtoCircuito, responsavel, emitidoEm, retrato)
+       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, '', '', ?, ?, ?)`,
+    )
+    .run(
+      e.codigo,
+      painelSlug,
+      l.painelNome,
+      l.nomeProjeto,
+      tag,
+      cabecalho.clienteFinal ?? '',
+      l.montadorNome,
+      eu.nome,
+      agora,
+      // O retrato do que foi aprovado: sobrevive à exclusão do projeto e da conta.
+      JSON.stringify({ verificacaoUid: l.uid, formId: l.certFormId, modeloUid: e.modeloUid, documento }),
+    );
+  banco
+    .prepare(
+      `INSERT INTO certificados_anexos
+         (uid, certificacaoId, certificacaoUid, numero, painelId, painelNome, projeto, tagPainel, clienteFinal,
+          empresa, montadorId, montadorNome, nomeArquivo, mime, tamanho, sha256, anexadoPor, anexadoPorNome,
+          anexadoEm, busca, verificacaoId)
+       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'application/pdf', ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      e.uid,
+      l.uid,
+      e.codigo,
+      l.painelId,
+      l.painelNome,
+      l.nomeProjeto,
+      tag,
+      cabecalho.clienteFinal ?? '',
+      l.empresa,
+      l.usuarioId,
+      l.montadorNome,
+      e.nomeArquivo,
+      e.tamanho,
+      e.sha256,
+      eu.id,
+      eu.nome,
+      agora,
+      paraBusca(
+        [e.codigo, e.codigo.replace('-', ''), l.empresa, l.nomeProjeto, tag, l.painelNome, l.montadorNome, l.tipoRotulo].join(' '),
+      ),
+      l.id,
+    );
+}
+
 export const rotasVerificacoes: Record<string, Manipulador> = {
   // ------------------------------------------------------------ montador
 
@@ -293,8 +435,59 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
     const citadas = e.documento.midias.map((m) => m.uid.toLowerCase());
     if (new Set(citadas).size !== citadas.length) throw new ErroHttp(400, 'Foto repetida no envio.');
 
-    const tipoRotulo = obterTipo(e.tipo)?.rotulo ?? infoDoTipo(e.tipo).rotulo;
+    let categoria: CategoriaEnvio = 'verificacao';
+    let tipoChave = e.tipo;
+    let tipoRotulo = obterTipo(e.tipo)?.rotulo ?? infoDoTipo(e.tipo).rotulo;
+    let certTagUid: string | null = null;
+    let certFormId: string | null = null;
+    let certModeloUid: string | null = null;
     const projetoUid = e.projetoUid.toLowerCase();
+    // O id da conta pode ser reaproveitado depois de uma exclusão (e o projeto
+    // legado tem o mesmo uid em toda conta): a criação da conta separa as
+    // versões de quem saiu das de quem chegou.
+    const projetoChave = `${eu.id}.${eu.criadoEm}:${projetoUid}`;
+    if (e.certificado) {
+      // Checklist que contém certificado: uma TAG, um checklist, completo, e
+      // com o modelo do certificado já enviado pela administração.
+      const tagUid = e.certificado.tagUid.toLowerCase();
+      const formId = e.certificado.formId;
+      const definicao = obterDefinicao(formId);
+      if (!definicao?.emiteCertificado) throw new ErroHttp(400, 'Este checklist não contém certificado.');
+      if (painelDoFormulario(formId) !== painel.id) throw new ErroHttp(400, 'O checklist não é deste painel.');
+      const modelo = definicao.modeloCertificado?.uid.toLowerCase();
+      if (!modelo || !banco.prepare('SELECT 1 FROM modelos_certificado WHERE uid = ?').get(modelo)) {
+        throw new ErroHttp(
+          409,
+          'O checklist ainda não tem o modelo do certificado. Avise a administração.',
+          'sem-modelo-certificado',
+        );
+      }
+      if (e.documento.tags.length !== 1 || e.documento.tags[0].uid.toLowerCase() !== tagUid) {
+        throw new ErroHttp(400, 'O envio do certificado vale para uma TAG só.');
+      }
+      exigirCertificadoNaoEmitido(projetoChave, `certificado:${tagUid}:${formId}`);
+      const preenchimento = e.documento.preenchimentos.find(
+        (p) => p.tagUid.toLowerCase() === tagUid && p.formId === formId,
+      );
+      const progresso = calcularProgresso(
+        definicao,
+        (preenchimento?.respostas ?? {}) as MapaRespostas,
+        contarMidias(e.documento.midias.filter((m) => m.tagUid.toLowerCase() === tagUid && m.formId === formId)),
+      );
+      if (progresso.total === 0 || progresso.pendentes > 0) {
+        throw new ErroHttp(
+          409,
+          `O checklist tem ${progresso.pendentes} etapa(s) pendente(s): complete todas para pedir o certificado.`,
+          'checklist-incompleto',
+        );
+      }
+      categoria = 'certificado';
+      tipoChave = `certificado:${tagUid}:${formId}`;
+      tipoRotulo = definicao.nome;
+      certTagUid = tagUid;
+      certFormId = formId;
+      certModeloUid = modelo;
+    }
     const nomesTags = [...e.documento.tags].sort((a, b) => a.ordem - b.ordem).map((t) => t.nome);
     const agora = Date.now();
 
@@ -303,8 +496,9 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
         .prepare(
           `INSERT INTO verificacoes
              (uid, usuarioId, montadorNome, montadorEmail, painelId, painelNome, projetoUid, projetoChave,
-              empresa, nomeProjeto, tipo, tipoRotulo, estado, pdfUid, documento, tags, geradoEm, criadoEm, busca)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'recebendo', ?, ?, ?, ?, ?, ?)`,
+              empresa, nomeProjeto, tipo, tipoRotulo, estado, pdfUid, documento, tags, geradoEm, criadoEm, busca,
+              categoria, certTagUid, certFormId, certModeloUid)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'recebendo', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           uid,
@@ -314,13 +508,10 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
           painel.id,
           painel.nome,
           projetoUid,
-          // O id da conta pode ser reaproveitado depois de uma exclusão (e o
-          // projeto legado tem o mesmo uid em toda conta): a criação da conta
-          // separa as versões de quem saiu das de quem chegou.
-          `${eu.id}.${eu.criadoEm}:${projetoUid}`,
+          projetoChave,
           e.documento.projeto.empresa || '—',
           e.documento.projeto.nomeProjeto || '—',
-          e.tipo,
+          tipoChave,
           tipoRotulo,
           pdfUid,
           JSON.stringify(e.documento),
@@ -330,6 +521,10 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
           paraBusca(
             [e.documento.projeto.empresa, e.documento.projeto.nomeProjeto, painel.nome, tipoRotulo, eu.nome, eu.email, ...nomesTags].join(' '),
           ),
+          categoria,
+          certTagUid,
+          certFormId,
+          certModeloUid,
         );
       const novo = Number(info.lastInsertRowid);
       const inserir = banco.prepare(
@@ -379,7 +574,8 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
     if (
       banco.prepare('SELECT 1 FROM apoio_midias WHERE uid = ?').get(midiaUid) ??
       banco.prepare('SELECT 1 FROM pdfs_emitidos WHERE uid = ?').get(midiaUid) ??
-      banco.prepare('SELECT 1 FROM certificados_anexos WHERE uid = ?').get(midiaUid)
+      banco.prepare('SELECT 1 FROM certificados_anexos WHERE uid = ?').get(midiaUid) ??
+      banco.prepare('SELECT 1 FROM modelos_certificado WHERE uid = ?').get(midiaUid)
     ) {
       throw new ErroHttp(409, 'Identificador de foto já usado.');
     }
@@ -401,6 +597,7 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
     if (!r.success) throw new ErroHttp(400, primeiroErro(r.error));
     const l = doMontador(eu, uidDaUrl(ctx.params.uid));
     if (l.estado !== 'recebendo') return { verificacao: resumo(l) };
+    if (l.categoria === 'certificado') exigirCertificadoNaoEmitido(l.projetoChave, l.tipo);
 
     const pendentes = faltandoDo(l.id, eu);
     const ausentes = new Set(r.data.ausentes.map((u) => u.toLowerCase()));
@@ -438,15 +635,22 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
       return Number(proxima);
     });
 
+    const ehCertificado = l.categoria === 'certificado';
+    const tagDoEnvio = (JSON.parse(l.tags) as string[])[0] ?? '';
     avisar({
-      assunto: `Verificação para aprovar: ${l.painelNome} — ${l.nomeProjeto}`,
+      assunto: ehCertificado
+        ? `Certificado para aprovar: ${l.painelNome} — ${l.nomeProjeto} (TAG ${tagDoEnvio})`
+        : `Verificação para aprovar: ${l.painelNome} — ${l.nomeProjeto}`,
       texto:
-        `${eu.nome} (${eu.email}) enviou o PDF de ${l.tipoRotulo} do projeto ${l.nomeProjeto}` +
-        ` (${l.empresa}), versão ${versao}, para aprovação.` +
+        (ehCertificado
+          ? `${eu.nome} (${eu.email}) terminou o checklist ${l.tipoRotulo} da TAG ${tagDoEnvio}, projeto ` +
+            `${l.nomeProjeto} (${l.empresa}), versão ${versao}, e pediu o certificado.`
+          : `${eu.nome} (${eu.email}) enviou o PDF de ${l.tipoRotulo} do projeto ${l.nomeProjeto}` +
+            ` (${l.empresa}), versão ${versao}, para aprovação.`) +
         (pendentes.length ? `\n\n${pendentes.length} foto(s) não chegaram ao servidor.` : '') +
-        '\n\nAnalise em Administração → Aprovações.',
+        (ehCertificado ? '\n\nAnalise em Administração → Certificados.' : '\n\nAnalise em Administração → Aprovações.'),
       emails: emailsDosAdmins(),
-      rota: '#/admin?aba=aprovacoes&secao=verificacoes',
+      rota: ehCertificado ? '#/admin?aba=certificados' : '#/admin?aba=aprovacoes&secao=verificacoes',
     });
     agendarBackupContinuo();
     return { verificacao: resumo(obter(l.id)!) };
@@ -495,8 +699,9 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
       throw new ErroHttp(400, 'Situação inválida.');
     }
     const { pagina, porPagina, deslocamento } = lerPagina(ctx.consulta, 25);
-    const onde = estado === 'todas' ? "estado <> 'recebendo'" : 'estado = ?';
-    const valores = estado === 'todas' ? [] : [estado];
+    const categoria: CategoriaEnvio = ctx.consulta.get('categoria') === 'certificado' ? 'certificado' : 'verificacao';
+    const onde = `categoria = ? AND ${estado === 'todas' ? "estado <> 'recebendo'" : 'estado = ?'}`;
+    const valores = estado === 'todas' ? [categoria] : [categoria, estado];
     const ordem = estado === 'aguardando' ? 'enviadoEm ASC, id ASC' : 'COALESCE(decididoEm, enviadoEm) DESC, id DESC';
     const total = Number(
       (banco.prepare(`SELECT COUNT(*) AS n FROM verificacoes WHERE ${onde}`).get(...valores) as { n: number }).n,
@@ -541,8 +746,18 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
     const pdf = banco
       .prepare('SELECT nomeArquivo, tamanho, sha256, emitidoEm FROM pdfs_emitidos WHERE uid = ?')
       .get(l.pdfUid) as { nomeArquivo: string; tamanho: number; sha256: string; emitidoEm: number } | undefined;
+    const emitido = l.certificadoUid
+      ? (banco
+          .prepare('SELECT uid, numero, nomeArquivo, tamanho, anexadoEm FROM certificados_anexos WHERE uid = ?')
+          .get(l.certificadoUid) as
+          | { uid: string; numero: string; nomeArquivo: string; tamanho: number; anexadoEm: number }
+          | undefined)
+      : undefined;
     return {
       verificacao: { ...resumo(l), documento },
+      certificadoEmitido: emitido
+        ? { ...emitido, tamanho: Number(emitido.tamanho), anexadoEm: Number(emitido.anexadoEm) }
+        : null,
       definicoes: Object.fromEntries([...formIds].map((id) => [id, obterDefinicao(id)])),
       midias: midiasDo(l.id),
       versoes: versoes.map(resumo),
@@ -553,7 +768,7 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
   },
 
   /** Aprova ou reprova. Só um envio aguardando pode ser decidido, e a decisão é definitiva. */
-  'POST /api/admin/verificacoes/:id/decisao': (ctx) => {
+  'POST /api/admin/verificacoes/:id/decisao': async (ctx) => {
     const eu = exigirAdmin(ctx);
     const r = decisaoVerificacaoSchema.safeParse(ctx.corpo);
     if (!r.success) throw new ErroHttp(400, primeiroErro(r.error));
@@ -568,20 +783,43 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
     const documento = JSON.parse(l.documento) as DocumentoProjeto;
     const itens = completarItens(documento, r.data.itens);
     const agora = Date.now();
+
+    // Checklist que contém certificado, aprovado: o certificado sai do modelo
+    // antes da transação (gerar o PDF é assíncrono); o arquivo é gravado com
+    // fsync e só então registrado. Se a decisão não valer (outro
+    // administrador decidiu antes), o arquivo fica sem registro e a faxina o recolhe.
+    const emissao =
+      l.categoria === 'certificado' && r.data.decisao === 'aprovada' ? await emitirCertificado(l, documento, eu, agora) : null;
+
     emTransacao(() => {
       const mudou = banco
         .prepare(
           `UPDATE verificacoes SET estado = ?, decididoEm = ?, decididoPor = ?, decididoPorNome = ?,
-                  comentario = ?, itens = ?
+                  comentario = ?, itens = ?, certificadoNumero = ?, certificadoUid = ?
             WHERE id = ? AND estado = 'aguardando'`,
         )
-        .run(r.data.decisao, agora, eu.id, eu.nome, r.data.comentario, JSON.stringify(itens), id);
+        .run(
+          r.data.decisao,
+          agora,
+          eu.id,
+          eu.nome,
+          r.data.comentario,
+          JSON.stringify(itens),
+          emissao?.codigo ?? null,
+          emissao?.uid ?? null,
+          id,
+        );
       // Dois administradores decidindo ao mesmo tempo: só o primeiro vale.
       if (Number(mudou.changes) === 0) throw new ErroHttp(409, 'Este envio já foi decidido.');
+      if (emissao) registrarCertificado(l, documento, eu, agora, emissao);
       registrar({
         autor: eu,
-        acao: r.data.decisao === 'aprovada' ? 'aprovou a verificação' : 'reprovou a verificação',
-        alvoTipo: 'verificacao',
+        acao: emissao
+          ? `aprovou e emitiu o certificado ${emissao.codigo}`
+          : r.data.decisao === 'aprovada'
+            ? 'aprovou a verificação'
+            : 'reprovou a verificação',
+        alvoTipo: emissao ? 'certificado' : 'verificacao',
         alvoId: id,
         alvo: `${l.nomeProjeto} — ${l.tipoRotulo} v${l.versao}`,
         detalhe:
@@ -591,7 +829,19 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
       });
     });
 
-    if (l.usuarioId !== null) {
+    if (l.usuarioId !== null && emissao) {
+      const tag = documento.tags[0]?.nome ?? '';
+      avisar({
+        assunto: `Certificado ${emissao.codigo} emitido: ${l.nomeProjeto} (TAG ${tag})`,
+        texto:
+          `O checklist ${l.tipoRotulo} da TAG ${tag}, projeto ${l.nomeProjeto} (${l.painelNome}), foi aprovado ` +
+          `por ${eu.nome}. Certificado nº ${emissao.codigo}.` +
+          (r.data.comentario ? `\n\nComentário: ${r.data.comentario}` : '') +
+          '\n\nBaixe o certificado na tela inicial do aplicativo.',
+        emails: [l.montadorEmail],
+        rota: '#/paineis',
+      });
+    } else if (l.usuarioId !== null) {
       avisar(
         r.data.decisao === 'aprovada'
           ? {
@@ -617,7 +867,7 @@ export const rotasVerificacoes: Record<string, Manipulador> = {
       );
     }
     agendarBackupContinuo();
-    return { verificacao: resumo(obter(id)!) };
+    return { verificacao: resumo(obter(id)!), certificado: emissao ? { numero: emissao.codigo, uid: emissao.uid } : null };
   },
 
   /**

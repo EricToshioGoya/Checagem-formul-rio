@@ -6,6 +6,7 @@ import { Modal } from '../../shared/componentes/Modal';
 import { Aviso, Erro } from '../../shared/componentes/Estado';
 import { useSessao } from '../../core/api/SessaoContexto';
 import { registrarPdfs } from '../../core/sync/arquivoPdfs';
+import { atualizarDecisoes, certificadoEmitido } from '../../core/aprovacao/decisoes';
 import { ArquivosGerados, EscolhaFotos, type EstadoRegistro } from './PartesDialogoPdf';
 
 interface Props {
@@ -17,11 +18,21 @@ interface Props {
   pendentes: number;
   /** Grava o que ainda está a caminho do banco, para o PDF sair com tudo. */
   antesDeGerar?: () => Promise<void>;
+  /** Checklist que contém certificado: terminado, o PDF vai para a aba Certificados. */
+  contemCertificado?: boolean;
   onFechar: () => void;
 }
 
 /** Gera o PDF de um checklist só — o da TAG aberta ou o da solicitação. */
-export function DialogoPdfChecklist({ aberto, alvo, nome, pendentes, antesDeGerar, onFechar }: Props) {
+export function DialogoPdfChecklist({
+  aberto,
+  alvo,
+  nome,
+  pendentes,
+  antesDeGerar,
+  contemCertificado = false,
+  onFechar,
+}: Props) {
   const [incluirFotos, setIncluirFotos] = useState(true);
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -46,10 +57,21 @@ export function DialogoPdfChecklist({ aberto, alvo, nome, pendentes, antesDeGera
       for (const arquivo of arquivos) baixarBlob(arquivo.blob, arquivo.nome);
       setConcluido(arquivos.map((a) => a.nome));
       // Todo PDF emitido vai para o arquivo do servidor (documentação de
-      // garantia). Sem rede, fica na fila do aparelho e segue depois.
+      // garantia) e, o de um checklist que contém certificado, para a aba
+      // Certificados. Sem rede, fica na fila do aparelho e segue depois.
       if (usuario) {
+        // Certificado já emitido para este checklist: o PDF é só guardado.
+        for (const { registro: r } of arquivos) {
+          const pedido = r?.verificacao?.certificado;
+          const emitido = pedido && certificadoEmitido(usuario.id, pedido.tagUid, pedido.formId);
+          if (r && emitido) {
+            delete r.verificacao;
+            r.semCertificado = `O certificado nº ${emitido.certificado?.numero} deste checklist já foi emitido; o PDF foi só guardado.`;
+          }
+        }
         setRegistro(null);
-        setRegistro(await registrarPdfs(usuario.id, arquivos));
+        setRegistro(await registrarPdfs(usuario.id, arquivos, 'projetoId' in alvo ? alvo.projetoId : undefined));
+        if (contemCertificado) void atualizarDecisoes(usuario.id);
       }
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao gerar o PDF.');
@@ -77,11 +99,19 @@ export function DialogoPdfChecklist({ aberto, alvo, nome, pendentes, antesDeGera
           <strong>{nome}</strong>, com todas as respostas, observações e fotos.
         </p>
 
+        {contemCertificado && 'projetoId' in alvo ? (
+          <p className="rounded-md border border-sky-600 bg-sky-50 p-3 text-base text-sky-900">
+            Este checklist contém certificado: com todas as etapas respondidas, o PDF vai para a
+            administração aprovar e emitir o certificado.
+          </p>
+        ) : null}
+
         {pendentes > 0 ? (
           <Aviso>
             Há <strong>{pendentes}</strong> etapa{pendentes === 1 ? '' : 's'} sem resposta.
             O PDF será gerado assim mesmo, com essas etapas sinalizadas como{' '}
             <strong>“Não verificado”</strong>.
+            {contemCertificado && 'projetoId' in alvo ? ' Para pedir o certificado, responda todas antes.' : ''}
           </Aviso>
         ) : (
           <p className="rounded-md border border-green-600 bg-green-50 p-3 text-base text-green-900">

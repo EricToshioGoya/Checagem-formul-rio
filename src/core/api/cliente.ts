@@ -123,8 +123,8 @@ async function pedir<T>(metodo: string, caminho: string, corpo?: unknown): Promi
   return dados as T;
 }
 
-/** Envia um arquivo (foto ou anexo sincronizado) como corpo da requisição. */
-async function enviarArquivo(caminho: string, arquivo: Blob): Promise<void> {
+/** Envia um arquivo (foto ou anexo sincronizado) como corpo da requisição; devolve o JSON da resposta. */
+async function enviarArquivo<T = unknown>(caminho: string, arquivo: Blob): Promise<T> {
   const token = lerToken();
   let resposta: Response;
   try {
@@ -144,6 +144,7 @@ async function enviarArquivo(caminho: string, arquivo: Blob): Promise<void> {
     if (resposta.status === 401 && token) window.dispatchEvent(new Event(EVENTO_SESSAO_ENCERRADA));
     throw new ErroApi(resposta.status, dados.erro ?? 'Falha ao enviar o arquivo.', dados.codigo);
   }
+  return (await resposta.json().catch(() => ({}))) as T;
 }
 
 /** Baixa um arquivo (foto ou anexo sincronizado) como Blob. */
@@ -247,6 +248,8 @@ export interface ResumoAdmin {
   acessosPendentes: number;
   /** PDFs de verificação aguardando aprovação. */
   verificacoesPendentes?: number;
+  /** Checklists que contêm certificado aguardando aprovação. */
+  certificadosPendentes?: number;
   /** Solicitações de certificação enviadas, à espera de validação. */
   certificacoesPendentes?: number;
 }
@@ -412,6 +415,8 @@ export interface DocumentoArquivado {
   versao: number | null;
   numero: string | null;
   certificacaoId: number | null;
+  /** O PDF (ou o certificado) veio de um envio: do PDF do projeto ou de um checklist com certificado. */
+  envioCategoria: 'verificacao' | 'certificado' | null;
   /** Última conferência do SHA-256; nula se ainda não conferido. */
   integridade: { situacao: 'ok' | 'reparado' | 'corrompido' | 'ausente'; verificadoEm: number } | null;
 }

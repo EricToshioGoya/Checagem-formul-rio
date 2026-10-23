@@ -57,10 +57,16 @@ function textoRegistro(registro: SituacaoRegistro | null): string {
       ? registro.recusas[0]
       : `O arquivo da ABB recusou o PDF: ${registro.recusas[0]}`;
   }
+  if (registro.pendentes && registro.paraCertificado) {
+    return 'Sem conexão com o servidor: o PDF será guardado e enviado para o certificado na próxima sincronização.';
+  }
   if (registro.pendentes) {
     return registro.paraAprovacao
       ? `Sem conexão com o servidor: ${plural(registro.pendentes, 'PDF será guardado', 'PDFs serão guardados')} no arquivo da ABB e ${registro.pendentes === 1 ? 'enviado' : 'enviados'} para aprovação na próxima sincronização.`
       : `Sem conexão com o servidor: ${plural(registro.pendentes, 'PDF será guardado', 'PDFs serão guardados')} no arquivo da ABB na próxima sincronização.`;
+  }
+  if (registro.paraCertificado) {
+    return 'Guardado no arquivo da ABB e enviado à administração para emitir o certificado. Aprovado, o certificado aparece na tela inicial para baixar.';
   }
   return registro.paraAprovacao
     ? 'Guardado no arquivo da ABB e enviado à administração para aprovação. Você será avisado da decisão na tela inicial.'
@@ -86,6 +92,11 @@ export function ArquivosGerados({ nomes, registro }: { nomes: string[]; registro
           {textoRegistro(registro)}
         </p>
       ) : null}
+      {registro?.semCertificado.map((motivo) => (
+        <p key={motivo} className="mt-2 rounded border border-amber-400 bg-amber-50 p-2 text-sm text-amber-900">
+          {motivo}
+        </p>
+      ))}
     </div>
   );
 }

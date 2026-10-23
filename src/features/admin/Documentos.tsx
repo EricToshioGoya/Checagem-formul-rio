@@ -62,8 +62,8 @@ export function Documentos({
   onAbrirAnalise,
 }: {
   onSessaoVencida: () => void;
-  /** Abre a análise do envio ou da solicitação na aba Aprovações. */
-  onAbrirAnalise: (secao: 'verificacoes' | 'certificacoes', id: number) => void;
+  /** Abre a análise: do PDF do projeto (Aprovações), do checklist com certificado ou da solicitação antiga (Certificados). */
+  onAbrirAnalise: (destino: 'aprovacao' | 'certificado' | 'certificacao-antiga', id: number) => void;
 }) {
   const [dados, setDados] = useState<RespostaDocumentos | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -244,7 +244,9 @@ export function Documentos({
                   <li key={doc.uid} className="flex flex-wrap items-center gap-3 px-3 py-3">
                     <div className="min-w-0 flex-1 space-y-0.5">
                       <p className="text-xs font-semibold tracking-wide text-abb-gray uppercase">
-                        {ROTULO_CATEGORIA[doc.categoria]}
+                        {doc.categoria === 'verificacao' && doc.envioCategoria === 'certificado'
+                          ? 'PDF de checklist com certificado'
+                          : ROTULO_CATEGORIA[doc.categoria]}
                         {doc.versao ? ` · versão ${doc.versao}` : ''}
                       </p>
                       <p className="text-base font-bold break-words">
@@ -261,7 +263,7 @@ export function Documentos({
                       </p>
                       <p className="text-xs break-all text-abb-gray">{doc.nomeArquivo}</p>
                       <div className="flex flex-wrap items-center gap-2 pt-1">
-                        {doc.categoria === 'verificacao' && doc.situacao ? (
+                        {doc.categoria === 'verificacao' && doc.situacao && doc.situacao !== 'recebendo' ? (
                           <EtiquetaVerificacao estado={doc.situacao as EstadoVerificacao} />
                         ) : null}
                         {integridade ? (
@@ -275,13 +277,18 @@ export function Documentos({
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {doc.categoria === 'verificacao' && doc.verificacaoId ? (
-                        <Botao tamanho="compacto" onClick={() => onAbrirAnalise('verificacoes', doc.verificacaoId!)}>
+                      {doc.verificacaoId ? (
+                        <Botao
+                          tamanho="compacto"
+                          onClick={() =>
+                            onAbrirAnalise(doc.envioCategoria === 'certificado' ? 'certificado' : 'aprovacao', doc.verificacaoId!)
+                          }
+                        >
                           Ver análise
                         </Botao>
                       ) : null}
                       {doc.categoria === 'certificado' && doc.certificacaoId ? (
-                        <Botao tamanho="compacto" onClick={() => onAbrirAnalise('certificacoes', doc.certificacaoId!)}>
+                        <Botao tamanho="compacto" onClick={() => onAbrirAnalise('certificacao-antiga', doc.certificacaoId!)}>
                           Ver solicitação
                         </Botao>
                       ) : null}

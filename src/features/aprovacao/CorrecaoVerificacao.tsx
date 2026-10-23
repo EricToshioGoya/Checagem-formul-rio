@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useSessao } from '../../core/api/SessaoContexto';
-import { etapaAlterada, useDecisoes } from '../../core/aprovacao/decisoes';
+import { ehCertificado, etapaAlterada, rotuloDaDecisao, useDecisoes } from '../../core/aprovacao/decisoes';
 import { db } from '../../core/db/db';
 import { MidiaRepository, PreenchimentoRepository, ProjetoRepository } from '../../core/db/repositorios';
 import type { ItemNaoConforme, Projeto, Tag } from '../../core/db/tipos';
@@ -101,6 +101,12 @@ export function CorrecaoVerificacao() {
     return `/projetos/${projeto.id}/tags/${tag.id}/formularios/${encodeURIComponent(item.formId)}?etapa=${encodeURIComponent(item.etapaId)}`;
   };
   const faltam = decisao.itens.filter((i) => projeto && alteradas[chaveItem(i)] === false).length;
+  // Checklist que contém certificado: o reenvio é o PDF do próprio checklist.
+  const tagDoCertificado = tags.find((t) => t.uid?.toLowerCase() === decisao.certificado?.tagUid?.toLowerCase());
+  const linkDoChecklist =
+    projeto && tagDoCertificado?.id && decisao.certificado?.formId
+      ? `/projetos/${projeto.id}/tags/${tagDoCertificado.id}/formularios/${encodeURIComponent(decisao.certificado.formId)}`
+      : null;
 
   return (
     <div className="space-y-5">
@@ -118,7 +124,7 @@ export function CorrecaoVerificacao() {
           </p>
           <h1 className="text-2xl font-bold break-words">{decisao.projeto.nome}</h1>
           <p className="text-base text-abb-gray">
-            {decisao.tipo.rotulo} · versão {decisao.versao ?? '—'}
+            {rotuloDaDecisao(decisao)} · versão {decisao.versao ?? '—'}
           </p>
           <div className="mt-2">
             <EtiquetaVerificacao estado={decisao.estado} />
@@ -165,14 +171,32 @@ export function CorrecaoVerificacao() {
               ? `${faltam} etapa(s) ainda sem alteração.`
               : 'Todas as etapas marcadas já foram alteradas.'}
           </p>
-          <Botao variante="primario" onClick={() => setPdfAberto(true)}>
-            <IconePdf className="h-5 w-5" />
-            Gerar PDF e reenviar para aprovação
-          </Botao>
+          {ehCertificado(decisao) ? (
+            <>
+              <p className="text-sm text-abb-gray">
+                Depois de corrigir, gere o PDF do checklist de novo (botão “Gerar PDF” no próprio
+                checklist): ele volta sozinho para a administração emitir o certificado.
+              </p>
+              {linkDoChecklist ? (
+                <Link
+                  to={linkDoChecklist}
+                  className="inline-flex min-h-12 items-center gap-2 rounded-lg bg-abb-red px-5 text-base font-semibold text-white hover:bg-abb-red-dark"
+                >
+                  <IconePdf className="h-5 w-5" />
+                  Abrir o checklist para corrigir e gerar o PDF
+                </Link>
+              ) : null}
+            </>
+          ) : (
+            <Botao variante="primario" onClick={() => setPdfAberto(true)}>
+              <IconePdf className="h-5 w-5" />
+              Gerar PDF e reenviar para aprovação
+            </Botao>
+          )}
         </div>
       ) : null}
 
-      {projeto ? (
+      {projeto && !ehCertificado(decisao) ? (
         <DialogoGerarPdf
           aberto={pdfAberto}
           projetoId={projeto.id}

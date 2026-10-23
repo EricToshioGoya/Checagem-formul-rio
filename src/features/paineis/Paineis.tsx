@@ -10,6 +10,8 @@ import { Botao } from '../../shared/componentes/Botao';
 import { Aviso, Carregando, Erro } from '../../shared/componentes/Estado';
 import { dataHoraBr, duracaoCurta } from '../../shared/utils/texto';
 import { AlertasOperador } from '../aprovacao/AlertasOperador';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { solicitacaoStore } from '../../core/certificacao';
 
 const rotulos: Record<AcessoPainel, { texto: string; classe: string }> = {
   dono: { texto: 'Você é o responsável', classe: 'bg-abb-red text-white' },
@@ -38,6 +40,10 @@ export function Paineis() {
   const [semConexao, setSemConexao] = useState(false);
   const [ocupado, setOcupado] = useState<number | null>(null);
   const pedidoAutomatico = useRef(false);
+  const antigas = useLiveQuery(
+    () => (usuario ? solicitacaoStore.listar({ usuarioId: usuario.id }) : Promise.resolve([])),
+    [usuario?.id],
+  );
   const carregar = useCallback(async () => {
     try {
       const { paineis: lista, tiposChecklist } = await api.get<{
@@ -97,9 +103,9 @@ export function Paineis() {
   }, [parametros, paineis, setParametros, solicitar]);
 
   /**
-   * O mesmo painel pode ter as duas coisas: checklists de verificação, que
-   * entram nos projetos (TAG → dossiê em PDF), e checklists que emitem
-   * certificado, preenchidos numa solicitação que a ABB valida.
+   * Todos os checklists, inclusive os que contêm certificado, são preenchidos
+   * nas TAGs dos projetos. As solicitações de certificação abertas antes da
+   * mudança continuam acessíveis enquanto existirem no aparelho.
    */
   const abrirChecagens = (painel: PainelApi) => navegar(`/paineis/${painel.id}/projetos`);
   const abrirSolicitacoes = (painel: PainelApi) => navegar(`/paineis/${painel.slug}/solicitacoes`);
@@ -150,8 +156,9 @@ export function Paineis() {
           const trabalhando = ocupado === p.id;
           const vazio = p.formularios === 0;
           const comCertificado = p.formulariosCertificado > 0;
-          // Painel em branco abre nos projetos, como sempre abriu.
-          const comVerificacao = vazio || p.formularios > p.formulariosCertificado;
+          // Solicitações abertas antes da mudança, neste aparelho: o atalho
+          // para elas continua até a última sair.
+          const temAntigas = (antigas ?? []).some((s) => s.tipoPainel === p.slug);
           return (
             <li
               key={p.id}
@@ -161,11 +168,7 @@ export function Paineis() {
                 <div className="min-w-0">
                   <p className="text-lg font-bold">{p.nome}</p>
                   <p className="text-sm font-semibold tracking-wide text-abb-gray uppercase">
-                    {comVerificacao && comCertificado
-                      ? 'Verificação · emite certificado'
-                      : comCertificado
-                        ? 'Verificação com certificado'
-                        : 'Verificação'}
+                    {comCertificado ? 'Verificação · contém certificado' : 'Verificação'}
                   </p>
                   <p className="mt-1 text-sm text-abb-gray">
                     {p.responsaveis.length === 1 ? 'Responsável' : 'Responsáveis'}:{' '}
@@ -202,18 +205,12 @@ export function Paineis() {
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {p.podePreencher ? (
                   <>
-                    {comVerificacao ? (
-                      <Botao variante="primario" disabled={trabalhando} onClick={() => abrirChecagens(p)}>
-                        Abrir checagens
-                      </Botao>
-                    ) : null}
-                    {comCertificado ? (
-                      <Botao
-                        variante={comVerificacao ? 'secundario' : 'primario'}
-                        disabled={trabalhando}
-                        onClick={() => abrirSolicitacoes(p)}
-                      >
-                        Solicitações de certificado
+                    <Botao variante="primario" disabled={trabalhando} onClick={() => abrirChecagens(p)}>
+                      Abrir checagens
+                    </Botao>
+                    {temAntigas ? (
+                      <Botao disabled={trabalhando} onClick={() => abrirSolicitacoes(p)}>
+                        Solicitações antigas
                       </Botao>
                     ) : null}
                   </>

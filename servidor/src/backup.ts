@@ -124,6 +124,7 @@ export function documentosRegistrados(): Map<string, string | null> {
     .prepare(
       `SELECT uid, sha256 FROM pdfs_emitidos
        UNION ALL SELECT uid, sha256 FROM certificados_anexos
+       UNION ALL SELECT uid, sha256 FROM modelos_certificado
        UNION ALL SELECT uid, sha256 FROM midias_protegidas WHERE situacao = 'recebida'`,
     )
     .all() as Array<{ uid: string; sha256: string | null }>;

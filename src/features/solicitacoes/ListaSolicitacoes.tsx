@@ -11,7 +11,7 @@ import type { Solicitacao } from '../../core/db/tipos';
 import { Botao } from '../../shared/componentes/Botao';
 import { Confirmacao } from '../../shared/componentes/Confirmacao';
 import { Carregando, Erro, Vazio } from '../../shared/componentes/Estado';
-import { IconeLixeira, IconeMais, IconeSeta } from '../../shared/componentes/Icones';
+import { IconeLixeira, IconeSeta } from '../../shared/componentes/Icones';
 import { VoltarAosPaineis } from '../../shared/componentes/VoltarAosPaineis';
 import { dataHoraBr } from '../../shared/utils/texto';
 import { useSessao } from '../../core/api/SessaoContexto';
@@ -71,18 +71,15 @@ export function ListaSolicitacoes() {
         ) : null}
       </div>
 
-      <Botao
-        variante="primario"
-        onClick={() => navegar(`/paineis/${tipoPainel}/solicitacoes/nova`)}
-      >
-        <IconeMais className="h-5 w-5" />
-        Nova solicitação
-      </Botao>
+      <p className="rounded-md border border-sky-600 bg-sky-50 p-3 text-base text-sky-900">
+        As solicitações de certificação foram substituídas: o checklist que contém certificado
+        agora é preenchido na TAG do projeto, e o PDF dele vai sozinho para a administração
+        emitir o certificado. Aqui ficam só as solicitações abertas antes da mudança.
+      </p>
 
       {solicitacoes.length === 0 ? (
-        <Vazio titulo="Nenhuma solicitação para este painel">
-          Toque em <strong>Nova solicitação</strong> para registrar o primeiro
-          painel/quadro.
+        <Vazio titulo="Nenhuma solicitação antiga neste aparelho">
+          Abra as checagens do painel para preencher o checklist com certificado na TAG do projeto.
         </Vazio>
       ) : (
         <ul className="space-y-3">

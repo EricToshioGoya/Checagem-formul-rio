@@ -12,10 +12,11 @@
  * abre as correções e chega à etapa destacada. O PDF aparece na busca de
  * documentos.
  *
- * Certificação (System Pro E Energy): solicitação com campos obrigatórios; a
- * administração devolve marcando uma etapa, o montador vê o alerta; no
- * reenvio a administração aprova anexando o arquivo do certificado, e o
- * montador baixa esse mesmo arquivo na tela inicial.
+ * Checklist que contém certificado: a administração responde "Sim" em
+ * "Contém certificado?" e envia o modelo em PDF; o montador preenche o
+ * checklist na TAG, gera o PDF e ele vai sozinho para a aba Certificados; a
+ * administração aprova, o certificado sai com código único e o montador o
+ * baixa na tela inicial.
  *
  * Uso — o servidor de acesso serve também o `dist/`, na mesma origem da API.
  * Use um banco vazio: o teste cria a conta do administrador inicial.
@@ -29,6 +30,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync, readFileSync } from 'node:fs';
+import { PDFDocument } from 'pdf-lib';
 import { join } from 'node:path';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:3001';
@@ -92,52 +94,50 @@ async function popup(texto) {
   return ok;
 }
 
-/**
- * Envia a solicitação de certificação direto pela API, com o checklist em
- * branco: preencher as dez etapas com foto pela interface tomaria o teste
- * inteiro, e o servidor não exige o checklist completo para receber. A cópia
- * do aparelho passa a "enviada", como faria o botão de envio.
- */
-async function enviarSolicitacaoPelaApi() {
-  await p.evaluate(async () => {
-    const token = localStorage.getItem('sessao-token');
-    const h = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
-    const banco = await new Promise((ok, erro) => {
-      const req = indexedDB.open('verificacao-montagem');
-      req.onerror = () => erro(req.error);
-      req.onsuccess = () => ok(req.result);
-    });
-    const s = await new Promise((ok) => {
-      const todas = banco.transaction('solicitacoes').objectStore('solicitacoes').getAll();
-      todas.onsuccess = () => ok(todas.result[0]);
-    });
-    const { paineis } = await (await fetch('/api/paineis', { headers: h })).json();
-    const painelId = paineis.find((x) => x.slug === s.tipoPainel).id;
-    const { solicitacoes } = await (await fetch('/api/certificacoes', { headers: h })).json();
-    const remota = solicitacoes.find((x) => x.uid === s.uid);
-    let r = await fetch(`/api/certificacoes/${s.uid}`, {
-      method: 'PUT',
-      headers: h,
-      body: JSON.stringify({
-        versaoBase: remota?.versao ?? 0,
-        painelId,
-        formId: s.formId,
-        criadoEm: s.criadoEm,
-        dados: s.dados,
-        preenchimento: { formRevisao: 'fumaca', cabecalho: {}, respostas: {} },
-        midias: [],
-      }),
-    });
-    if (!r.ok) throw new Error(`PUT: ${await r.text()}`);
-    r = await fetch(`/api/certificacoes/${s.uid}/enviar`, { method: 'POST', headers: h, body: '{}' });
-    if (!r.ok) throw new Error(`enviar: ${await r.text()}`);
-    await new Promise((ok) => {
-      const loja = banco.transaction('solicitacoes', 'readwrite').objectStore('solicitacoes');
-      s.estado = 'enviada';
-      s.historico.push({ estado: 'enviada', em: Date.now(), por: 'fumaça' });
-      loja.put(s).onsuccess = () => ok();
-    });
-  });
+/** Cria, pela API, um checklist simples (duas etapas de conferir) no painel. */
+async function criarChecklistPelaApi(painelSlug, nome) {
+  return p.evaluate(
+    async ({ painelSlug, nome }) => {
+      const token = localStorage.getItem('sessao-token');
+      const h = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+      const { paineis } = await (await fetch('/api/admin/paineis', { headers: h })).json();
+      const painel = paineis.find((x) => x.slug === painelSlug);
+      let r = await fetch(`/api/admin/paineis/${painel.id}/formularios`, {
+        method: 'POST',
+        headers: h,
+        body: JSON.stringify({ tipo: 'montagem', nome }),
+      });
+      if (!r.ok) throw new Error(`criar checklist: ${await r.text()}`);
+      const { formulario } = await r.json();
+      const definicao = {
+        id: formulario.id,
+        nome,
+        linhaProduto: 'SEN Plus',
+        tipo: 'montagem',
+        revisao: 'rev00',
+        dataRevisao: '2026-10-19',
+        cabecalho: [],
+        secoes: [
+          {
+            id: 'S1',
+            titulo: 'Conferência final',
+            etapas: [
+              { id: 'S1.1', descricao: 'Barramentos apertados', tipoResposta: 'check', ativa: true, observacao: true },
+              { id: 'S1.2', descricao: 'Identificação dos circuitos', tipoResposta: 'check', ativa: true, observacao: true },
+            ],
+          },
+        ],
+      };
+      r = await fetch(`/api/admin/formularios/${formulario.id}`, {
+        method: 'PUT',
+        headers: h,
+        body: JSON.stringify({ nome, ativo: true, definicao }),
+      });
+      if (!r.ok) throw new Error(`gravar checklist: ${await r.text()}`);
+      return formulario.id;
+    },
+    { painelSlug, nome },
+  );
 }
 
 /** Na análise aberta, marca a primeira etapa como não conforme, com o motivo. */
@@ -158,6 +158,29 @@ try {
   await p.getByRole('heading', { name: 'Escolha o painel' }).waitFor();
   checa('cria a conta e cai na escolha do painel', true);
 
+  console.log('\n== Checklist com certificado (administração) ==');
+  const NOME_CERT = 'Inspeção final com certificado';
+  await sair();
+  await entrarComoAdmin();
+  await criarChecklistPelaApi('sen-plus', NOME_CERT);
+  await p.goto(`${BASE}/#/admin?aba=paineis`, { waitUntil: 'networkidle' });
+  // O painel e o checklist são itens de lista aninhados: o de dentro é o último.
+  await p.locator('li', { hasText: NOME_CERT }).last().getByRole('button', { name: /checklist/ }).click();
+  await p.getByRole('group', { name: 'Contém certificado?' }).getByRole('radio', { name: 'Sim' }).check();
+  const modelo = await PDFDocument.create();
+  modelo.addPage([595, 842]);
+  modelo.addPage([595, 842]);
+  await p.getByLabel('Modelo do certificado em PDF').setInputFiles({
+    name: 'modelo-fumaca.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from(await modelo.save()),
+  });
+  await p.getByText('Modelo: modelo-fumaca.pdf').waitFor(ESPERA);
+  await p.getByText('Gravado', { exact: true }).waitFor(ESPERA);
+  checa('o construtor aceita "Contém certificado? Sim" com o modelo em PDF', true);
+  await sair();
+  await entrarComoMontador();
+
   console.log('\n== Verificação (SEN Plus) ==');
   const senPlus = p.locator('li', { hasText: 'SEN Plus' });
   await senPlus.getByRole('button', { name: 'Abrir checagens' }).waitFor();
@@ -171,7 +194,8 @@ try {
   await p.getByLabel('Empresa').fill('Montadora Fumaça');
   const tag1 = p.getByRole('region', { name: 'TAG 1' });
   await tag1.getByLabel('Nome da TAG').fill('QGBT-01');
-  await tag1.getByRole('checkbox', { name: /Montagem/ }).check();
+  await tag1.getByRole('checkbox', { name: /Montagem Checklist de/ }).check();
+  await tag1.getByRole('checkbox', { name: /Inspeção final com certificado/ }).check();
   await p.getByRole('button', { name: 'Criar projeto' }).click();
   checa(
     'criar exige os dados do painel',
@@ -191,7 +215,7 @@ try {
   await p.getByRole('button', { name: 'Criar projeto' }).click();
   await p.waitForURL(/#\/projetos\/\d+$/);
   const urlProjeto = p.url();
-  await p.locator('button', { hasText: 'Montagem' }).first().click();
+  await p.locator('button', { hasText: 'Checklist de Montagem' }).first().click();
   await p.waitForURL(/formularios/);
   const primeira = p.locator('nav[aria-label="Etapas do formulário"] li button').first();
   await primeira.click();
@@ -264,84 +288,46 @@ try {
     (await p.getByRole('dialog', { name: 'Novidades da administração' }).count()) === 0,
   );
 
-  console.log('\n== Certificação (System Pro E Energy) ==');
-  const energy = p.locator('li', { hasText: 'System Pro E Energy' });
-  await energy.getByRole('button', { name: 'Solicitações de certificado' }).click();
-  await p.getByRole('button', { name: 'Nova solicitação' }).click();
-  checa(
-    'criar fica bloqueado com obrigatório vazio',
-    await p.getByRole('button', { name: 'Criar solicitação' }).isDisabled(),
-  );
-  const campos = {
-    montador: 'Montadora X',
-    emailMontador: 'montador@x.com.br',
-    celularMontador: '11999999999',
-    projeto: 'Obra 1',
-    tagPainel: 'QGBT-01',
-    clienteFinal: 'Cliente Y',
-    correnteNominal: '1000',
-    correnteCurtoCircuito: '50',
-    empresa: 'Parceiro Z',
-  };
-  for (const [id, valor] of Object.entries(campos)) await p.locator(`#sol-${id}`).fill(valor);
-  await p.getByRole('button', { name: 'Criar solicitação' }).click();
-  await p.getByRole('heading', { name: 'QGBT-01' }).waitFor();
-  checa(
-    'envio bloqueado com o checklist em branco',
-    await p.getByRole('button', { name: 'Enviar para validação da ABB' }).isDisabled(),
-  );
-  await enviarSolicitacaoPelaApi();
+  console.log('\n== Checklist com certificado (montador) ==');
+  await p.goto(urlProjeto, { waitUntil: 'networkidle' });
+  await p.locator('button', { hasText: NOME_CERT }).first().click();
+  await p.waitForURL(/formularios/);
+  const etapas = p.locator('nav[aria-label="Etapas do formulário"] li button');
+  for (const i of [0, 1]) {
+    await etapas.nth(i).click();
+    await p.getByRole('button', { name: 'Marcar como verificado' }).click();
+    await p.getByRole('status').filter({ hasText: 'Salvo' }).waitFor();
+  }
+  await p.getByRole('button', { name: 'Gerar PDF deste checklist' }).click();
+  const dialogoCert = p.getByRole('dialog', { name: 'Gerar PDF' });
+  await Promise.all([
+    p.waitForEvent('download', ESPERA),
+    dialogoCert.getByRole('button', { name: 'Gerar e baixar' }).click(),
+  ]);
+  await dialogoCert.getByText(/enviado à administração para emitir o certificado/).waitFor(ESPERA);
+  checa('o PDF do checklist completo vai sozinho para a aba Certificados', true);
+  await dialogoCert.getByRole('button', { name: 'Fechar' }).first().click();
 
+  console.log('\n== Emissão do certificado (administração) ==');
   await sair();
   await entrarComoAdmin();
-  await p.goto(`${BASE}/#/admin?aba=aprovacoes&secao=certificacoes`, { waitUntil: 'networkidle' });
+  await p.goto(`${BASE}/#/admin?aba=certificados`, { waitUntil: 'networkidle' });
   await p.locator('li', { hasText: 'QGBT-01' }).getByRole('button', { name: 'Analisar' }).click();
-  await p.getByRole('heading', { name: 'QGBT-01' }).waitFor();
-  await marcarPrimeiraEtapa('Falta a foto do aterramento.');
-  await p.getByRole('button', { name: 'Devolver para correção' }).click();
-  await p.getByRole('dialog', { name: 'Confirmar pedido de correção' }).getByRole('button', { name: 'Pedir correção' }).click();
-  await p.getByText(/Solicitação devolvida/).waitFor(ESPERA);
-  checa('devolve a certificação com a etapa marcada', true);
-
-  await sair();
-  await entrarComoMontador();
-  checa('o pop-up avisa da devolução', await popup('Solicitação devolvida — QGBT-01'));
-  await p
-    .getByRole('alert')
-    .getByRole('listitem')
-    .filter({ hasText: 'Certificação · QGBT-01' })
-    .getByRole('link', { name: 'Corrigir' })
-    .click();
-  await p.getByRole('region', { name: 'Correções pedidas pela administração' }).getByText('Falta a foto do aterramento.').waitFor(ESPERA);
-  checa('a solicitação mostra a etapa a corrigir', (await p.getByText('Devolvida para correção').count()) > 0);
-  await enviarSolicitacaoPelaApi();
-
-  await sair();
-  await entrarComoAdmin();
-  await p.goto(`${BASE}/#/admin?aba=aprovacoes&secao=certificacoes`, { waitUntil: 'networkidle' });
-  await p.locator('li', { hasText: 'QGBT-01' }).getByRole('button', { name: 'Analisar' }).click();
-  await p.getByRole('heading', { name: 'QGBT-01' }).waitFor();
-  checa(
-    'aprovar exige o arquivo do certificado',
-    await p.getByRole('button', { name: 'Aprovar e anexar certificado' }).isDisabled(),
-  );
-  const certificado = Buffer.from('%PDF-1.7\n% certificado de fumaça\n%%EOF\n', 'latin1');
-  await p.getByLabel('Arquivo do certificado').setInputFiles({
-    name: 'certificado-fumaca.pdf',
-    mimeType: 'application/pdf',
-    buffer: certificado,
-  });
-  await p.getByRole('button', { name: 'Aprovar e anexar certificado' }).click();
+  await p.getByRole('heading', { name: /TAG QGBT-01/ }).waitFor();
+  await p.getByRole('button', { name: 'Aprovar e emitir certificado' }).click();
   await p.getByRole('dialog', { name: 'Confirmar aprovação' }).getByRole('button', { name: 'Aprovar' }).click();
-  await p.getByText(/Solicitação aprovada e certificado anexado/).waitFor(ESPERA);
-  checa('aprova anexando o certificado', true);
+  const aviso = p.getByText(/Certificado nº [2-9A-Z]{4}-[2-9A-Z]{4} emitido/);
+  await aviso.waitFor(ESPERA);
+  const codigo = /([2-9A-Z]{4}-[2-9A-Z]{4})/.exec(await aviso.innerText())[1];
+  checa('aprovar emite o certificado com código único', /^[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}$/.test(codigo), codigo);
   await p.getByRole('tab', { name: /Certificados emitidos/ }).click();
-  await p.getByRole('cell', { name: 'QGBT-01' }).waitFor(ESPERA);
-  checa('o certificado entra no registro', true);
+  await p.getByPlaceholder(/Código \(ex\.: 7K3F-9Q2M\)/).fill(codigo.toLowerCase());
+  await p.getByRole('cell', { name: codigo }).waitFor(ESPERA);
+  checa('o certificado aparece no registro, achado pelo código', true);
 
   await sair();
   await entrarComoMontador();
-  checa('o pop-up avisa do certificado', await popup(/Certificado nº \S+ disponível/));
+  checa('o pop-up avisa do certificado emitido', await popup(`Certificado nº ${codigo} emitido`));
   const secaoCertificados = p.getByRole('region', { name: 'Certificados disponíveis' });
   const [download] = await Promise.all([
     p.waitForEvent('download', ESPERA),
@@ -349,9 +335,12 @@ try {
   ]);
   const destino = join(SAIDA, download.suggestedFilename());
   await download.saveAs(destino);
+  const baixado = await PDFDocument.load(readFileSync(destino));
   checa(
-    'baixa na tela inicial o mesmo arquivo anexado pela administração',
-    download.suggestedFilename() === 'certificado-fumaca.pdf' && readFileSync(destino).equals(certificado),
+    'baixa na tela inicial o certificado emitido do modelo, com o código',
+    download.suggestedFilename().includes(codigo) &&
+      baixado.getPageCount() === 2 &&
+      baixado.getTitle() === `Certificado ${codigo}`,
     download.suggestedFilename(),
   );
 } catch (e) {

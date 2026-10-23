@@ -400,7 +400,7 @@ diálogo de geração.
 | Novo destino de exportação | Implementar `ExportTarget` (`src/core/export/ExportTarget.ts`). `PdfExport` é a implementação da v1. |
 | Trocar a persistência | Todo acesso ao Dexie passa por `ProjetoRepository`, `PreenchimentoRepository`, `MidiaRepository` e `FormularioRepository`. Nenhuma tela importa Dexie. |
 | Conteúdo de apoio | Imagem: enviar pela administração, na etapa. Vídeo e PDF: arquivo em `public/media`, com o caminho no JSON. |
-| Checklist com certificado | Em **Editar painel**, marcar *Certificado ABB* e informar o modelo do certificado (um JSON de `public/certificados`) e quem assina; depois, no checklist, marcar **Emite certificado ABB**. Nenhuma alteração de código. |
+| Checklist com certificado | No construtor do checklist, responder **Sim** em *Contém certificado?* e enviar o modelo do certificado em PDF. Nenhuma alteração de código. Servidor: `servidor/src/certificadosChecklist.ts` (modelo, código, download) e `servidor/src/carimboCertificado.ts` (carimbo no PDF). |
 | Novos campos da solicitação | Editar `camposPadrao` em `public/paineis/index.json`, ou dar ao painel a sua própria lista `campos`. |
 | Validação ABB | Servidor: `servidor/src/certificacoes.ts`; cliente: `src/core/certificacao/` (sincronização, serviço do montador e `validacaoServidor.ts` da administração). |
 | Aprovação das verificações | Servidor: `servidor/src/verificacoes.ts`; cliente: `src/core/sync/arquivoPdfs.ts` (envio), `src/core/aprovacao/` (decisões e chamadas da administração), telas em `src/features/aprovacao/` e `src/features/admin/aprovacoes/`. |
@@ -541,6 +541,60 @@ declaradas no JSON e não mudam nada em quem não as usa:
 
 ## Fluxo de certificação
 
+### Checklist que contém certificado
+
+```
+admin: "Contém certificado?" Sim + modelo em PDF
+        ↓
+montador preenche o checklist na TAG do projeto ──todas as etapas──> Gerar PDF
+        ↓
+Administração → Certificados (aguardando) ──reprovar (etapas marcadas)──> correção ──> novo PDF
+        ↓ aprovar
+certificado emitido do modelo, com código único (ex.: 7K3F-9Q2M) ──> montador baixa na tela inicial
+```
+
+- **No construtor do checklist**, a pergunta **"Contém certificado?"**. Com
+  **Sim**, a administração envia o **modelo do certificado em PDF** (até 25 MB;
+  um PDF protegido por senha ou danificado é recusado na hora). O modelo é
+  guardado como documento: nunca é apagado nem trocado — trocar o modelo é
+  enviar outro. A lista de checklists avisa quando falta o modelo.
+- **O montador preenche o checklist na TAG do projeto**, como os outros (na
+  tela do projeto ele aparece com o selo *Contém certificado*). Com todas as
+  etapas respondidas, **Gerar PDF** no próprio checklist guarda o PDF e o
+  envia sozinho para **Administração → Certificados**, com o retrato das
+  respostas e fotos daquela TAG. Com etapas pendentes ou sem o modelo, o PDF é
+  só guardado, e o diálogo diz o motivo. Esse checklist fica fora da aprovação
+  do PDF do projeto (aba Aprovações), para não ser aprovado duas vezes.
+- **Na aba Certificados**, a análise mostra o PDF, as etapas, as fotos e as
+  versões. **Reprovar** marca as etapas não conformes com o motivo; o montador
+  vê o pop-up, o alerta amarelo e a tela de correções, corrige e gera o PDF de
+  novo (versão 2, 3…). **Aprovar e emitir certificado** gera o certificado a
+  partir do modelo: cada página recebe um carimbo com o **código único**, a
+  data, quem aprovou, empresa, projeto, TAG, painel e montador; o código vai
+  também nos metadados do PDF.
+- **Código único:** 8 caracteres aleatórios no formato `XXXX-XXXX`, sem as
+  letras e números que se confundem (0/O, 1/I/L), conferido contra todos os
+  certificados já registrados. Nunca se repete nem se altera.
+- **Um certificado por checklist da TAG:** gerar o PDF de novo depois da
+  aprovação só guarda o PDF. O certificado sai do modelo atual do checklist;
+  se o checklist for excluído com o pedido aguardando, do modelo vigente
+  quando o montador o terminou.
+- **Pedido feito sem rede e recusado depois** (ex.: o checklist ganhou uma
+  etapa, ou ainda não tem o modelo): o motivo aparece na tela inicial do
+  montador, em *Envios recusados pelo servidor*, até ele dispensar.
+- **O montador baixa o certificado** na tela inicial (seção *Certificados
+  aprovados*, com pop-up na primeira vez) e na tela do projeto. A
+  administração o encontra em **Certificados → Certificados emitidos** (busca
+  pelo código, TAG, projeto…) e na aba **Documentos**.
+- O certificado emitido, o PDF enviado e o modelo são documentos permanentes,
+  com SHA-256, cópia nos destinos de backup e verificação de integridade.
+
+### Solicitações de certificação (antigas)
+
+As solicitações de certificação abertas antes desta mudança continuam
+funcionando até o fim, em **Certificados → Solicitações antigas**; não se abrem
+novas.
+
 ```
 rascunho ──enviar──> enviada ──aprovar + anexar certificado──> aprovada ──baixar──> emitida
                         │
@@ -560,7 +614,7 @@ rascunho ──enviar──> enviada ──aprovar + anexar certificado──> a
   solicitação com o atalho **Corrigir**, e as etapas destacadas no checklist
   (filtro **Correções**).
 - **Aprovar exige anexar o arquivo do certificado** (PDF, JPEG ou PNG, até
-  25 MB), na aba **Aprovações** da administração. O servidor atribui o número,
+  25 MB), em **Certificados → Solicitações antigas**. O servidor atribui o número,
   grava o arquivo com o SHA-256 conferido e avisa o montador, que **baixa o
   certificado na tela inicial** (seção *Certificados aprovados*) ou na
   solicitação. Baixar registra a emissão. A administração pode anexar outra via
@@ -626,13 +680,16 @@ administrador. As seções principais:
 
 - **Acessos** — quem pode preencher cada painel, e até quando (ver
   [Controle de acesso](#controle-de-acesso)).
-- **Aprovações** — o que os montadores enviaram para aprovar, em três filas:
-  **Verificações** (o PDF do projeto, um por tipo de verificação — ver
-  [Aprovação das verificações](#aprovação-das-verificações)), **Certificações**
-  (as solicitações enviadas) e **Certificados emitidos** (o registro, com o
-  arquivo de cada um e *Anexar nova via*). A análise mostra os dados, cada
-  etapa com resposta, observação, fotos e vídeos, e as versões anteriores com
-  o que foi apontado nelas. A aba mostra quantos envios aguardam decisão.
+- **Aprovações** — os PDFs de projeto (um por tipo de verificação) enviados
+  para aprovar; ver [Aprovação das verificações](#aprovação-das-verificações).
+  A análise mostra os dados, cada etapa com resposta, observação, fotos e
+  vídeos, e as versões anteriores com o que foi apontado nelas. A aba mostra
+  quantos envios aguardam decisão.
+- **Certificados** — os checklists que contêm certificado, terminados pelos
+  montadores, com o PDF para aprovar (aprovar emite o certificado com código
+  único); o registro de todos os certificados emitidos, com busca pelo código;
+  e as solicitações de certificação antigas. Ver
+  [Fluxo de certificação](#fluxo-de-certificação).
 - **Painéis e checklists** — cadastro dos painéis, de quem aprova e do
   conteúdo das etapas. Os checklists são gravados no servidor, e todo montador
   aprovado naquele painel recebe a mesma versão. Em cada etapa a
@@ -874,6 +931,15 @@ Revistas ao acrescentar o controle de acesso: **passou a haver autenticação**
 (e-mail e senha) e **passou a haver um servidor**, que guarda contas, painéis e
 decisões de acesso — e nada das checagens. O operador do PDF deixou de ser texto
 digitado e passa a vir do nome da conta.
+
+Do checklist que contém certificado: a pergunta "Contém certificado?" fica no
+próprio checklist, com o modelo do certificado em PDF enviado pela
+administração; o checklist é preenchido na TAG do projeto, e o PDF dele (com
+todas as etapas respondidas) vai para a aba **Certificados**; aprovado, o
+certificado sai do modelo com um **código aleatório único** carimbado em todas
+as páginas. A solicitação de certificação separada deixou de ser aberta; as
+antigas seguem até o fim. O modelo de certificado do painel (JSON) e o
+signatário ficaram só para essas solicitações antigas.
 
 Da aprovação pela administração: a aprovação vale para o **PDF do projeto**
 (um por tipo de verificação), não para o PDF de um checklist só; a

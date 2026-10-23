@@ -78,6 +78,8 @@ export function AnaliseVerificacao({
   if (!detalhe) return <Carregando mensagem="Abrindo o envio…" />;
 
   const { verificacao: v, definicoes, midias, versoes, pdf } = detalhe;
+  const ehCertificado = v.categoria === 'certificado';
+  const emitido = detalhe.certificadoEmitido ?? null;
   const decidivel = v.estado === 'aguardando';
   const marcasGravadas: Record<string, string> = {};
   for (const item of v.itens) {
@@ -99,17 +101,32 @@ export function AnaliseVerificacao({
     }
   };
 
+  const baixarCertificado = async () => {
+    if (!emitido) return;
+    setBaixando(true);
+    try {
+      baixarBlob(await api.baixarArquivo(`/api/admin/certificados/${emitido.uid}/arquivo`), emitido.nomeArquivo);
+    } catch (e) {
+      if (sessaoAdminAcabou(e)) onSessaoVencida();
+      else setErro(e instanceof Error ? e.message : 'Não foi possível baixar o certificado.');
+    } finally {
+      setBaixando(false);
+    }
+  };
+
   const decidir = async (decisao: 'aprovada' | 'reprovada', comentario: string) => {
     const itens: MarcaNaoConforme[] = Object.entries(marcas).map(([k, motivo]) => {
       const [tagUid, formId, etapaId] = k.split('|');
       return { tagUid, formId, etapaId, motivo: motivo.trim() };
     });
     try {
-      await decidirVerificacao(id, decisao, comentario, decisao === 'aprovada' ? [] : itens);
+      const r = await decidirVerificacao(id, decisao, comentario, decisao === 'aprovada' ? [] : itens);
       onDecidido(
         decisao === 'aprovada'
-          ? `Verificação de ${v.tipo.rotulo} do projeto ${v.projeto.nome} aprovada.`
-          : `Verificação reprovada: ${v.montador.nome} foi avisado para corrigir ${itens.length} etapa(s).`,
+          ? r.certificado
+            ? `Certificado nº ${r.certificado.numero} emitido para a TAG ${v.tags[0] ?? ''} (${v.tipo.rotulo}). ${v.montador.nome} foi avisado para baixá-lo.`
+            : `Verificação de ${v.tipo.rotulo} do projeto ${v.projeto.nome} aprovada.`
+          : `${ehCertificado ? 'Certificado não emitido' : 'Verificação reprovada'}: ${v.montador.nome} foi avisado para corrigir ${itens.length} etapa(s).`,
       );
     } catch (e) {
       if (sessaoAdminAcabou(e)) onSessaoVencida();
@@ -127,9 +144,12 @@ export function AnaliseVerificacao({
           <p className="text-sm font-semibold tracking-wide text-abb-gray uppercase">
             {v.painel.nome} · {v.projeto.empresa}
           </p>
-          <h2 className="text-2xl font-bold break-words">{v.projeto.nome}</h2>
+          <h2 className="text-2xl font-bold break-words">
+            {ehCertificado ? `TAG ${v.tags[0] ?? ''} · ${v.projeto.nome}` : v.projeto.nome}
+          </h2>
           <p className="text-base text-abb-gray">
-            {v.tipo.rotulo} · versão {v.versao ?? '—'} · {v.montador.nome} ({v.montador.email})
+            {ehCertificado ? `Certificado — ${v.tipo.rotulo}` : v.tipo.rotulo} · versão {v.versao ?? '—'} ·{' '}
+            {v.montador.nome} ({v.montador.email})
           </p>
           <p className="text-sm text-abb-gray">
             PDF gerado em {dataHoraBr(v.geradoEm)} · enviado em {dataHoraBr(v.enviadoEm ?? undefined)}
@@ -140,6 +160,12 @@ export function AnaliseVerificacao({
               <Botao tamanho="compacto" disabled={baixando} onClick={() => void baixarPdf()}>
                 <IconePdf className="h-5 w-5" />
                 {baixando ? 'Baixando…' : `Baixar o PDF enviado (${formatarBytes(pdf.tamanho)})`}
+              </Botao>
+            ) : null}
+            {emitido ? (
+              <Botao tamanho="compacto" variante="primario" disabled={baixando} onClick={() => void baixarCertificado()}>
+                <IconePdf className="h-5 w-5" />
+                Baixar o certificado nº {emitido.numero}
               </Botao>
             ) : null}
           </div>
@@ -235,8 +261,13 @@ export function AnaliseVerificacao({
         <PainelDecisao
           marcadas={Object.keys(marcas).length}
           semMotivo={Object.values(marcas).filter((m) => !m.trim()).length}
-          rotuloAprovar="Aprovar"
+          rotuloAprovar={ehCertificado ? 'Aprovar e emitir certificado' : 'Aprovar'}
           rotuloReprovar="Reprovar e pedir correção"
+          mensagemAprovar={
+            ehCertificado
+              ? `O certificado será emitido a partir do modelo do checklist, com um código único, e ${v.montador.nome} será avisado para baixá-lo. A aprovação é definitiva.`
+              : undefined
+          }
           onDecidir={decidir}
         />
       ) : null}

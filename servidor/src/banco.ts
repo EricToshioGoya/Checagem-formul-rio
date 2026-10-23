@@ -660,6 +660,49 @@ banco.exec(`
 // Itens marcados como não conformes na devolução de uma certificação.
 garantirColuna('certificacoes', 'itens', "TEXT NOT NULL DEFAULT '[]'");
 
+// Checklist que contém certificado: preenchido na TAG do projeto, o PDF dele
+// vai para a aba Certificados. Na aprovação, o certificado sai do modelo em
+// PDF do checklist, com um código único.
+garantirColuna('verificacoes', 'categoria', "TEXT NOT NULL DEFAULT 'verificacao'");
+garantirColuna('verificacoes', 'certTagUid', 'TEXT');
+garantirColuna('verificacoes', 'certFormId', 'TEXT');
+garantirColuna('verificacoes', 'certificadoNumero', 'TEXT');
+garantirColuna('verificacoes', 'certificadoUid', 'TEXT');
+// O modelo vigente quando o montador terminou o checklist: a aprovação ainda
+// emite dele se o checklist for excluído ou deixar de ter modelo.
+garantirColuna('verificacoes', 'certModeloUid', 'TEXT');
+garantirColuna('certificados_anexos', 'verificacaoId', 'INTEGER');
+
+banco.exec(`
+  -- Modelo em PDF do certificado de um checklist, enviado pela administração.
+  -- É documento: nunca é apagado nem trocado (um modelo novo é outro arquivo).
+  CREATE TABLE IF NOT EXISTS modelos_certificado (
+    uid            TEXT    PRIMARY KEY,
+    nomeArquivo    TEXT    NOT NULL,
+    tamanho        INTEGER NOT NULL,
+    sha256         TEXT    NOT NULL,
+    paginas        INTEGER NOT NULL,
+    enviadoEm      INTEGER NOT NULL,
+    enviadoPor     INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+    enviadoPorNome TEXT    NOT NULL
+  );
+  CREATE TRIGGER IF NOT EXISTS modelos_certificado_sem_exclusao BEFORE DELETE ON modelos_certificado
+  BEGIN SELECT RAISE(ABORT, 'Um modelo de certificado não pode ser apagado.'); END;
+  -- Sem enviadoPor: a exclusão da conta de quem enviou o anula (LGPD).
+  DROP TRIGGER IF EXISTS modelos_certificado_imutavel;
+  CREATE TRIGGER modelos_certificado_imutavel
+  BEFORE UPDATE OF uid, nomeArquivo, tamanho, sha256, paginas, enviadoEm, enviadoPorNome ON modelos_certificado
+  BEGIN SELECT RAISE(ABORT, 'Um modelo de certificado não pode ser alterado.'); END;
+
+  CREATE INDEX IF NOT EXISTS idx_verificacoes_categoria ON verificacoes (categoria, estado, enviadoEm);
+  DROP TRIGGER IF EXISTS verificacoes_certificado_definitivo;
+  CREATE TRIGGER verificacoes_certificado_definitivo
+  BEFORE UPDATE OF categoria, certTagUid, certFormId, certModeloUid, certificadoNumero, certificadoUid
+  ON verificacoes
+  WHEN OLD.estado NOT IN ('recebendo', 'aguardando')
+  BEGIN SELECT RAISE(ABORT, 'O certificado de um envio decidido não pode ser alterado.'); END;
+`);
+
 export type Papel = 'montador' | 'admin';
 
 export interface Usuario {

@@ -52,7 +52,6 @@ import {
   existe as formularioExiste,
   listarEntradasPorPainelId,
   obterDefinicao,
-  painelDoFormulario,
   salvarDefinicao,
 } from './formularios';
 import {
@@ -254,17 +253,6 @@ function dadosDeCertificado(l: Record<string, unknown>) {
     certificado: (l.certificado as string | null) ?? null,
     signatario: l.signatario ? (JSON.parse(String(l.signatario)) as Signatario) : null,
   };
-}
-
-/** Checklists do painel marcados com "Emite certificado", ativos ou não. */
-function checklistsComCertificado(painelId: number): number {
-  const l = banco
-    .prepare(
-      `SELECT COUNT(*) AS n FROM formularios
-        WHERE painelId = ? AND json_extract(definicao, '$.emiteCertificado') = 1`,
-    )
-    .get(painelId) as { n: number };
-  return Number(l.n);
 }
 
 interface PainelComAcesso {
@@ -696,8 +684,14 @@ export const rotas: Record<string, Manipulador> = {
     return {
       pedidosAdmin: contar("SELECT COUNT(*) AS n FROM pedidos_admin WHERE status = 'pendente'"),
       acessosPendentes: contar("SELECT COUNT(*) AS n FROM solicitacoes WHERE status = 'pendente'"),
-      // Selo da aba Aprovações: verificações e certificações à espera de decisão.
-      verificacoesPendentes: contar("SELECT COUNT(*) AS n FROM verificacoes WHERE estado = 'aguardando'"),
+      // Selos das abas Aprovações (PDF do projeto) e Certificados (checklist
+      // que contém certificado, e as solicitações antigas).
+      verificacoesPendentes: contar(
+        "SELECT COUNT(*) AS n FROM verificacoes WHERE estado = 'aguardando' AND categoria = 'verificacao'",
+      ),
+      certificadosPendentes: contar(
+        "SELECT COUNT(*) AS n FROM verificacoes WHERE estado = 'aguardando' AND categoria = 'certificado'",
+      ),
       certificacoesPendentes: contar("SELECT COUNT(*) AS n FROM certificacoes WHERE estado = 'enviada'"),
     };
   },
@@ -943,14 +937,6 @@ export const rotas: Record<string, Manipulador> = {
       | { nome: string; certificado: string | null }
       | undefined;
     if (!antes) throw new ErroHttp(404, 'Painel não encontrado.');
-    const comCertificado = checklistsComCertificado(id);
-    if (!certificado && comCertificado > 0) {
-      throw new ErroHttp(
-        400,
-        `${plural(comCertificado, 'checklist deste painel emite', 'checklists deste painel emitem')} certificado: ` +
-          'mantenha o modelo e quem assina, ou desmarque "Emite certificado" nesses checklists antes.',
-      );
-    }
     const responsaveisAntes = mapaResponsaveis().get(id) ?? [];
 
     // O `slug` não muda ao renomear: ele amarra o painel aos formulários do
@@ -1391,15 +1377,13 @@ export const rotas: Record<string, Manipulador> = {
     if (typeof enviada?.tipo === 'string' && enviada.tipo !== anterior?.tipo && !obterTipo(enviada.tipo)) {
       throw new ErroHttp(400, 'Tipo de checklist não cadastrado.');
     }
-    if (enviada?.emiteCertificado === true && !anterior?.emiteCertificado) {
-      const painel = banco
-        .prepare('SELECT certificado FROM paineis WHERE id = ?')
-        .get(painelDoFormulario(id)) as { certificado: string | null } | undefined;
-      if (!painel?.certificado) {
-        throw new ErroHttp(
-          400,
-          'Para emitir certificado, informe antes o modelo do certificado e quem assina, em "Editar painel".',
-        );
+    // O modelo citado tem de ser um que a administração enviou: o certificado
+    // sai dele na aprovação.
+    const modelo = (enviada as { modeloCertificado?: { uid?: unknown } } | null)?.modeloCertificado;
+    if (modelo) {
+      const uid = typeof modelo.uid === 'string' ? modelo.uid.toLowerCase() : '';
+      if (!banco.prepare('SELECT 1 FROM modelos_certificado WHERE uid = ?').get(uid)) {
+        throw new ErroHttp(400, 'O modelo do certificado não foi encontrado. Envie o PDF de novo.');
       }
     }
 

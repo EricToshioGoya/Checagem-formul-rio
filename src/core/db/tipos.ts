@@ -257,6 +257,8 @@ export interface AprovacaoPendente {
   tipo: string;
   /** Respostas, TAGs e lista das fotos deste tipo no momento da geração. */
   documento: DocumentoProjeto;
+  /** PDF de um checklist que contém certificado: vai para a aba Certificados. */
+  certificado?: { tagUid: string; formId: string };
 }
 
 /** Etapa marcada como não conforme pela administração. */

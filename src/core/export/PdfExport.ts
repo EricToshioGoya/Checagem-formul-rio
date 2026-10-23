@@ -26,10 +26,17 @@ export interface ArquivoGerado {
     painelSlug?: string;
     emitidoEm: number;
     /**
-     * Só no PDF do projeto: o tipo de verificação e, por TAG (`uid`), os
-     * checklists que o PDF leva. É o que segue para a aprovação.
+     * O que segue para a aprovação: no PDF do projeto, o tipo de verificação
+     * e, por TAG (`uid`), os checklists que o PDF leva; no PDF de um checklist
+     * que contém certificado, a TAG e o checklist (`certificado`).
      */
-    verificacao?: { tipo: string; formIdsPorTag: Record<string, string[]> };
+    verificacao?: {
+      tipo: string;
+      formIdsPorTag: Record<string, string[]>;
+      certificado?: { tagUid: string; formId: string };
+    };
+    /** Checklist que contém certificado, mas o PDF não vai para a aba Certificados: o motivo. */
+    semCertificado?: string;
   };
 }
 
@@ -140,9 +147,13 @@ export async function gerarArquivos(
   const doPainel = await formulariosDoPainel(dossieCompleto.painelSlug);
   // Só o PDF com todos os checklists do tipo vai para aprovação: um PDF
   // parcial substituiria, na fila, a versão completa que aguardava.
+  // O checklist que contém certificado tem aprovação própria (aba
+  // Certificados): entra no PDF, mas não no que vai para Aprovações.
   const completo = (tipo: string) =>
     !opcoes.formIds?.length ||
-    doPainel.filter((e) => e.tipo === tipo).every((e) => opcoes.formIds!.includes(e.id));
+    doPainel
+      .filter((e) => e.tipo === tipo && !e.emiteCertificado)
+      .every((e) => opcoes.formIds!.includes(e.id));
 
   for (const tipo of tiposPresentes) {
     // TAG sem checklist deste tipo não entra no PDF dele.
@@ -160,10 +171,13 @@ export async function gerarArquivos(
       sufixo: sufixoTipo(tipo),
     });
     const pdf = gerados.find((a) => a.registro);
-    if (pdf?.registro && completo(tipo) && tags.every((t) => t.uid)) {
+    const paraAprovar = tags
+      .map((t) => [t.uid, t.formularios.filter((f) => !f.definicao.emiteCertificado).map((f) => f.definicao.id)] as const)
+      .filter(([, ids]) => ids.length > 0);
+    if (pdf?.registro && completo(tipo) && paraAprovar.length && paraAprovar.every(([uid]) => uid)) {
       pdf.registro.verificacao = {
         tipo,
-        formIdsPorTag: Object.fromEntries(tags.map((t) => [t.uid!, t.formularios.map((f) => f.definicao.id)])),
+        formIdsPorTag: Object.fromEntries(paraAprovar.map(([uid, ids]) => [uid!, ids])),
       };
     }
     arquivos.push(...gerados);
@@ -196,9 +210,29 @@ export async function gerarArquivosChecklist(
   const doMesmoTipo = (await formulariosDoPainel(dossie.painelSlug)).filter(
     (e) => e.tipo === formulario.definicao.tipo,
   ).length;
-  return arquivosDoDossie(dossie, {
+  const arquivos = await arquivosDoDossie(dossie, {
     incluirFotos,
     titulo: formulario.definicao.nome,
     sufixo: `${tag.nome}-${doMesmoTipo > 1 ? formulario.definicao.id : sufixoTipo(formulario.definicao.tipo)}`,
   });
+
+  // Checklist que contém certificado, na TAG do projeto: terminado, o PDF
+  // segue para a aba Certificados. Se falta o modelo, quem diz é o servidor: a
+  // cópia do checklist no aparelho pode ser de antes de a administração enviá-lo.
+  const pdf = arquivos.find((a) => a.registro);
+  const definicao = formulario.definicao;
+  if (pdf?.registro && 'projetoId' in alvo && definicao.emiteCertificado) {
+    if (!tag.uid) {
+      pdf.registro.semCertificado = 'A TAG ainda não tem identificação; sincronize o projeto e gere de novo.';
+    } else if (formulario.progresso.total === 0 || formulario.progresso.pendentes > 0) {
+      pdf.registro.semCertificado = `Faltam ${formulario.progresso.pendentes} etapa(s): responda todas e gere o PDF de novo para pedir o certificado.`;
+    } else {
+      pdf.registro.verificacao = {
+        tipo: definicao.tipo,
+        formIdsPorTag: { [tag.uid]: [definicao.id] },
+        certificado: { tagUid: tag.uid, formId: definicao.id },
+      };
+    }
+  }
+  return arquivos;
 }

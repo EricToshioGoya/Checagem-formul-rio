@@ -188,11 +188,20 @@ export const definicaoFormularioSchema = z.object({
   dataRevisao: z.string().min(1),
   emitidoPor: z.string().optional().default(''),
   /**
-   * O checklist termina num certificado ABB: o montador o preenche numa
-   * solicitação de certificação, a ABB valida e o certificado é emitido.
-   * Desmarcado, é uma verificação comum (projeto → TAG → dossiê em PDF).
+   * "Contém certificado?": o montador preenche o checklist na TAG do projeto,
+   * como os outros; o PDF dele vai para a aba Certificados e, aprovado, o
+   * certificado sai do modelo abaixo com um código único.
    */
   emiteCertificado: z.boolean().optional().default(false),
+  /** Modelo em PDF do certificado, enviado pela administração. */
+  modeloCertificado: z
+    .object({
+      uid: z.string().min(1),
+      nomeArquivo: z.string().min(1),
+      tamanho: z.number().optional(),
+      paginas: z.number().optional(),
+    })
+    .optional(),
   cabecalho: z.array(campoCabecalhoSchema).default([]),
   secoes: z.array(secaoSchema).default([]),
 });
@@ -209,8 +218,10 @@ export const entradaCatalogoSchema = z.object({
   linhaProduto: z.string().min(1),
   painelSlug: z.string().min(1),
   ativo: z.boolean().optional().default(true),
-  /** Preenchido numa solicitação de certificação, e não num projeto. */
+  /** Contém certificado: o PDF do checklist vai para a aba Certificados. */
   emiteCertificado: z.boolean().optional().default(false),
+  /** O modelo em PDF do certificado já foi enviado. */
+  temModeloCertificado: z.boolean().optional().default(false),
   /** Etapas ativas; zero significa checklist ainda em construção. */
   etapas: z.number().optional().default(0),
   atualizadoEm: z.number().optional().default(0),
