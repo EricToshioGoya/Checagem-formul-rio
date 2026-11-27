@@ -440,7 +440,8 @@ solicitacoes  id, painelId, usuarioId, status, mensagem, criadoEm,
 pedidos_admin id, usuarioId (único), status, criadoEm, decididoEm, decididoPor
 sessoes       token, usuarioId, criadoEm, expiraEm, perfil
 pdfs_emitidos uid, usuarioId, painelId, painelNome, empresa, nomeProjeto,
-              titulo, nomeArquivo, emitidoEm, recebidoEm, tamanho, sha256, busca
+              titulo, nomeArquivo, emitidoEm, recebidoEm, tamanho, sha256, busca,
+              codigo (único: número de identificação do PDF)
 ```
 
 `status` é `pendente`, `aprovada`, `recusada` ou `revogada`; uma aprovação com
@@ -792,6 +793,11 @@ O documento:
   todas as páginas e nos metadados do arquivo (data de criação e palavra-chave
   em ISO 8601). O certificado de produto traz, no rodapé, a data e a hora em
   que foi emitido.
+- **Número de identificação** próprio, diferente em todo PDF emitido
+  (`VM-AAAA-XXXX-XXXX-XXXX`: ano da emissão e 12 caracteres sorteados, sem 0,
+  O, 1 e I). Sai numa linha da capa, abaixo do subtítulo, no rodapé de todas
+  as páginas e nos metadados do arquivo, e aparece no diálogo de geração. É
+  sorteado no aparelho, o que funciona sem rede (ver **Documentos guardados**).
 - Nome do arquivo: `EMPRESA_PROJETO_TIPO-VERIFICACAO_AAAA-MM-DD.pdf`; o de um
   checklist só leva a TAG: `EMPRESA_PROJETO_TAG-ROTINA_AAAA-MM-DD.pdf`.
 - Tipografia Inter (subconjunto Latin, licença OFL) em `src/core/export/pdf/fontes`,
@@ -850,6 +856,15 @@ sistema é não perdê-los.
   sincronização). Cada PDF tem `uid` próprio: um reenvio não duplica. O
   aparelho manda o SHA-256 e o servidor recusa o arquivo que chegar diferente.
   O ZIP de fotos não é enviado.
+- **Número de identificação único.** O aparelho manda o número impresso no PDF
+  (`codigo`, na consulta do `PUT /api/pdfs/:uid`); a coluna `codigo` tem índice
+  único, e o servidor recusa o número repetido (409) ou fora do formato (400).
+  Um PDF que chega sem número, como os que estavam na fila do aparelho antes de
+  ele existir, recebe um do servidor. Na subida, os PDFs arquivados antes do
+  número recebem o seu (ano da emissão). Preenchido, o número é definitivo
+  (gatilho do SQLite). Os arquivos antigos não são alterados, para não quebrar
+  o SHA-256: neles o número consta só no registro, na aba **Documentos** e na
+  busca, não dentro do PDF.
 - **Imutáveis no banco.** Gatilhos do SQLite recusam apagar ou alterar um PDF
   emitido, um certificado, um anexo de certificado, uma foto protegida ou uma
   decisão já tomada. Excluir a conta de quem emitiu, a solicitação ou o painel
