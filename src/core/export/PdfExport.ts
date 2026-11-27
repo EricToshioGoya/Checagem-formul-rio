@@ -1,3 +1,4 @@
+import { gerarCodigoPdf } from '../../../compartilhado/codigoPdf';
 import { ehMimeDeVideo, extensaoDoMime } from '../../../compartilhado/midias';
 import { infoDoTipo, type TipoChecklist } from '../../../compartilhado/tiposChecklist';
 import {
@@ -25,6 +26,8 @@ export interface ArquivoGerado {
     titulo: string;
     painelSlug?: string;
     emitidoEm: number;
+    /** Número de identificação, impresso no PDF e único no servidor. */
+    codigo: string;
     /**
      * O que segue para a aprovação: no PDF do projeto, o tipo de verificação
      * e, por TAG (`uid`), os checklists que o PDF leva; no PDF de um checklist
@@ -97,6 +100,8 @@ async function arquivosDoDossie(
   ]);
   const fontes = await carregarFontesPdf();
   const arquivos: ArquivoGerado[] = [];
+  // Cada PDF sai com um número só seu: o mesmo aparece no arquivo e no registro.
+  const codigo = gerarCodigoPdf(dossie.geradoEm);
   const zip = await montarZipMidias(dossie, opcoes.incluirFotos);
   const nomeZip = zip
     ? nomeArquivoExportacao(
@@ -116,6 +121,7 @@ async function arquivosDoDossie(
       arquivoFotos: opcoes.incluirFotos ? undefined : nomeZip,
       arquivoVideos: opcoes.incluirFotos ? nomeZip : undefined,
       fontes,
+      codigo,
     }),
     registro: {
       empresa: dossie.empresa,
@@ -123,6 +129,7 @@ async function arquivosDoDossie(
       titulo: opcoes.titulo,
       painelSlug: dossie.painelSlug,
       emitidoEm: dossie.geradoEm.getTime(),
+      codigo,
     },
   });
   if (zip && nomeZip) arquivos.push({ nome: nomeZip, blob: zip });

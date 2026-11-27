@@ -373,7 +373,9 @@ banco.exec(`
     tamanho     INTEGER NOT NULL,
     sha256      TEXT    NOT NULL,
     -- Empresa e projeto sem acento e em minúsculas, para a busca.
-    busca       TEXT    NOT NULL
+    busca       TEXT    NOT NULL,
+    -- Número de identificação do PDF (VM-AAAA-XXXX-XXXX-XXXX); ver abaixo.
+    codigo      TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_pdfs_emitidos_em ON pdfs_emitidos (emitidoEm);
 `);
@@ -409,6 +411,19 @@ garantirColuna('sync_projetos', 'empresa', 'TEXT');
 garantirColuna('sync_projetos', 'qtdTags', 'INTEGER NOT NULL DEFAULT 0');
 // Foto ou anexo pertence a um projeto, não mais ao par (conta, painel).
 garantirColuna('sync_midias', 'projetoUid', 'TEXT');
+
+// Número de identificação de cada PDF arquivado: único e, depois de preenchido,
+// definitivo — como o arquivo a que pertence. Os PDFs arquivados antes de o
+// número existir o recebem na subida (ver `numerarPdfsAntigos`); a linha em si
+// não muda, só ganha o número uma vez.
+garantirColuna('pdfs_emitidos', 'codigo', 'TEXT');
+banco.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_pdfs_emitidos_codigo ON pdfs_emitidos (codigo);
+  CREATE TRIGGER IF NOT EXISTS pdfs_emitidos_codigo_definitivo
+  BEFORE UPDATE OF codigo ON pdfs_emitidos
+  WHEN OLD.codigo IS NOT NULL
+  BEGIN SELECT RAISE(ABORT, 'O número de um PDF arquivado não pode ser alterado.'); END;
+`);
 
 /**
  * Um painel passa a ter vários projetos da mesma conta. A chave deixa de ser

@@ -414,6 +414,8 @@ export interface DocumentoArquivado {
   situacao: string | null;
   versao: number | null;
   numero: string | null;
+  /** Número de identificação do PDF; nulo nos certificados, que têm o seu `numero`. */
+  codigo: string | null;
   certificacaoId: number | null;
   /** O PDF (ou o certificado) veio de um envio: do PDF do projeto ou de um checklist com certificado. */
   envioCategoria: 'verificacao' | 'certificado' | null;

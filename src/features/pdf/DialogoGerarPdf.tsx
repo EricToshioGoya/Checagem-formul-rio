@@ -29,6 +29,7 @@ export function DialogoGerarPdf({ aberto, projetoId, painelSlug, tipo, onFechar 
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [concluido, setConcluido] = useState<string[] | null>(null);
+  const [codigos, setCodigos] = useState<Record<string, string>>({});
   const [registro, setRegistro] = useState<EstadoRegistro>(undefined);
   const { usuario } = useSessao();
 
@@ -36,6 +37,7 @@ export function DialogoGerarPdf({ aberto, projetoId, painelSlug, tipo, onFechar 
     if (!aberto) return;
     setErro(null);
     setConcluido(null);
+    setCodigos({});
     setRegistro(undefined);
     (async () => {
       try {
@@ -67,6 +69,7 @@ export function DialogoGerarPdf({ aberto, projetoId, painelSlug, tipo, onFechar 
       }
       for (const arquivo of arquivos) baixarBlob(arquivo.blob, arquivo.nome);
       setConcluido(arquivos.map((a) => a.nome));
+      setCodigos(Object.fromEntries(arquivos.flatMap((a) => (a.registro ? [[a.nome, a.registro.codigo]] : []))));
       // Todo PDF emitido vai para o arquivo do servidor (documentação de
       // garantia) e, o do projeto, para a aprovação da administração. Sem
       // rede, fica na fila do aparelho e segue depois.
@@ -142,7 +145,7 @@ export function DialogoGerarPdf({ aberto, projetoId, painelSlug, tipo, onFechar 
         <EscolhaFotos incluirFotos={incluirFotos} onChange={setIncluirFotos} />
 
         {erro ? <Erro detalhe={erro} /> : null}
-        {concluido ? <ArquivosGerados nomes={concluido} registro={registro} /> : null}
+        {concluido ? <ArquivosGerados nomes={concluido} codigos={codigos} registro={registro} /> : null}
       </div>
     </Modal>
   );
