@@ -151,7 +151,7 @@ export function Documentos({
           <IconeBusca className="pointer-events-none absolute bottom-4 left-3 h-4 w-4 text-abb-gray" />
           <input
             type="search"
-            placeholder="Empresa, projeto, TAG, montador, nº do certificado…"
+            placeholder="Empresa, projeto, TAG, montador, nº do certificado ou do PDF…"
             className="min-h-12 w-full rounded-md border border-abb-line bg-white pr-3 pl-9 text-base focus:border-abb-red"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
@@ -262,6 +262,11 @@ export function Documentos({
                         {doc.montador ? ` · montador ${doc.montador}` : ''} · {formatarBytes(doc.tamanho)}
                       </p>
                       <p className="text-xs break-all text-abb-gray">{doc.nomeArquivo}</p>
+                      {doc.codigo ? (
+                        <p className="text-xs text-abb-gray">
+                          Nº de identificação: <span className="font-semibold text-abb-black">{doc.codigo}</span>
+                        </p>
+                      ) : null}
                       <div className="flex flex-wrap items-center gap-2 pt-1">
                         {doc.categoria === 'verificacao' && doc.situacao && doc.situacao !== 'recebendo' ? (
                           <EtiquetaVerificacao estado={doc.situacao as EstadoVerificacao} />

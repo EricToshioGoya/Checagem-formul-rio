@@ -1,3 +1,4 @@
+import { codigoPdfValido, gerarCodigoPdf, normalizarCodigoPdf } from '../../compartilhado/codigoPdf';
 import { banco, emTransacao } from './banco';
 import { agendarBackupContinuo } from './backup';
 import { caminhoDocumento, conferirHashRecebido, paraBusca } from './documentos';
@@ -16,6 +17,12 @@ import { ErroHttp, exigirAdmin, exigirSessao, RespostaArquivo, type Contexto } f
  * as duas coisas por gatilho. O aparelho manda o SHA-256 que calculou: um
  * arquivo que chega diferente (transferência incompleta) é recusado, e o hash
  * gravado comprova depois que o arquivo é o mesmo.
+ *
+ * Cada PDF tem um número de identificação único (`VM-AAAA-XXXX-XXXX-XXXX`): o
+ * aparelho o imprime no PDF e o manda no envio; o servidor recusa um número
+ * repetido ou fora do formato. Os PDFs arquivados antes de o número existir,
+ * e os que chegam sem ele, recebem um aqui — nesses, o número consta no
+ * registro, não dentro do arquivo, que não pode mudar.
  */
 
 type Manipulador = (ctx: Contexto) => unknown;
@@ -47,6 +54,7 @@ function instante(ctx: Contexto, campo: string): number | null {
 
 interface LinhaPdf {
   uid: string;
+  codigo: string | null;
   empresa: string;
   nomeProjeto: string;
   titulo: string;
@@ -62,6 +70,7 @@ interface LinhaPdf {
 function publico(l: LinhaPdf) {
   return {
     uid: l.uid,
+    codigo: l.codigo,
     empresa: l.empresa,
     nomeProjeto: l.nomeProjeto,
     titulo: l.titulo,
@@ -83,7 +92,7 @@ function publico(l: LinhaPdf) {
 export function atualizarBuscaDosPdfs(): void {
   const linhas = banco
     .prepare(
-      `SELECT d.uid, d.empresa, d.nomeProjeto, d.titulo, d.nomeArquivo, d.painelNome, d.busca, u.nome AS montador
+      `SELECT d.uid, d.empresa, d.nomeProjeto, d.titulo, d.nomeArquivo, d.painelNome, d.codigo, d.busca, u.nome AS montador
          FROM pdfs_emitidos d LEFT JOIN usuarios u ON u.id = d.usuarioId`,
     )
     .all() as Array<Record<string, string | null>>;
@@ -91,11 +100,37 @@ export function atualizarBuscaDosPdfs(): void {
   emTransacao(() => {
     for (const l of linhas) {
       const busca = paraBusca(
-        `${l.empresa ?? ''} ${l.nomeProjeto ?? ''} ${l.titulo ?? ''} ${l.nomeArquivo ?? ''} ${l.painelNome ?? ''} ${l.montador ?? ''}`,
+        `${l.empresa ?? ''} ${l.nomeProjeto ?? ''} ${l.titulo ?? ''} ${l.nomeArquivo ?? ''} ${l.painelNome ?? ''} ${l.montador ?? ''} ${l.codigo ?? ''}`,
       );
       if (busca !== l.busca) gravar.run(busca, l.uid);
     }
   });
+}
+
+/** Número que nenhum PDF arquivado tem ainda. */
+function codigoNovo(emitidoEm: Date): string {
+  const existe = banco.prepare('SELECT 1 FROM pdfs_emitidos WHERE codigo = ?');
+  for (;;) {
+    const codigo = gerarCodigoPdf(emitidoEm);
+    if (!existe.get(codigo)) return codigo;
+  }
+}
+
+/**
+ * Dá número aos PDFs arquivados antes de ele existir. Roda na subida, antes de
+ * recalcular a busca; só toca no que ainda não tem número, e o número, uma
+ * vez gravado, não muda (gatilho). O ano é o da emissão do PDF.
+ */
+export function numerarPdfsAntigos(): void {
+  const sem = banco
+    .prepare('SELECT uid, emitidoEm FROM pdfs_emitidos WHERE codigo IS NULL ORDER BY emitidoEm, uid')
+    .all() as Array<{ uid: string; emitidoEm: number }>;
+  if (!sem.length) return;
+  const gravar = banco.prepare('UPDATE pdfs_emitidos SET codigo = ? WHERE uid = ? AND codigo IS NULL');
+  emTransacao(() => {
+    for (const l of sem) gravar.run(codigoNovo(new Date(Number(l.emitidoEm))), l.uid);
+  });
+  console.warn(`${sem.length} PDF(s) arquivado(s) receberam o número de identificação.`);
 }
 
 export const rotasPdfs: Record<string, Manipulador> = {
@@ -147,6 +182,20 @@ export const rotasPdfs: Record<string, Manipulador> = {
     const emitidoEm = instante(ctx, 'emitidoEm');
     if (emitidoEm === null) throw new ErroHttp(400, 'Data de emissão não informada.');
 
+    // Número de identificação: o aparelho o imprime no PDF e o manda aqui. Um PDF
+    // da fila de antes do número chega sem ele, e o servidor lhe atribui um.
+    const informado = ctx.consulta.get('codigo');
+    let codigo: string;
+    if (informado) {
+      codigo = normalizarCodigoPdf(informado);
+      if (!codigoPdfValido(codigo)) throw new ErroHttp(400, 'Número de identificação do PDF inválido.');
+      if (banco.prepare('SELECT 1 FROM pdfs_emitidos WHERE codigo = ?').get(codigo)) {
+        throw new ErroHttp(409, 'Número de identificação do PDF já usado.');
+      }
+    } else {
+      codigo = codigoNovo(new Date(emitidoEm));
+    }
+
     const slug = ctx.consulta.get('painel')?.trim();
     const painel = slug
       ? (banco.prepare('SELECT id, nome FROM paineis WHERE slug = ?').get(slug) as
@@ -159,8 +208,8 @@ export const rotasPdfs: Record<string, Manipulador> = {
       .prepare(
         `INSERT INTO pdfs_emitidos
            (uid, usuarioId, painelId, painelNome, empresa, nomeProjeto, titulo, nomeArquivo,
-            emitidoEm, recebidoEm, tamanho, sha256, busca)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            emitidoEm, recebidoEm, tamanho, sha256, busca, codigo)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         uid,
@@ -175,7 +224,8 @@ export const rotasPdfs: Record<string, Manipulador> = {
         Date.now(),
         dados.length,
         sha256,
-        paraBusca(`${empresa} ${nomeProjeto} ${titulo} ${nomeArquivo} ${painel?.nome ?? ''} ${eu.nome}`),
+        paraBusca(`${empresa} ${nomeProjeto} ${titulo} ${nomeArquivo} ${painel?.nome ?? ''} ${eu.nome} ${codigo}`),
+        codigo,
       );
     agendarBackupContinuo();
     return { ok: true };
@@ -211,7 +261,7 @@ export const rotasPdfs: Record<string, Manipulador> = {
     );
     const linhas = banco
       .prepare(
-        `SELECT d.uid, d.empresa, d.nomeProjeto, d.titulo, d.painelNome, u.nome AS montador,
+        `SELECT d.uid, d.codigo, d.empresa, d.nomeProjeto, d.titulo, d.painelNome, u.nome AS montador,
                 d.nomeArquivo, d.emitidoEm, d.recebidoEm, d.tamanho, d.sha256
            FROM pdfs_emitidos d LEFT JOIN usuarios u ON u.id = d.usuarioId
            ${onde}

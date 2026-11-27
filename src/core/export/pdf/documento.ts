@@ -933,6 +933,13 @@ function desenharCapa(folha: Folha, dossie: Dossie, blocos: readonly Bloco[], op
   base += 9;
   const subtitulo = [dossie.painel, dossie.empresa, dossie.nomeProjeto].filter(Boolean).join('  ·  ');
   folha.escrever(truncar(subtitulo, regular, 11.5, LARGURA_UTIL), X, base, 11.5, regular, COR.texto);
+  if (opcoes.codigo) {
+    // Em linha própria: o número inteiro não cabe numa célula da grade de identificação.
+    base -= 20;
+    const rotulo = { fonte: folha.fontes.seminegrito, tamanho: 6.8, espacamento: 0.9 };
+    escrever(folha.pagina, 'Nº DE IDENTIFICAÇÃO', X, base, { ...rotulo, cor: COR.suave });
+    folha.escrever(opcoes.codigo, X + larguraTexto('Nº DE IDENTIFICAÇÃO', rotulo) + 10, base - 0.5, 10.5, folha.fontes.seminegrito, COR.tinta);
+  }
   folha.y = base - 24;
 
   indicadores(folha, dossie.progressoGeral, blocos);
@@ -1838,6 +1845,8 @@ export interface OpcoesPdf {
   arquivoVideos?: string;
   /** Família tipográfica do documento. Sem ela, o PDF sai em Helvetica. */
   fontes?: BytesFontes;
+  /** Número de identificação do PDF (`VM-AAAA-XXXX-XXXX-XXXX`): impresso na capa, no rodapé e nos metadados. */
+  codigo?: string;
 }
 
 /**
@@ -1857,7 +1866,10 @@ export async function gerarPdf(dossie: Dossie, opcoes: OpcoesPdf): Promise<Blob>
   doc.setLanguage('pt-BR');
   doc.setCreationDate(dossie.geradoEm);
   doc.setModificationDate(dossie.geradoEm);
-  doc.setKeywords([`Emitido em ${dossie.geradoEm.toISOString()}`]);
+  doc.setKeywords([
+    `Emitido em ${dossie.geradoEm.toISOString()}`,
+    ...(opcoes.codigo ? [`Nº ${opcoes.codigo}`] : []),
+  ]);
 
   const blocos: Bloco[] = dossie.tags.flatMap((tag) =>
     tag.formularios.map((formulario) => ({ tag, formulario })),
@@ -1876,8 +1888,8 @@ export async function gerarPdf(dossie: Dossie, opcoes: OpcoesPdf): Promise<Blob>
   rodape(
     doc,
     fontes,
-    // A emissão vem primeiro: se o rodapé for truncado, perde-se o nome, não a data.
-    `Emitido em ${dataHoraEmissao(dossie.geradoEm)} · ${dossie.empresa} · ${dossie.nomeProjeto}`,
+    // O número e a emissão vêm primeiro: se o rodapé for truncado, perde-se o nome, não eles.
+    `${opcoes.codigo ? `Nº ${opcoes.codigo} · ` : ''}Emitido em ${dataHoraEmissao(dossie.geradoEm)} · ${dossie.empresa} · ${dossie.nomeProjeto}`,
   );
 
   const bytes = await doc.save();

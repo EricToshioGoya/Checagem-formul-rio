@@ -42,6 +42,7 @@ async function enviarPdf(pdf: PdfPendente): Promise<void> {
       painel: pdf.painelSlug,
       nomeArquivo: pdf.nomeArquivo,
       emitidoEm: pdf.emitidoEm,
+      codigo: pdf.codigo,
       sha256: await sha256Hex(pdf.blob),
     })}`,
     pdf.blob,

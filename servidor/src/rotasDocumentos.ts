@@ -31,7 +31,7 @@ const UNIAO = `
          v.id AS verificacaoId, v.estado AS situacao, v.versao AS versao,
          NULL AS numero, NULL AS certificacaoId, v.categoria AS envioCategoria,
          d.busca || ' ' || COALESCE(v.busca, '') AS busca,
-         i.situacao AS integridade, i.verificadoEm AS verificadoEm
+         i.situacao AS integridade, i.verificadoEm AS verificadoEm, d.codigo AS codigo
     FROM pdfs_emitidos d
     LEFT JOIN usuarios u ON u.id = d.usuarioId
     LEFT JOIN verificacoes v ON v.pdfUid = d.uid AND v.estado <> 'recebendo'
@@ -43,7 +43,7 @@ const UNIAO = `
          c.painelNome, c.montadorNome,
          c.verificacaoId, 'aprovada', NULL, c.numero, c.certificacaoId,
          CASE WHEN c.verificacaoId IS NULL THEN NULL ELSE 'certificado' END,
-         c.busca, i.situacao, i.verificadoEm
+         c.busca, i.situacao, i.verificadoEm, NULL
     FROM certificados_anexos c
     LEFT JOIN integridade_arquivos i ON i.uid = c.uid`;
 
@@ -117,6 +117,8 @@ export const rotasDocumentos: Record<string, Manipulador> = {
         situacao: (l.situacao as string | null) ?? null,
         versao: numero(l.versao),
         numero: (l.numero as string | null) ?? null,
+        /** Número de identificação do PDF (nulo nos certificados, que têm o seu `numero`). */
+        codigo: (l.codigo as string | null) ?? null,
         certificacaoId: numero(l.certificacaoId),
         /** O PDF (ou o certificado) veio de um envio para aprovação: de qual aba. */
         envioCategoria: (l.envioCategoria as 'verificacao' | 'certificado' | null) ?? null,

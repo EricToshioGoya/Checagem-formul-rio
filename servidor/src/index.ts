@@ -26,7 +26,7 @@ import { rotasSync } from './rotasSync';
 import { TAMANHO_MAXIMO_VIDEO } from '../../compartilhado/midias';
 import { rotasApoio, TAMANHO_MAXIMO_APOIO } from './rotasApoio';
 import { protegerCertificacoesAprovadas, rotasCertificacoes, TAMANHO_MAXIMO_CERTIFICADO } from './certificacoes';
-import { atualizarBuscaDosPdfs, rotasPdfs, TAMANHO_MAXIMO_PDF_EMITIDO } from './rotasPdfs';
+import { atualizarBuscaDosPdfs, numerarPdfsAntigos, rotasPdfs, TAMANHO_MAXIMO_PDF_EMITIDO } from './rotasPdfs';
 import { rotasDocumentos } from './rotasDocumentos';
 import { rotasVerificacoes } from './verificacoes';
 import { rotasCertificadosChecklist, TAMANHO_MAXIMO_MODELO } from './certificadosChecklist';
@@ -283,6 +283,7 @@ semearTipos();
 garantirAdminInicial();
 limparSessoesVencidas();
 protegerCertificacoesAprovadas();
+numerarPdfsAntigos();
 atualizarBuscaDosPdfs();
 
 // Tarefas periódicas. `unref` deixa o processo encerrar sem esperar por elas.

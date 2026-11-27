@@ -73,7 +73,16 @@ function textoRegistro(registro: SituacaoRegistro | null): string {
     : 'Guardado no arquivo da ABB.';
 }
 
-export function ArquivosGerados({ nomes, registro }: { nomes: string[]; registro?: EstadoRegistro }) {
+export function ArquivosGerados({
+  nomes,
+  codigos = {},
+  registro,
+}: {
+  nomes: string[];
+  /** Número de identificação de cada PDF, por nome de arquivo. */
+  codigos?: Record<string, string>;
+  registro?: EstadoRegistro;
+}) {
   return (
     <div className="rounded-md border border-green-600 bg-green-50 p-3 text-base">
       <p className="font-bold text-green-800">Arquivos gerados:</p>
@@ -81,6 +90,11 @@ export function ArquivosGerados({ nomes, registro }: { nomes: string[]; registro
         {nomes.map((n) => (
           <li key={n} className="break-all">
             {n}
+            {codigos[n] ? (
+              <span className="block text-sm text-abb-gray">
+                Nº de identificação: <strong className="text-abb-black">{codigos[n]}</strong>
+              </span>
+            ) : null}
           </li>
         ))}
       </ul>
