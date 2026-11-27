@@ -552,14 +552,23 @@ export function GestaoPaineis() {
                 </span>
               </legend>
               <div className="space-y-1.5">
-                <Botao
-                  tamanho="compacto"
-                  className="mt-1"
-                  onClick={marcarTodosAdmins}
-                  disabled={admins.every((a) => rascunho.responsaveis.includes(a.email))}
-                >
-                  Marcar todos os administradores
-                </Botao>
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <Botao
+                    tamanho="compacto"
+                    onClick={marcarTodosAdmins}
+                    disabled={admins.every((a) => rascunho.responsaveis.includes(a.email))}
+                  >
+                    Marcar todos os administradores
+                  </Botao>
+                  {/* Cinza sem explicação parece defeito: diz por que não há o que marcar. */}
+                  {admins.length > 0 && admins.every((a) => rascunho.responsaveis.includes(a.email)) ? (
+                    <span className="text-sm text-abb-gray">
+                      {admins.length === 1
+                        ? 'Só há um administrador cadastrado.'
+                        : 'Todos os administradores já estão marcados.'}
+                    </span>
+                  ) : null}
+                </div>
                 {admins.map((a) => (
                   <label
                     key={a.id}
