@@ -136,6 +136,21 @@ export function GestaoPaineis() {
     );
   };
 
+  /** Marca, de uma vez, todos os administradores da lista como responsáveis do painel. */
+  const marcarTodosAdmins = () => {
+    setRascunho((r) =>
+      r
+        ? {
+            ...r,
+            responsaveis: [
+              ...r.responsaveis,
+              ...admins.map((a) => a.email).filter((e) => !r.responsaveis.includes(e)),
+            ],
+          }
+        : r,
+    );
+  };
+
   const salvar = async () => {
     if (!rascunho) return;
     setErroForm(null);
@@ -537,6 +552,14 @@ export function GestaoPaineis() {
                 </span>
               </legend>
               <div className="space-y-1.5">
+                <Botao
+                  tamanho="compacto"
+                  className="mt-1"
+                  onClick={marcarTodosAdmins}
+                  disabled={admins.every((a) => rascunho.responsaveis.includes(a.email))}
+                >
+                  Marcar todos os administradores
+                </Botao>
                 {admins.map((a) => (
                   <label
                     key={a.id}
